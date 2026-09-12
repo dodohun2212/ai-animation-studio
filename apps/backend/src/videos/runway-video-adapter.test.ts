@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_AUTHORING_LIMIT, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODELS, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_AUTHORING_LIMIT, RUNWAY_PROMPT_MAX_LENGTH, VIDEO_MODEL_OPTIONS, VIDEO_MODELS, type VideoModel } from "@ai-animation-studio/shared";
 import {
   RunwayAdapterError, SEEDANCE_TEXT_CONSTRAINT, createRunwayImageToVideoTask, recordedVideoModel, textRuleFor, downloadRunwayOutput, getRunwayTask,
 } from "./runway-video-adapter.js";
@@ -88,8 +88,34 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}`, ratio: "720:1280", duration: 5 });
         model: "h3_max", resolution, promptExpansionMode: "disabled", duration: 10,
         promptText: `a hero walks forward
 ${NO_LEGIBLE_TEXT_VIDEO_RULE}`,
-        promptImage: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}`,
+        promptImage: [{ position: "first", uri: `data:image/png;base64,${IMAGE_BYTES.toString("base64")}` }],
       });
+    }
+  });
+
+  /*
+   * The picture a clip is asked to end on, for the models that take one — the next scene's approved picture in a
+   * chained project, so two clips share a frame and the cut has nothing to jump (Cowork Round 788, 캡틴D:
+   * 「영상 AI가 이미지 2개 받는 모델인데 하나만 보낸다고?」).
+   */
+  it("sends a last frame as the second keyframe to every model that takes one", async () => {
+    const LAST = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+    const lastUri = `data:image/png;base64,${LAST.toString("base64")}`;
+    const firstUri = `data:image/png;base64,${IMAGE_BYTES.toString("base64")}`;
+    for (const model of VIDEO_MODEL_OPTIONS.filter((option) => option.acceptsLastFrame).map((option) => option.id)) {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+      await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model, ratio: "720:1280", durationSeconds: 5, lastFrame: { imageBytes: LAST, imageMimeType: "image/png" }, fetchImpl: fetchMock, sleep: noSleep });
+      const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+      expect(body.promptImage, model).toEqual([{ position: "first", uri: firstUri }, { position: "last", uri: lastUri }]);
+    }
+  });
+
+  it("refuses a last frame for a model that takes none, without calling fetch, instead of quietly dropping it", async () => {
+    for (const model of VIDEO_MODEL_OPTIONS.filter((option) => !option.acceptsLastFrame).map((option) => option.id)) {
+      const fetchMock = vi.fn();
+      await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model, lastFrame: { imageBytes: IMAGE_BYTES, imageMimeType: "image/png" }, fetchImpl: fetchMock, sleep: noSleep }), model)
+        .rejects.toMatchObject({ category: "invalid_request" });
+      expect(fetchMock, model).not.toHaveBeenCalled();
     }
   });
 

@@ -258,8 +258,12 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     const imageBytes = await fs.readFile(project.generated_images[scene - 1]!);
     const basePrompt = String(record.prompt);
     const additionalInstruction = typeof record.additional_instruction === "string" ? record.additional_instruction : "";
+    const lastFrameScene = typeof record.last_frame_scene === "number" ? record.last_frame_scene : undefined;
+    const lastFrame = lastFrameScene !== undefined && project.generated_images[lastFrameScene - 1]
+      ? { imageBytes: await fs.readFile(project.generated_images[lastFrameScene - 1]!), imageMimeType: "image/png" }
+      : undefined;
     return {
-      imageBytes, imageMimeType: "image/png",
+      imageBytes, imageMimeType: "image/png", ...(lastFrame ? { lastFrame } : {}),
       prompt: additionalInstruction ? `${basePrompt}\n${additionalInstruction}` : basePrompt,
       model: recordedVideoModel(record.model), ratio: String(record.ratio),
       durationSeconds: Number(record.duration_seconds),

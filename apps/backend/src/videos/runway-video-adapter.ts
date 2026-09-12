@@ -55,7 +55,12 @@ export function recordedVideoModel(value: unknown): VideoModel {
   return VIDEO_MODELS.includes(value as VideoModel) ? value as VideoModel : DEFAULT_VIDEO_MODEL;
 }
 
-interface RequestParts { promptImage: string; promptText: string; ratio: RunwayVideoRatio; duration: number }
+interface RequestParts { promptImage: string; promptText: string; ratio: RunwayVideoRatio; duration: number; lastFrameImage?: string }
+
+/** The keyframe list for models that take first/last frames: the picture first, and the last frame when there is one. */
+function keyframes(promptImage: string, lastFrameImage: string | undefined) {
+  return [{ position: "first" as const, uri: promptImage }, ...(lastFrameImage ? [{ position: "last" as const, uri: lastFrameImage }] : [])];
+}
 
 /**
  * What goes on the wire for each model. Exhaustive over `VideoModel`, so a model added to the contract does not
@@ -77,10 +82,13 @@ const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCrea
   // Runway's own model, so a bare image string is its first frame (as for gen4_turbo), unlike WAN's.
   gen4_5: ({ promptImage, promptText, ratio, duration }) =>
     ({ model: "gen4.5", promptImage, promptText, ratio, duration }) satisfies ImageToVideoCreateParams.Gen4_5,
-  h3_max_480p: ({ promptImage, promptText, duration }) =>
-    ({ model: "h3_max", promptImage, promptText, duration, resolution: "480p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
-  h3_max_768p: ({ promptImage, promptText, duration }) =>
-    ({ model: "h3_max", promptImage, promptText, duration, resolution: "768p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
+  // H3 Max reads a bare string as the first frame by its own definition ("An image to use as the first frame, or an
+  // array with a first frame and optionally a last frame" — Runway's OpenAPI), unlike WAN and Seedance. Sent as an
+  // explicit keyframe list anyway, so the one shape carries the last frame too and nothing depends on that reading.
+  h3_max_480p: ({ promptImage, promptText, duration, lastFrameImage }) =>
+    ({ model: "h3_max", promptImage: keyframes(promptImage, lastFrameImage), promptText, duration, resolution: "480p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
+  h3_max_768p: ({ promptImage, promptText, duration, lastFrameImage }) =>
+    ({ model: "h3_max", promptImage: keyframes(promptImage, lastFrameImage), promptText, duration, resolution: "768p", promptExpansionMode: "disabled" }) satisfies ImageToVideoCreateParams.H3Max,
   wan3_480p: (parts) => wan3Body(parts, "auto_480p"),
   wan3_720p: (parts) => wan3Body(parts, "auto_720p"),
   wan3_1080p: (parts) => wan3Body(parts, "auto_1080p"),
@@ -117,8 +125,8 @@ const SEEDANCE_720P = { "720:1280": "720:1280", "1280:720": "1280:720" } as cons
  * Like WAN, a bare image string is a reference image there, so the picture goes as the first keyframe; and its
  * audio defaults to ON, which the merge would throw away, so it is switched off.
  */
-function seedanceParts<const R extends string>({ promptImage, promptText, duration, ratio }: RequestParts, frames: Record<RunwayVideoRatio, R>) {
-  return { promptImage: [{ position: "first" as const, uri: promptImage }], promptText, duration, ratio: frames[ratio], audio: false };
+function seedanceParts<const R extends string>({ promptImage, promptText, duration, ratio, lastFrameImage }: RequestParts, frames: Record<RunwayVideoRatio, R>) {
+  return { promptImage: keyframes(promptImage, lastFrameImage), promptText, duration, ratio: frames[ratio], audio: false };
 }
 
 /**
@@ -141,8 +149,8 @@ export function textRuleFor(model: VideoModel): string {
  * first frame goes as a keyframe, and keyframe requests must use an `auto_*` ratio (the shape follows the frame).
  * `audio: false`: the merge keeps only the picture (`-map 0:v:0`), so a soundtrack would be generated for nothing.
  */
-function wan3Body({ promptImage, promptText, duration }: RequestParts, ratio: "auto_480p" | "auto_720p" | "auto_1080p"): ImageToVideoCreateParams {
-  return { model: "wan3", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, ratio, audio: false } satisfies ImageToVideoCreateParams.Wan3;
+function wan3Body({ promptImage, promptText, duration, lastFrameImage }: RequestParts, ratio: "auto_480p" | "auto_720p" | "auto_1080p"): ImageToVideoCreateParams {
+  return { model: "wan3", promptImage: keyframes(promptImage, lastFrameImage), promptText, duration, ratio, audio: false } satisfies ImageToVideoCreateParams.Wan3;
 }
 
 /**
@@ -150,9 +158,12 @@ function wan3Body({ promptImage, promptText, duration }: RequestParts, ratio: "a
  * reject it) or a frame shape outside this app's vocabulary is an `invalid_request` here — no task is created, so
  * nothing is billed.
  */
-export function requestBodyFor(model: VideoModel, parts: { promptImage: string; promptText: string; ratio: string; duration: number }): ImageToVideoCreateParams {
+export function requestBodyFor(model: VideoModel, parts: { promptImage: string; promptText: string; ratio: string; duration: number; lastFrameImage?: string }): ImageToVideoCreateParams {
   const option = VIDEO_MODEL_OPTIONS.find((candidate) => candidate.id === model);
   if (!option) throw new RunwayAdapterError("invalid_request", `알 수 없는 영상 모델입니다: ${model}`);
+  // Refused, not dropped: a last frame reaching a model that takes none means the job was confirmed as something
+  // this request cannot be, and sending it quietly without one would buy a different clip than the one confirmed.
+  if (parts.lastFrameImage !== undefined && !option.acceptsLastFrame) throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 끝 프레임을 받지 않습니다.`);
   if (!Number.isInteger(parts.duration) || parts.duration < 1 || parts.duration > option.maxDurationSeconds) {
     throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 장면을 최대 ${option.maxDurationSeconds}초까지만 만듭니다.`);
   }
@@ -321,7 +332,7 @@ export async function createRunwayImageToVideoTask(
   imageBytes: Buffer,
   imageMimeType: string,
   prompt: string,
-  options: RetryOptions & { model?: VideoModel; ratio?: string; durationSeconds?: number } = {},
+  options: RetryOptions & { model?: VideoModel; ratio?: string; durationSeconds?: number; lastFrame?: { imageBytes: Buffer; imageMimeType: string } } = {},
 ): Promise<{ taskId: string }> {
   // Appended here rather than at either caller: this is the one door to Runway, both pipelines come through it,
   // and a third caller cannot forget it. The prompt a person confirmed is what gets recorded; this line is only
@@ -335,6 +346,7 @@ ${textRuleFor(model)}`;
   if (utf16Length(text) > RUNWAY_PROMPT_MAX_LENGTH) throw new RunwayAdapterError("invalid_request", `Runway 프롬프트가 ${RUNWAY_PROMPT_MAX_LENGTH} UTF-16 코드 유닛을 초과했습니다.`);
   const requestBody = requestBodyFor(model, {
     promptImage: imageDataUri(imageBytes, imageMimeType), promptText: text, ratio: options.ratio ?? "720:1280", duration: options.durationSeconds ?? 5,
+    ...(options.lastFrame ? { lastFrameImage: imageDataUri(options.lastFrame.imageBytes, options.lastFrame.imageMimeType) } : {}),
   });
   const response = await requestWithRetry(`${RUNWAY_BASE_URL}/v1/image_to_video`, {
     method: "POST",

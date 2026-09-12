@@ -225,6 +225,8 @@ export class LocalVideoSubmissionService {
       ratio: preview.previews[index]!.ratio,
       duration_seconds: preview.previews[index]!.durationSeconds,
       estimated_cost_usd: preview.previews[index]!.estimatedCostUsd,
+      // The confirmed decision, kept with the job: a setting changed mid-run must not change what a resumed scene sends.
+      ...(preview.previews[index]!.lastFrameSceneNumber !== undefined ? { last_frame_scene: preview.previews[index]!.lastFrameSceneNumber } : {}),
       status: "created",
       execution_mode: executionMode,
       approved_at: approvedAt,

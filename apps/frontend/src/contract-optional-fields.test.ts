@@ -39,6 +39,9 @@ const ALLOWED = new Map<string, string>([
   ["generatedVideoPath", "screens play clips by content URL; no screen wants a path"],
   // A gap, not a decision: the server now sends what Runway charged for a failed attempt (`cost.credits`); the video
   // screens still say only 「청구됨」 from billedOnFailure. The test below turns red the day a screen reads it.
+  // A gap, not a decision: the video preview says which scene's picture each chained clip is asked to end on; the
+  // confirmation screen does not show it yet (CLI Round 789).
+  ["lastFrameSceneNumber", "gap: the video confirmation does not show which picture a clip ends on yet (CLI Round 789)"],
   ["billedCredits", "gap: the video failure cards do not name the provider's own charge yet (CLI Round 781)"],
   // (`minimumChargeUsd` · `perGenerationUsd` stood here as a named gap for exactly one round. `videoModelPriceLine`
   //  reads both now — 「+ 장면당 $0.01」 and 「짧아도 최소 $0.64」 — so the third test below demanded these two

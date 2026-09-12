@@ -1861,6 +1861,15 @@ export interface VideoPromptPreview {
    * signal anywhere that anything was missing.
    */
   omittedSections?: string[];
+  /**
+   * The approved picture this clip is asked to end on — the next scene's — when it is: the project draws its scenes
+   * as a chain (sceneImageContinuityEnabled), the model takes a last frame, and there is a next scene. Clip N then
+   * runs from picture N to picture N+1 and clip N+1 starts on that same picture, so the cut has nothing to jump.
+   * Absent otherwise, and then the clip is sent its first frame only, as before.
+   *
+   * On the preview, and in its confirmation, because it changes the paid request: a person confirms what is sent.
+   */
+  lastFrameSceneNumber?: SceneNumber;
 }
 
 /** Previewing prompts and cost never creates a provider task or writes project data. */

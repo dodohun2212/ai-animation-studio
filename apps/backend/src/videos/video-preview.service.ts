@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
-import { sceneNumbersFor, videoSceneEstimatedCostUsd, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, videoModelOption, videoSceneEstimatedCostUsd, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { validateImage } from "../assets/image-validation.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -101,6 +101,10 @@ export class LocalVideoPreviewService {
     await this.assertApprovedImages(project, sceneNumbers);
     const scenes = parseScenes(project, sceneNumbers);
     const ratio = ratioFor(project);
+    // The last frame is the next scene's approved picture, and only for a chained project on a model that takes one
+    // (docs/00_NOW.md ③, strategy provider-endpoints). An ordinary story's scenes are separate shots on purpose;
+    // pulling clip N toward picture N+1 there would blur a cut the story wants.
+    const endsOnNext = toShortProjectSettings(project).sceneImageContinuityEnabled && videoModelOption(model).acceptsLastFrame;
     const previews: VideoPromptPreview[] = scenes.map((scene, index) => {
       // The model is already in hand here for the quote; the prompt is compiled for that same model rather
       // than for whichever one this file was written against.
@@ -113,6 +117,7 @@ export class LocalVideoPreviewService {
         durationSeconds: clipDurationSeconds,
         estimatedCostUsd: videoSceneEstimatedCostUsd(clipDurationSeconds, model),
         ...(omittedSections.length > 0 ? { omittedSections } : {}),
+        ...(endsOnNext && index < sceneNumbers.length - 1 ? { lastFrameSceneNumber: sceneNumbers[index + 1]! } : {}),
       };
     });
     // This is an opaque, deterministic snapshot of the reviewed images and
@@ -126,6 +131,8 @@ export class LocalVideoPreviewService {
       digest.update(preview.model, "ascii");
       digest.update(preview.ratio, "ascii");
       digest.update(String(preview.durationSeconds), "ascii");
+      // Part of what was confirmed: ending on the next picture is a different request from not doing so.
+      digest.update(`last:${preview.lastFrameSceneNumber ?? "-"}`, "ascii");
     }
     const estimatedRequestCostUsd = previews.reduce((sum, preview) => sum + preview.estimatedCostUsd, 0);
     // Read-only: previewing never reserves or records budget, it only reports the ledger's current state.

@@ -8,6 +8,8 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { LocalVideoPreviewService, utf16Length, describesSameScene, promptFor, STABILITY_RULE, type StoredScene } from "./video-preview.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -181,5 +183,38 @@ describe("provider-free video prompt preview", () => {
     const after = promptFor({ ...scene, main_motion: "그가 뒤돌아 달린다" } as unknown as StoredScene, undefined, "720:1280", 5).prompt;
 
     expect(describesSameScene(before, after)).toBe(false);
+  });
+});
+
+describe("the last frame a chained project's clips end on", () => {
+  async function previewWith(options: { chain: boolean; model: "h3_max_480p" | "gen4_turbo" }) {
+    const { projects, projectsRoot, budget, learningDataRoot } = await setup();
+    const project = await projects.findById("video_preview");
+    project.lore_context = { ...project.lore_context, scene_image_continuity_enabled: options.chain };
+    await projects.save(project);
+    const providerSettings = new ProviderSettingsService(new ProviderSettingsRepository(learningDataRoot));
+    await providerSettings.saveVideoModel({ model: options.model });
+    return new LocalVideoPreviewService(projects, projectsRoot, budget, providerSettings).preview("video_preview", {});
+  }
+
+  // Clip N runs from picture N to picture N+1; the last clip has no next picture to end on.
+  it("asks each clip but the last to end on the next scene's picture, for a chained project on a model that takes one", async () => {
+    const result = await previewWith({ chain: true, model: "h3_max_480p" });
+    const last = result.previews.length;
+    expect(result.previews.map((item) => item.lastFrameSceneNumber)).toEqual(result.previews.map((item) => (item.sceneNumber < last ? item.sceneNumber + 1 : undefined)));
+  });
+
+  it("asks for no last frame when the project is not chained, or the model takes none", async () => {
+    for (const options of [{ chain: false, model: "h3_max_480p" as const }, { chain: true, model: "gen4_turbo" as const }]) {
+      const result = await previewWith(options);
+      expect(result.previews.every((item) => item.lastFrameSceneNumber === undefined), JSON.stringify(options)).toBe(true);
+    }
+  });
+
+  // It changes the paid request, so it is part of what was confirmed.
+  it("confirms a different request when the clips end on the next picture than when they do not", async () => {
+    const chained = await previewWith({ chain: true, model: "h3_max_480p" });
+    const plain = await previewWith({ chain: false, model: "h3_max_480p" });
+    expect(chained.confirmationId).not.toBe(plain.confirmationId);
   });
 });

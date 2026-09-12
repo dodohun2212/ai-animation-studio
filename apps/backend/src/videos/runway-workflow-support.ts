@@ -28,6 +28,8 @@ export interface RunwaySceneInput {
   imageBytes: Buffer;
   imageMimeType: string;
   prompt: string;
+  /** The picture the clip is asked to end on, when the confirmed job said so (VideoPromptPreview.lastFrameSceneNumber). */
+  lastFrame?: { imageBytes: Buffer; imageMimeType: string };
   /** The model the job was confirmed under — its record's, not today's setting (see recordedVideoModel). */
   model: VideoModel;
   ratio?: string;
@@ -233,7 +235,7 @@ export async function advanceRunwayScene(
       input.imageBytes,
       input.imageMimeType,
       input.prompt,
-      { model: input.model, ratio: input.ratio, durationSeconds: input.durationSeconds, ...deps.adapterOptions },
+      { model: input.model, ratio: input.ratio, durationSeconds: input.durationSeconds, ...(input.lastFrame ? { lastFrame: input.lastFrame } : {}), ...deps.adapterOptions },
     ));
   } catch (error) {
     // A submission-time failure (bad key, rejected prompt/image, Runway outage, ...) must become a failed scene

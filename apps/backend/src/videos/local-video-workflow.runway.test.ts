@@ -26,12 +26,14 @@ afterEach(async () => {
 
 function scenes() { return [1, 2, 3, 4, 5, 6].map((number) => ({ number, description: `d${number}`, visual_action: "a", start_motion: "s", main_motion: "m", end_motion: "e", shot_size: "medium", camera_angle: "eye", composition: "center", lens_feel: "natural", focus_subject: "subject", camera_motion: "dolly", environment_motion: "wind", motion_speed: "normal", motion_intensity: "moderate", expression_change: "calm", continuity_hint: "continue" })); }
 
-async function setupWithConnectedRunway(options: { model?: VideoModel } = {}) {
+async function setupWithConnectedRunway(options: { model?: VideoModel; chain?: boolean } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "video-workflow-runway-")); roots.push(root);
   const projectsRoot = path.join(root, "projects");
   const projects = new LocalProjectRepository(projectsRoot);
   const project = createStoredProject("video_workflow", "topic", "2026-08-23T00:00:00.000Z");
-  project.workflow_state = WorkflowState.WaitingForVideoConfirmation; project.scenes = scenes(); await projects.create(project);
+  project.workflow_state = WorkflowState.WaitingForVideoConfirmation; project.scenes = scenes();
+  if (options.chain) project.lore_context = { ...project.lore_context, scene_image_continuity_enabled: true };
+  await projects.create(project);
   const images = path.join(projectsRoot, project.project_id, "images"); await fs.mkdir(images, { recursive: true });
   project.generated_images = await Promise.all([1, 2, 3, 4, 5, 6].map(async (number) => { const file = path.join(images, `scene${number}.png`); await fs.writeFile(file, PNG); return file; }));
   await projects.save(project);
@@ -143,6 +145,35 @@ describe("real Runway video workflow", () => {
     for (const body of submitted) expect(body).toMatchObject({ model: "h3_max", resolution: "768p" });
     expect(await deps.budget.spentThisMonth(), "scene 1 at $0.08/s × 5 s").toBeCloseTo(0.4, 8);
     expect(progress.retryEstimate?.perSceneCostUsd, "and a retry of this job is quoted at its own rate").toBeCloseTo(0.4, 8);
+  });
+
+  /*
+   * 🔴 The capability reaching the request (Cowork Round 788): a chained project on a model that takes a last frame
+   * sends clip N its own picture first and scene N+1's picture last, and the last scene its picture only.
+   */
+  it("sends each chained clip the next scene's picture as its last frame, and the last clip none", async () => {
+    const deps = await setupWithConnectedRunway({ model: "h3_max_480p", chain: true });
+    const directory = path.join(deps.projectsRoot, "video_workflow", "images");
+    await Promise.all([1, 2, 3, 4, 5, 6].map((scene) => fs.writeFile(path.join(directory, `scene${scene}.png`), Buffer.concat([PNG, Buffer.from(`scene-${scene}`)]))));
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      for (let check = 0; check < 2; check++) {
+        now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+        await workflow.getProgress("video_workflow", deps.accepted.jobId);
+      }
+    }
+
+    const uri = (scene: number) => `data:image/png;base64,${Buffer.concat([PNG, Buffer.from(`scene-${scene}`)]).toString("base64")}`;
+    const images = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).map((call) => (JSON.parse(String((call[1] as RequestInit).body)) as { promptImage: unknown }).promptImage);
+    expect(images).toHaveLength(6);
+    for (let scene = 1; scene <= 5; scene++) expect(images[scene - 1], `clip ${scene}`).toEqual([{ position: "first", uri: uri(scene) }, { position: "last", uri: uri(scene + 1) }]);
+    expect(images[5], "the last clip has no next picture").toEqual([{ position: "first", uri: uri(6) }]);
   });
 
   it("fetches the paid outputs again for scenes left holding a placeholder, without submitting anything", async () => {
