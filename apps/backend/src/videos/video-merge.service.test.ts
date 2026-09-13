@@ -977,3 +977,76 @@ describe("turning a finished final video", () => {
     expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
   });
 });
+
+/*
+ * GetPhotoCardSubtitleColorsResponse (Cowork Round 887): the settings preview asks for the colours the merge will
+ * burn. Same sampling as the merge, so the two cannot disagree — the last pair holds exactly that.
+ */
+describe("a photo card's subtitle colours, for the preview", () => {
+  const NAVY = (() => { const bytes = new Uint8Array(48 * 16 * 3); for (let i = 0; i < bytes.length; i += 3) bytes.set([20, 40, 110], i); return bytes; })();
+
+  /** ffmpeg writes the band sample as navy pixels (or `sample` bytes); every other call writes its output. */
+  function sampling(calls: string[][], ass: Map<string, string> = new Map(), sample: Uint8Array = NAVY): MediaCommandRunner {
+    return async (arguments_) => {
+      const args = [...arguments_]; calls.push(args);
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "video" }], format: { duration: "5.0" } }), stderr: "" };
+      await captureAss(args.at(-1)!, ass);
+      await fs.writeFile(args.at(-1)!, args.includes("rawvideo") ? sample : Buffer.from("rendered"));
+      return { stdout: "", stderr: "" };
+    };
+  }
+
+  async function card() {
+    const { projectsRoot, projects } = await setup();
+    const project = await projects.findById("video_merge");
+    await projects.save({ ...project, scenes: [{ number: 1, narration: "첫 줄\n둘째 줄" }], lore_context: { ...project.lore_context, photo_card: true, scene_count: 1, subtitles_enabled: true, subtitle_center: 0.5 } });
+    await fs.mkdir(path.join(projectsRoot, "video_merge", "images"), { recursive: true });
+    await fs.writeFile(path.join(projectsRoot, "video_merge", "images", "scene1.png"), Buffer.from("png"));
+    return { projectsRoot, projects };
+  }
+
+  const bandTop = (call: string[]) => Number(/crop=\d+:\d+:\d+:(\d+),scale=48:16/.exec(call[call.indexOf("-vf") + 1]!)?.[1]);
+
+  it("answers the colours as CSS, from the band at the card's own centre or the one asked for", async () => {
+    const { projectsRoot, projects } = await card();
+    const calls: string[][] = [];
+    const service = new LocalVideoMergeService(projects, projectsRoot, sampling(calls));
+
+    const stored = await service.subtitleColors("video_merge");
+    expect(stored.colors).toMatchObject({ body: expect.stringMatching(/^#[0-9A-F]{6}$/), heading: expect.stringMatching(/^#[0-9A-F]{6}$/), outline: expect.stringMatching(/^#[0-9A-F]{6}$/) });
+    expect(parseInt(stored.colors!.body.slice(1, 3), 16), "pale text on navy").toBeGreaterThan(200);
+    await service.subtitleColors("video_merge", "0.2");
+    // 9:16 frame is 1920 high, the band 576: centred at 0.5 → 672, at 0.2 → 96.
+    expect(calls.map(bandTop)).toEqual([672, 96]);
+  });
+
+  it("answers no colours when the picture cannot be read, which is the plain white the merge then burns", async () => {
+    const { projectsRoot, projects } = await card();
+    await expect(new LocalVideoMergeService(projects, projectsRoot, sampling([], new Map(), new Uint8Array(8))).subtitleColors("video_merge")).resolves.toEqual({ colors: null });
+  });
+
+  it("refuses an ordinary project and a centre out of bounds, before reading anything", async () => {
+    const calls: string[][] = [];
+    const ordinary = await setup();
+    await expect(new LocalVideoMergeService(ordinary.projects, ordinary.projectsRoot, sampling(calls)).subtitleColors("video_merge"))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    const { projectsRoot, projects } = await card();
+    for (const center of ["0.9", "abc"]) {
+      await expect(new LocalVideoMergeService(projects, projectsRoot, sampling(calls)).subtitleColors("video_merge", center), center)
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it("gives the preview the very colours the merge burns", async () => {
+    const { projectsRoot, projects } = await card();
+    const preview = (await new LocalVideoMergeService(projects, projectsRoot, sampling([])).subtitleColors("video_merge")).colors!;
+    const ass = new Map<string, string>();
+    await new LocalVideoMergeService(projects, projectsRoot, sampling([], ass)).merge("video_merge");
+    const bgr = (hex: string) => `&H00${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`;
+    const file = ass.get("scene1.ass")!;
+    expect(file).toContain(`Style: Body,Noto Sans KR,`);
+    expect(file.split("\n").find((line) => line.startsWith("Style: Body"))).toContain(`,${bgr(preview.body)},`);
+    expect(file.split("\n").find((line) => line.startsWith("Style: Quote"))).toContain(`,${bgr(preview.heading)},`);
+  });
+});

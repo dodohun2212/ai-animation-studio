@@ -2430,6 +2430,31 @@ export interface MergeVideosResponse {
 export type RotateFinalVideoResponse = MergeVideosResponse;
 
 /**
+ * A photo card's subtitle colours as the merge will burn them, as CSS `#RRGGBB` — the body text, the quote's first
+ * line, and the outline (the merge also uses the outline, at half opacity, as the shadow). Chosen from the picture
+ * under the text so the text suits it and always reads at 4.5:1 against it (캡틴D, Cowork Rounds 879/880).
+ */
+export interface PhotoCardSubtitleColors {
+  body: string;
+  heading: string;
+  outline: string;
+}
+
+/**
+ * `GET photoCardSubtitleColors` — the colours for the card's text centred at `center` (the layout's own
+ * `center`, same bounds; omitted means the card's stored layout). Asked again as the slider moves, because a
+ * different band of the picture can choose different colours. The same sampling the merge runs, so the preview
+ * cannot disagree with the video (Cowork Round 887).
+ *
+ * `colors: null` means the picture could not be read, and the merge will then burn the plain white text on a
+ * black outline — the preview should draw exactly that. Refused (INVALID_REQUEST) for a project that is not a
+ * photo card, and for a `center` out of bounds.
+ */
+export interface GetPhotoCardSubtitleColorsResponse {
+  colors: PhotoCardSubtitleColors | null;
+}
+
+/**
  * One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset
  * Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's
  * doc comment for that distinction). "upload" is the only source, permanently — not a placeholder for a later
@@ -3234,6 +3259,7 @@ export const API_ROUTES = {
   videoContent: (projectId: string, sceneNumber: SceneNumber) => `/projects/${encodeURIComponent(projectId)}/videos/${sceneNumber}/content`,
   videoFinalContent: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/content`,
   videoFinalRotate: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/rotate`,
+  photoCardSubtitleColors: (projectId: string, center?: number) => `/projects/${encodeURIComponent(projectId)}/photo-card/subtitle-colors${center === undefined ? "" : `?center=${center}`}`,
   videoLibrary: "/videos/library",
   videoVersions: (projectId: string, scene: SceneNumber | "final") => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions`,
   videoVersionContent: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/content`,

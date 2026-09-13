@@ -120,6 +120,12 @@ export function cardSubtitleColors(sample: Uint8Array): CardSubtitleColors | und
   return { body, heading, outline };
 }
 
+/** CSS colour `#RRGGBB`, for the settings preview (PhotoCardSubtitleColors). */
+export function cssColour({ r, g, b }: Rgb): string {
+  const hex = (value: number) => Math.round(value).toString(16).toUpperCase().padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
 /** ASS colour: `&HAABBGGRR`, alpha 00 opaque. */
 export function assColour({ r, g, b }: Rgb, alpha = 0): string {
   const hex = (value: number) => Math.round(value).toString(16).toUpperCase().padStart(2, "0");

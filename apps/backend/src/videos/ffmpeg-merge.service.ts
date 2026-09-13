@@ -206,6 +206,27 @@ function kenBurns(width: number, height: number, seconds: number): string {
     + `zoompan=z='min(1+0.15*on/${frames},1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=30`;
 }
 
+/**
+ * A card's subtitle colours, from the picture under the text (card-palette.ts). The still is framed the way the
+ * merge frames it, the band around the text's `center` is cut out and shrunk to a small grid at `samplePath`, and
+ * that grid is what the colours are chosen from. The merge and the settings preview (PhotoCardSubtitleColors) both
+ * call this, so the preview cannot choose differently from the video.
+ *
+ * Any failure answers `undefined` and the card keeps the plain white text — a styling step must never be the
+ * reason a card did not render.
+ */
+export async function sampleCardSubtitleColors(still: string, width: number, height: number, center: number, samplePath: string, runner: MediaCommandRunner = runMediaCommand): Promise<CardSubtitleColors | undefined> {
+  const bandHeight = Math.round(height * 0.3);
+  const bandY = Math.min(height - bandHeight, Math.max(0, Math.round(center * height - bandHeight / 2)));
+  const margin = Math.round(width * 0.08);
+  try {
+    await runner(["ffmpeg", "-y", "-i", still, "-frames:v", "1",
+      "-vf", `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},crop=${width - 2 * margin}:${bandHeight}:${margin}:${bandY},scale=${CARD_BAND_SAMPLE.width}:${CARD_BAND_SAMPLE.height}:flags=area`,
+      "-f", "rawvideo", "-pix_fmt", "rgb24", samplePath]);
+    return cardSubtitleColors(new Uint8Array(await fs.readFile(samplePath)));
+  } catch { return undefined; }
+}
+
 /** Small injectable engine mirroring Python FFmpegEngine's probe/normalize/concat sequence. */
 export class FfmpegMergeEngine {
   constructor(private readonly runner: MediaCommandRunner = runMediaCommand, private readonly fontsDir: string = fontsRoot()) {}
@@ -218,23 +239,8 @@ export class FfmpegMergeEngine {
     }
   }
 
-  /**
-   * A card's subtitle colours, from the picture under the text (card-palette.ts). The still is framed the way the
-   * merge frames it, the band around the text's centre is cut out and shrunk to a small grid, and that grid is what
-   * the colours are chosen from. Any failure answers `undefined` and the card keeps the plain white text — a
-   * styling step must never be the reason a card did not render.
-   */
   private async cardColors(still: string, width: number, height: number, layout: PhotoCardSubtitleLayout | undefined, directory: string, index: number): Promise<CardSubtitleColors | undefined> {
-    const bandHeight = Math.round(height * 0.3);
-    const bandY = Math.min(height - bandHeight, Math.max(0, Math.round((layout ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT).center * height - bandHeight / 2)));
-    const margin = Math.round(width * 0.08);
-    const sample = path.join(directory, `scene${index + 1}.band.rgb`);
-    try {
-      await this.command(["ffmpeg", "-y", "-i", still, "-frames:v", "1",
-        "-vf", `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},crop=${width - 2 * margin}:${bandHeight}:${margin}:${bandY},scale=${CARD_BAND_SAMPLE.width}:${CARD_BAND_SAMPLE.height}:flags=area`,
-        "-f", "rawvideo", "-pix_fmt", "rgb24", sample]);
-      return cardSubtitleColors(new Uint8Array(await fs.readFile(sample)));
-    } catch { return undefined; }
+    return sampleCardSubtitleColors(still, width, height, (layout ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT).center, path.join(directory, `scene${index + 1}.band.rgb`), this.runner);
   }
 
   async probe(clip: string): Promise<void> {

@@ -1,21 +1,23 @@
 import type { VideoReview } from "@ai-animation-studio/shared";
 import { FRAME_FITS, isFrameFit, type FrameFit } from "@ai-animation-studio/shared";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import { isUsableClip, wasPaidRun } from "./placeholder-clip.js";
 import { PLACEHOLDER_ADAPTER } from "../narration/placeholder-narration.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, MERGE_FRAME_FOR_ASPECT, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type GetPhotoCardSubtitleColorsResponse, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 import { photoCardFor, storedSceneSubtitleLayout, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
+import { cssColour } from "./card-palette.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject, StoredUsedAudio } from "../projects/project-storage.schema.js";
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
-import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, probeClipFacts, runMediaCommand, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, probeClipFacts, runMediaCommand, sampleCardSubtitleColors, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
 import { audioStartOutOfRange, ffmpegUnavailable, videoFinalAlreadyPublished, videoFinalAlreadyRotated, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
@@ -388,6 +390,25 @@ export class LocalVideoMergeService {
       return { project: toApiProject(turned), finalVideoPath: FINAL_VIDEO_RELATIVE_PATH };
     }, this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch((error: unknown) => { throw error instanceof ProjectLockTimeoutError ? videoMergeBusy() : error; });
+  }
+
+  /**
+   * GetPhotoCardSubtitleColorsResponse: the colours the merge would burn for this card's text centred at `center`,
+   * from the same sampling the merge runs — so the settings preview cannot choose differently from the video.
+   */
+  async subtitleColors(projectId: string, rawCenter?: unknown): Promise<GetPhotoCardSubtitleColorsResponse> {
+    const project = await this.projects.findById(projectId.trim());
+    if (!photoCardFor(project)) throw videoMergeInvalidRequest("Subtitle colours are chosen for photo cards only.");
+    const center = rawCenter === undefined || rawCenter === "" ? storedSubtitleLayout(project).center : Number(rawCenter);
+    if (!Number.isFinite(center) || center < PHOTO_CARD_SUBTITLE_CENTER.min || center > PHOTO_CARD_SUBTITLE_CENTER.max) {
+      throw videoMergeInvalidRequest(`center must be ${PHOTO_CARD_SUBTITLE_CENTER.min}-${PHOTO_CARD_SUBTITLE_CENTER.max}.`);
+    }
+    const { width, height } = MERGE_FRAME_FOR_ASPECT[shortProjectAspectRatio(project)];
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "card-colours-"));
+    try {
+      const colors = await sampleCardSubtitleColors(this.cardImage(project.project_id), width, height, center, path.join(directory, "band.rgb"), this.runner);
+      return { colors: colors ? { body: cssColour(colors.body), heading: cssColour(colors.heading), outline: cssColour(colors.outline) } : null };
+    } finally { await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined); }
   }
 
   private async saveFailure(project: StoredProject): Promise<void> {
