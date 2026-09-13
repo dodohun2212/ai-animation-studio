@@ -81,12 +81,14 @@ function renderScreen(
    * different models in one reel. Absent is the local fake execution mode, where no provider made anything.
    */
   clipModels?: Record<number, string>,
+  /** 그 장면 클립을 잰 값, 장면 번호별 — 없는 것이 정상입니다(ffprobe 없음 · 가짜 실행 · 병합을 마친 프로젝트). */
+  clipFacts?: Record<number, { width: number; height: number; hasAudio: boolean }>,
 ) {
   // The confirmation count comes from the video review route, never from a field on the scene — no response has
   // ever carried one (see the note above the COMPLETED-project test). A test says which scenes are confirmed by
   // number, which is the thing the route actually reports.
   const scenes = (project.scenes ?? sixScenes()) as Scene[];
-  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: (approved ?? scenes.map((one) => one.number)).includes(scene.number) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z", ...(clipModels?.[scene.number] ? { model: clipModels[scene.number] } : {}) }));
+  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: (approved ?? scenes.map((one) => one.number)).includes(scene.number) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z", ...(clipModels?.[scene.number] ? { model: clipModels[scene.number] } : {}), ...(clipFacts?.[scene.number] ? { clip: clipFacts[scene.number] } : {}) }));
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === PROJECT_URL && !init) {
@@ -522,6 +524,78 @@ describe("VideoMergeScreen", () => {
 
     await screen.findByTestId("merge-frame-fit");
     expect(screen.queryByTestId("merge-frame-fit-clip-models")).toBeNull();
+  });
+
+  /**
+   * 🔴 잰 값이 모델 표를 이겨야 합니다. 모델 표는 「이 모델이면 이렇게 될 것이다」이고 `clip` 은 「이 파일이
+   * 이렇다」입니다 — 둘이 갈리면 파일이 맞습니다. 두 짝이 **반대 방향으로** 그걸 봅니다: 하나는 모델 표라면
+   * 「띠 없음」이라 할 상황에서 잰 값이 띠를 말하고, 다른 하나는 그 반대입니다. 한 방향만 보면 잰 값을 아예
+   * 안 읽는 코드도 절반은 통과합니다.
+   *
+   * 768×1152 는 2:3 이고 세로 릴 틀은 9:16 이라, 실제로 꽃말_버즘나무가 띠를 얻은 그 숫자입니다.
+   */
+  it("trusts the measured clip over the model table — when the file has bars and the model says it would not", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    // Seedance 는 비율을 받는 모델이라 모델 표만 보면 「띠가 없습니다」가 나옵니다.
+    const models = Object.fromEntries(scenes.map((scene) => [scene.number, "seedance2_720p"]));
+    const facts = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: false }]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, models, facts);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("768×1152");
+    expect(note.textContent).toContain("띠가 남습니다");
+    expect(note.textContent, "모델 표를 읽었다면 나왔을 문장").not.toContain("어느 쪽을 골라도 띠가 없습니다");
+  });
+
+  it("trusts the measured clip over the model table — when the file is fine and the model says it would not be", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    // H3 768p 는 측정으로 follows_first_frame — 모델 표만 보면 「띠가 남습니다」입니다.
+    const models = Object.fromEntries(scenes.map((scene) => [scene.number, "h3_max_768p"]));
+    const facts = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 1080, height: 1920, hasAudio: false }]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, models, facts);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("1080×1920");
+    expect(note.textContent).toContain("어느 쪽을 골라도 띠가 없습니다");
+    expect(note.textContent).not.toContain("띠가 남습니다");
+  });
+
+  /** 설정을 바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 크기가 다른 클립이 섞입니다. */
+  it("says when only some of the measured clips will get bars", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const facts = Object.fromEntries(scenes.map((scene) => [
+      scene.number,
+      scene.number === 1 ? { width: 1080, height: 1920, hasAudio: false } : { width: 768, height: 1152, hasAudio: false },
+    ]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, facts);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("섞여 있습니다");
+    expect(note.textContent).toContain("일부 클립에만");
+  });
+
+  /**
+   * 🔴 소리가 있다는 것은 이제 **잰 사실**입니다. 그리고 이 앱은 그 소리를 한 번도 쓰지 않습니다 — 병합이
+   * 화면만 가져오고 소리는 새로 붙이니까요. 소리 되는 모델에 더 내고 그 소리를 버리는 일이 이 화면에서
+   * 보이지 않으면 사람은 그걸 모릅니다. 소리가 없는 릴에서는 이 줄이 **없어야** 합니다.
+   */
+  it("says the clips carry sound that the merge will not use, and only when they do", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const withSound = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: true }]));
+    const first = renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, withSound);
+    const line = await screen.findByTestId("merge-clip-audio");
+    expect(line.textContent).toContain("6개에 소리가 들어 있습니다");
+    expect(line.textContent).toContain("완성본에 들어가지 않습니다");
+    first.render.unmount();
+
+    const silent = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: false }]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, silent);
+    await screen.findByTestId("merge-frame-fit");
+    expect(screen.queryByTestId("merge-clip-audio")).toBeNull();
   });
 
   it("sends a photo card's adjusted subtitle layout with the merge", async () => {

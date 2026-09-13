@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoClipFacts, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
 import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, VIDEO_MODEL_OPTIONS, WorkflowState } from "@ai-animation-studio/shared";
 import { FRAME_FIT_NOTES } from "../utils/videoModelFacts.js";
 
@@ -25,6 +25,33 @@ type DisplayError = { code: string; message: string };
 type LoadState = { status: "loading" } | { status: "error"; error: DisplayError } | { status: "ready" };
 
 /** What the merge lays over the clips, as the two settings that decide it. */
+/** 잰 비율이 릴 틀과 같은가 — 인코더가 반올림한 한 픽셀 때문에 「다르다」고 말하지 않도록 여유를 둡니다. */
+const FRAME_RATIO_TOLERANCE = 0.01;
+
+/**
+ * 디스크의 클립을 **잰** 값으로 쓰는 문장 — 모델로 짐작한 문장보다 먼저입니다.
+ *
+ * 🔴 여기엔 「확인 안 됨」이 없습니다. 모델 표는 그 모델이 무엇을 할지 몰라서 세 갈래였지만, 파일은 이미
+ * 있고 재었으니 **단정해도 됩니다.** 그래서 `unconfirmed` 자리가 이 함수엔 없고, 그게 이 함수가 존재하는
+ * 이유이기도 합니다(CLI Round 818 의 `VideoReview.clip`).
+ *
+ * 🔴 섞인 경우를 따로 답합니다 — 설정을 바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 크기가 다른 클립이 실제로
+ * 섞이고, 그때는 「띠가 남습니다」도 「안 남습니다」도 둘 다 거짓입니다.
+ */
+function measuredFrameNote(clips: readonly VideoClipFacts[], vertical: boolean): { text: string; bars: boolean } | null {
+  if (clips.length === 0) return null;
+  const target = vertical ? 9 / 16 : 16 / 9;
+  const matches = clips.map((clip) => Math.abs(clip.width / clip.height - target) < FRAME_RATIO_TOLERANCE);
+  const sizes = [...new Set(clips.map((clip) => `${clip.width}×${clip.height}`))].join(" · ");
+  if (matches.every((match) => match)) {
+    return { text: `이 릴의 클립은 릴 틀과 같은 모양입니다(${sizes}) — 어느 쪽을 골라도 띠가 없습니다.`, bars: false };
+  }
+  if (matches.every((match) => !match)) {
+    return { text: `이 릴의 클립은 릴 틀과 다른 모양입니다(${sizes}) — 「여백 두기」로 합치면 띠가 남습니다.`, bars: true };
+  }
+  return { text: `이 릴에는 릴 틀과 모양이 다른 클립이 섞여 있습니다(${sizes}) — 일부 클립에만 띠가 남습니다.`, bars: true };
+}
+
 /**
  * 이 릴의 클립들이 어떤 모양으로 나왔는지, 한 줄로.
  *
@@ -160,6 +187,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
      있고, 띠를 만드는 것은 설정이 아니라 이미 만들어진 클립입니다. 여러 개인 것도 실제 상태입니다: 설정을
      바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 모양이 다른 클립이 섞입니다. */
   const [clipModels, setClipModels] = useState<VideoModel[]>([]);
+  /* 클립 파일을 **잰** 값 — 모델로 짐작하는 대신(`VideoReview.clip`, CLI Round 818). 모델 표는 「이 모델이면
+     어떻게 될까」이고 이건 「이 파일이 실제로 어떤가」라, 있으면 이쪽이 이깁니다. 없는 경우가 정상입니다:
+     ffprobe 가 없거나, 가짜 실행의 자리표시 파일이거나, 이미 병합을 마친 프로젝트(검토 GET 이 409). */
+  const [clipFacts, setClipFacts] = useState<VideoClipFacts[]>([]);
   const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
   const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
   const [trackId, setTrackId] = useState("");
@@ -200,6 +231,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
               if (cancelled) return;
               setApprovedCount(review.reviews.filter((one) => one.status === "approved").length);
               setClipModels([...new Set(review.reviews.map((one) => one.model).filter((model): model is VideoModel => model !== undefined))]);
+              setClipFacts(review.reviews.map((one) => one.clip).filter((clip): clip is VideoClipFacts => clip !== undefined));
             })
             .catch(() => { /* Unknown, which is what approvedCount already is. */ });
         }
@@ -308,7 +340,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
   const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
-  const clipFrameNote = frameNoteFor(clipModels);
+  /* 🔴 잰 값이 먼저입니다. 모델 표는 「이 모델이면 이렇게 될 것이다」이고 `clip` 은 「이 파일이 이렇다」라,
+     둘이 갈리면 이기는 쪽이 정해져 있습니다 — 그리고 잰 값에는 「확인 안 됨」이 없어서 단정해도 됩니다. */
+  const clipFrameNote = measuredFrameNote(clipFacts, aspectVertical) ?? frameNoteFor(clipModels);
+  const audibleClips = clipFacts.filter((clip) => clip.hasAudio).length;
 
   return (
     <section className="mt-8 max-w-2xl space-y-5">
@@ -418,6 +453,15 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         </fieldset>
       )}
 
+      {/* 🔴 잰 값이라 이제 근거 있게 말합니다 — 클립 파일에 소리 트랙이 실제로 있습니다(`VideoReview.clip`).
+          그리고 이 앱은 그 소리를 한 번도 쓰지 않습니다: 병합이 클립에서 화면만 가져오고 소리는 내레이션
+          아니면 무음으로 새로 붙입니다. 소리 되는 모델을 일부러 골라 더 내고 그 소리를 버리는 일이 여기서
+          보이지 않으면, 사람은 그걸 영원히 모릅니다. (선택지 자체는 소리 묶음에서 생깁니다.) */}
+      {(!result || remaking) && audibleClips > 0 && (
+        <p data-testid="merge-clip-audio" className="text-xs text-amber-300/90">
+          이 릴의 클립 {audibleClips}개에 소리가 들어 있습니다 — 지금은 그 소리가 완성본에 들어가지 않습니다.
+        </p>
+      )}
       {(!result || remaking) && audioMode !== null && (
         <MergeAudioFieldset
           idPrefix="merge-audio"
