@@ -1,7 +1,6 @@
 import {
   API_ROUTES,
   MAX_SCENE_COUNT,
-  MIN_SCENE_COUNT,
   isClipDurationSeconds,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
@@ -191,7 +190,15 @@ function isShortProjectSettings(value: unknown): value is ShortProjectSettings {
     !isRecord(value) ||
     typeof value.sceneCount !== "number" ||
     !Number.isInteger(value.sceneCount) ||
-    value.sceneCount < MIN_SCENE_COUNT ||
+    // Not MIN_SCENE_COUNT (2): a photo card project's settings legitimately arrive with sceneCount 1 —
+    // apps/backend/src/projects/project-settings.ts's minimumSceneCountFor() floors composed short projects at
+    // MIN_SCENE_COUNT but photo cards at 1 ("it IS one picture and one sentence, by construction"), and this
+    // guard used to reject that as malformed, so every photo card's own 프로젝트 설정 screen threw
+    // "서버 응답을 해석하지 못했습니다" on a perfectly valid response (캡틴D hit this live on 명언_유지경성, 2026-09-13).
+    // 1 is still the true floor — the input itself keeps `min={MIN_SCENE_COUNT}` and is disabled whenever
+    // sceneCountChangeable is false, so this only widens what a read is allowed to accept, never what a person
+    // can type.
+    value.sceneCount < 1 ||
     value.sceneCount > MAX_SCENE_COUNT ||
     !isClipDurationSeconds(value.clipDurationSeconds) ||
     !Number.isInteger(value.durationSeconds) ||

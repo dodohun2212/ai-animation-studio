@@ -1409,6 +1409,20 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
         </aside>
         </div>
       )}
+      {/*
+       * Cowork Round 864: 캡틴D가 「설정 저장」 버튼이 분위기·장면 참고 이미지 섹션 바로 위에 있어서, 그 섹션을
+       * 고칠 때도 버튼을 눌러야 하는지 헷갈린다고 했다. 기능은 이미 맞다 — 아래 세 섹션은 클릭마다 저장되고
+       * (각 SectionHeading 옆 AutoSaveTag) — 문제는 그 사실이 위 상자와 같은 흐름에 섞여 있어 경계가 안 보인다
+       * 는 것이었다. AutoSaveTag를 없애는 대신 그대로 두고, 위 상자와 아래 세 섹션 사이에 경계선 하나를 더
+       * 그어 「여기서부터는 버튼이 필요 없다」를 한 번 더, 이번엔 섹션이 아니라 지점에서 말한다.
+       */}
+      {state.settings && (
+        <div className="flex items-center gap-3 pt-2" data-testid="autosave-section-divider">
+          <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
+          <span className="text-xs font-medium text-emerald-300/80">여기부터는 버튼 없이 고치면 바로 저장됩니다</span>
+          <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
+        </div>
+      )}
       {state.settings && <CastEditor projectId={projectId} onLeadChange={setCastLead} />}
       {state.settings && <AssetReferenceEditor projectId={projectId} />}
       {state.settings && <ContinuityEditor projectId={projectId} />}

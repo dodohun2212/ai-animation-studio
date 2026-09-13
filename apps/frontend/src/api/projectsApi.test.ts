@@ -71,6 +71,33 @@ describe("projectsApi", () => {
     await expect(getProjectSettings("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
+  /**
+   * A photo card's own settings legitimately arrive with sceneCount 1 — apps/backend/src/projects/
+   * project-settings.ts's minimumSceneCountFor() floors it there on purpose ("it IS one picture and one
+   * sentence"), below MIN_SCENE_COUNT (2). This guard used to reject that as malformed, so opening 프로젝트
+   * 설정 on any photo card threw "서버 응답을 해석하지 못했습니다" on a perfectly valid response — 캡틴D hit this
+   * live on 명언_유지경성 (2026-09-13). 0 stays rejected: the true floor is one scene, not none.
+   */
+  it("accepts a photo card's sceneCount of 1, but still rejects 0", async () => {
+    const settings = {
+      projectName: "단편 프로젝트", topic: "유지경성(有志竟成) 뜻을 품었다면, 끝내 현실로 만들어라.", genre: "미스터리",
+      mood: "시네마틱", character: "", lore: "", fullStory: "", durationSeconds: 10, sceneCount: 1 as const,
+      clipDurationSeconds: 10 as const, additionalNotes: "", styleNotes: { aspect: "9:16" }, narrationEnabled: false,
+      subtitlesEnabled: true,
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      jsonResponse(200, { settings, sceneCountChangeable: false, aspectRatioChangeable: false }),
+    ));
+    await expect(getProjectSettings("photo_card_project")).resolves.toEqual({
+      settings, sceneCountChangeable: false, aspectRatioChangeable: false,
+    });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      jsonResponse(200, { settings: { ...settings, sceneCount: 0 }, sceneCountChangeable: false, aspectRatioChangeable: false }),
+    ));
+    await expect(getProjectSettings("photo_card_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
   describe.each([
     "INVALID_REQUEST",
     "UNSAFE_PROJECT_ID",
