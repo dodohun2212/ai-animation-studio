@@ -10,11 +10,18 @@ import { CLIP_DURATION_CHOICES, CLIP_DURATION_LIMITS, clipDurationSecondsPerScen
  * button and the length actually sent to the provider.
  */
 describe("one scene's clip length, derived from an Episode's total", () => {
-  it("gives back one of the two lengths Runway offers, never something in between", () => {
-    // A number that is neither 5 nor 10 reaches the adapter as a duration Runway rejects, after the preflight
-    // has already quoted it.
-    for (const [total, scenes] of [[30, 6], [60, 6], [45, 6], [44, 6], [120, 12], [10, 6]] as const) {
-      expect(RUNWAY_CLIP_DURATIONS).toContain(clipDurationSecondsPerScene(total, scenes));
+  it("gives back the Episode's own whole length when its total divides evenly (B1-b)", () => {
+    // An Episode saved since per-Episode settings stores sceneCount × clipDurationSeconds, so this is exact.
+    for (const [total, scenes, expected] of [[30, 6, 5], [60, 6, 10], [42, 6, 7], [90, 6, 15], [180, 6, 30], [6, 6, 1], [120, 12, 10]] as const) {
+      expect(clipDurationSecondsPerScene(total, scenes), `${total}/${scenes}`).toBe(expected);
+    }
+  });
+
+  it("gives an older Episode whose total does not divide evenly one of the two lengths it was quoted under", () => {
+    // Never something in between: a fraction reaches the adapter as a duration the provider rejects, after the
+    // preflight has already quoted it. Nor a whole number past the limits, which no model makes.
+    for (const [total, scenes] of [[45, 6], [44, 6], [10, 6], [200, 6]] as const) {
+      expect(RUNWAY_CLIP_DURATIONS, `${total}/${scenes}`).toContain(clipDurationSecondsPerScene(total, scenes));
     }
   });
 

@@ -363,17 +363,31 @@ export const videoModelTakesRatio = (option: VideoModelOption, ratio: RunwayVide
 export const videoModelTakesAspect = (option: VideoModelOption, aspect: AspectRatio): boolean =>
   videoModelTakesRatio(option, RUNWAY_RATIO_FOR_ASPECT[aspect]);
 
+/**
+ * @deprecated The one model's own range, frozen into a global when there was one model. No server check reads it
+ * any more (B1-a, B1-b): a scene length is `isClipDurationSeconds` and the model is asked with
+ * `videoModelTakesDuration`. Screens still offer it until they draw `CLIP_DURATION_CHOICES` ∩ the model (D1).
+ */
 export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
+/** @deprecated See RUNWAY_CLIP_DURATIONS. */
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
 
 /**
- * What a short project's scene length may be: a whole number of seconds in this range, whatever the model — the
+ * How long a photo card holds its picture. Not a model's range — nothing is generated; the merge holds one still —
+ * so it did not move with B1. It is the same two numbers it always was, under its own name, so that widening the
+ * video lengths could not widen this by accident.
+ */
+export const PHOTO_CARD_DURATIONS = [5, 10] as const;
+export type PhotoCardDurationSeconds = (typeof PHOTO_CARD_DURATIONS)[number];
+
+/**
+ * What a scene length may be, short project or Long Episode: a whole number of seconds in this range, whatever the model — the
  * union of every catalogue model's [minDurationSeconds, maxDurationSeconds]. A settings save is checked against
  * this; whether the chosen model takes it is asked where money is about to move (the confirmation screen, the
  * video start, the adapter), because settings outlive a model choice (Cowork Round 806 · CLI Round 849).
  *
- * `RUNWAY_CLIP_DURATIONS` ([5, 10]) was the one model's own range, frozen into a global when there was one model;
- * it still governs Long Episodes and photo cards until those move (B1-b).
+ * `RUNWAY_CLIP_DURATIONS` ([5, 10]) was the one model's own range, frozen into a global when there was one model.
+ * Long Episodes moved with B1-b; photo cards keep 5 and 10 as `PHOTO_CARD_DURATIONS`.
  */
 export const CLIP_DURATION_LIMITS = { min: 1, max: 30 } as const;
 export const isClipDurationSeconds = (value: unknown): value is number =>
@@ -393,11 +407,15 @@ export const videoModelTakesDuration = (option: VideoModelOption, seconds: numbe
  * being written two ways, and the halves that would disagree are the price shown before the button and the
  * length actually sent to the provider.
  *
- * The nearest of the two lengths Runway offers, not a floor: an Episode at exactly 7.5 seconds a scene is
- * closer to nothing, and rounding it down would quote a clip shorter than the one being made.
+ * An Episode saved since per-Episode settings stores `sceneCount × clipDurationSeconds`, so the division is exact and
+ * is the answer (B1-b: any whole length in CLIP_DURATION_LIMITS). One stored before that can divide unevenly; it
+ * keeps the rule it was quoted under — the nearer of 5 and 10, not a floor: an Episode at exactly 7.5 seconds a
+ * scene is closer to nothing, and rounding it down would quote a clip shorter than the one being made.
  */
-export function clipDurationSecondsPerScene(totalDurationSeconds: number, sceneCount: number): RunwayClipDurationSeconds {
-  return Number(totalDurationSeconds) / sceneCount >= 7.5 ? 10 : 5;
+export function clipDurationSecondsPerScene(totalDurationSeconds: number, sceneCount: number): number {
+  const exact = Number(totalDurationSeconds) / sceneCount;
+  if (isClipDurationSeconds(exact)) return exact;
+  return exact >= 7.5 ? 10 : 5;
 }
 
 /**

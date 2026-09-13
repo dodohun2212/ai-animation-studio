@@ -1,4 +1,4 @@
-import { isAspectRatio, RUNWAY_RATIO_FOR_ASPECT, videoModelOption, videoModelTakesRatio } from "@ai-animation-studio/shared";
+import { isAspectRatio, RUNWAY_RATIO_FOR_ASPECT, videoModelOption, videoModelTakesDuration, videoModelTakesRatio } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
@@ -8,7 +8,7 @@ import { PLACEHOLDER_MP4 } from "../videos/placeholder-clip.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
-import { clipDurationSecondsPerScene, type RunwayClipDurationSeconds, FINAL_VIDEO_RELATIVE_PATH, SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, VIDEO_JOB_STATUSES, isSceneNumber, type VideoModel, RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type LongEpisodeVideoStaleness, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse, type RunwayVideoRatio } from "@ai-animation-studio/shared";
+import { clipDurationSecondsPerScene, FINAL_VIDEO_RELATIVE_PATH, SCENE_REVIEW_STATUSES, LONG_EPISODE_STATUSES, VIDEO_JOB_STATUSES, isSceneNumber, type VideoModel, RUNWAY_PROMPT_AUTHORING_LIMIT, sceneNumbersFor, videoSceneEstimatedCostUsd, type ApproveLongEpisodeVideoReviewRequest, type ApproveLongEpisodeVideoReviewResponse, type GetLongEpisodeCurrentVideoJobResponse, type GetLongEpisodeVideoPreviewResponse, type GetLongEpisodeVideoReviewResponse, type LongEpisodeDetail, type LongEpisodeStatus, type LongEpisodeVideoProgress, type LongEpisodeVideoReview, type LongEpisodeVideoStaleness, type GetVideoVersionsResponse, type RecoverLongEpisodeVideosResponse, type RegenerateLongEpisodeVideoResponse, type RestoreLongEpisodeVideoVersionResponse, type SceneNumber, type StartLongEpisodeVideoGenerationRequest, type StartLongEpisodeVideoGenerationResponse, type RunwayVideoRatio } from "@ai-animation-studio/shared";
 import { validateImage } from "../assets/image-validation.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
@@ -18,7 +18,7 @@ import { advanceRunwayScene, RUNWAY_POLL_INTERVAL_SECONDS, type RunwayAdvanceRes
 import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "../videos/runway-video-adapter.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { SCENE_FIELDS, compileVideoPrompt, describesSameScene, promptFor, utf16Length, type StoredScene } from "../videos/video-preview.service.js";
-import { longEpisodeRetryNeedsChangedInput, longBudgetLedgerUnreadable, longEpisodeVideoRestoreInProgress, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideoAspectUnsupported, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
+import { longEpisodeRetryNeedsChangedInput, longBudgetLedgerUnreadable, longEpisodeVideoRestoreInProgress, longEpisodeVideoRestoreNotAllowed, longEpisodeVideoVersionNotFound, longLocked, longEpisodeNotFound, longEpisodeVideoJobNotFound, longEpisodeVideoAspectUnsupported, longEpisodeVideoDurationOutOfRange, longEpisodeVideosInvalid, longEpisodeVideosNotAllowed, longInvalidData, longInvalidRequest, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
 import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import { toApiEpisodeScript } from "./episode-script-format.js";
 import { toEpisodeDetail } from "./episode-detail.js";
@@ -144,9 +144,9 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * project's own sceneCount (no longer a fixed 6) determines how many clips an Episode has (see sceneCount()
    * above). episode.duration_seconds is snapshotted onto the Episode at creation time (see
    * episode-timeline.service.ts's episodeData()) from the project's setting at that moment, so it can predate
-   * this 5/10 constraint for an older project; coerce to the nearer valid value rather than reject.
+   * per-Episode settings for an older project; clipDurationSecondsPerScene keeps that one's 5/10 answer rather than reject.
    */
-  private durationSecondsPerScene(episode: Episode): RunwayClipDurationSeconds { return clipDurationSecondsPerScene(Number(episode.duration_seconds), this.sceneCount(episode)); }
+  private durationSecondsPerScene(episode: Episode): number { return clipDurationSecondsPerScene(Number(episode.duration_seconds), this.sceneCount(episode)); }
   /**
    * Delegates to videos/video-prompt-compiler.ts — the short-project and Long Episode script schemas use
    * the same 16 field names (see MOTION_SCENE_FIELDS/scenes() above), so the same compiler correctly reads all
@@ -155,7 +155,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * project's own aspectRatio setting via ratio() above — it used to be hardcoded to "720:1280" regardless of
    * that setting, so a 16:9 Long Project's Episodes were always rendered as vertical video.
    */
-  private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: RunwayVideoRatio): string {
+  private prompt(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: number, ratio: RunwayVideoRatio): string {
     // Deliberately the single-dialect recompute, not the selected model — this is only reached from
     // videoStaleness(), and the short project's scene-staleness.ts answers the same question the same way.
     // A recorded clip was compiled for whichever model was selected then, which the record does not say; with
@@ -175,7 +175,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
    * could lose its pacing or performance direction and the only way to find out was that the finished clip
    * was wrong — after paying for it.
    */
-  private promptWithOmissions(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: 5 | 10, ratio: RunwayVideoRatio, model: VideoModel): { prompt: string; omittedSections: string[] } {
+  private promptWithOmissions(current: ObjectMap, previous: ObjectMap | undefined, durationSeconds: number, ratio: RunwayVideoRatio, model: VideoModel): { prompt: string; omittedSections: string[] } {
     try { return compileVideoPrompt(model, { scene: current as unknown as StoredScene, previous: previous as unknown as StoredScene | undefined, ratio, clipDurationSeconds: durationSeconds }); }
     catch { throw longInvalidData(); }
   }
@@ -430,7 +430,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
       throw error;
     }
   }
-  private async startCore(projectId: string, number: number, request: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { const id = projectId.trim(); if (!object(request) || Object.keys(request).length !== 4 || !validId(request.userRequestId) || typeof request.confirmationId !== "string" || request.approved !== true || !Array.isArray(request.prompts)) throw longInvalidRequest("Episode video start request is invalid."); const episode = await this.loadEpisode(id, number); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); if (request.prompts.length !== sceneNumbers.length) throw longInvalidRequest("Episode video start request is invalid."); const existing = await this.records(id, number, this.sceneCount(episode)).catch((error) => error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 ? [] : Promise.reject(error)); const same = existing.filter((item) => item.user_request_id === request.userRequestId); if (same.length) { const jobId = same[0]!.job_id; if (same.some((item, index) => item.prompt !== request.prompts[index]?.prompt || item.confirmation_id !== request.confirmationId)) throw longInvalidRequest("Episode video request ID conflicts with a previous request."); return { jobId, acceptedSceneNumbers: [...sceneNumbers], episode: this.detail(episode), paidProvider: same[0]!.execution_mode === "runway" }; } const preview = await this.preview(id, number); if (preview.confirmationId !== request.confirmationId || request.prompts.some((item, index) => !object(item) || item.sceneNumber !== sceneNumbers[index])) throw longInvalidRequest("Episode video confirmation is stale."); if (!videoModelTakesRatio(videoModelOption(preview.model), preview.ratio)) throw longEpisodeVideoAspectUnsupported({ model: preview.model, ratio: preview.ratio }); // The prompt itself is the person's to change. It used to have to match the preview byte for byte, which
+  private async startCore(projectId: string, number: number, request: StartLongEpisodeVideoGenerationRequest): Promise<StartLongEpisodeVideoGenerationResponse> { const id = projectId.trim(); if (!object(request) || Object.keys(request).length !== 4 || !validId(request.userRequestId) || typeof request.confirmationId !== "string" || request.approved !== true || !Array.isArray(request.prompts)) throw longInvalidRequest("Episode video start request is invalid."); const episode = await this.loadEpisode(id, number); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); if (request.prompts.length !== sceneNumbers.length) throw longInvalidRequest("Episode video start request is invalid."); const existing = await this.records(id, number, this.sceneCount(episode)).catch((error) => error instanceof Error && "getStatus" in error && (error as { getStatus(): number }).getStatus() === 404 ? [] : Promise.reject(error)); const same = existing.filter((item) => item.user_request_id === request.userRequestId); if (same.length) { const jobId = same[0]!.job_id; if (same.some((item, index) => item.prompt !== request.prompts[index]?.prompt || item.confirmation_id !== request.confirmationId)) throw longInvalidRequest("Episode video request ID conflicts with a previous request."); return { jobId, acceptedSceneNumbers: [...sceneNumbers], episode: this.detail(episode), paidProvider: same[0]!.execution_mode === "runway" }; } const preview = await this.preview(id, number); if (preview.confirmationId !== request.confirmationId || request.prompts.some((item, index) => !object(item) || item.sceneNumber !== sceneNumbers[index])) throw longInvalidRequest("Episode video confirmation is stale."); const option = videoModelOption(preview.model); if (!videoModelTakesDuration(option, preview.durationSecondsPerScene)) throw longEpisodeVideoDurationOutOfRange({ model: option.id, durationSeconds: preview.durationSecondsPerScene, minDurationSeconds: option.minDurationSeconds, maxDurationSeconds: option.maxDurationSeconds }); if (!videoModelTakesRatio(option, preview.ratio)) throw longEpisodeVideoAspectUnsupported({ model: preview.model, ratio: preview.ratio }); // The prompt itself is the person's to change. It used to have to match the preview byte for byte, which
     // made the editable box on the screen a lie: every edit came back as "확인해 주세요" with nothing saying
     // what was wrong. `confirmationId` is what guards against a stale confirmation — it is derived from the
     // scenes, so a script that moved underneath still fails here — and the short project has always accepted

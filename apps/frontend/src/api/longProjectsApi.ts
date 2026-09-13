@@ -10,7 +10,7 @@ import {
   NARRATION_AUDIO_STATES,
   RUNWAY_VIDEO_RATIOS,
   STORY_BIBLE_LINK_KINDS,
-  RUNWAY_CLIP_DURATIONS,
+  isClipDurationSeconds,
   SCENE_REVIEW_STATUSES,
   VIDEO_JOB_STATUSES,
   VIDEO_MODELS,
@@ -79,7 +79,6 @@ import {
   type RestoreLongEpisodeRequest,
   type RestoreLongEpisodeResponse,
   type RestoreLongEpisodeVideoVersionResponse,
-  type RunwayClipDurationSeconds,
   type SaveLongEpisodeContinuityRequest,
   type SaveLongEpisodeContinuityResponse,
   type SceneNumber,
@@ -152,6 +151,7 @@ const SAFE_ERRORS: Record<string, string> = {
   LONG_EPISODE_VIDEOS_NOT_ALLOWED: "지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
   LONG_EPISODE_VIDEOS_INVALID: "에피소드 영상이나 검토 데이터가 올바르지 않습니다.",
   LONG_EPISODE_VIDEO_ASPECT_UNSUPPORTED: "지금 고른 영상 모델은 이 프로젝트의 화면 비율로 영상을 만들지 않습니다. 설정에서 모델을 바꿔 주세요.",
+  LONG_EPISODE_VIDEO_DURATION_OUT_OF_RANGE: "이 에피소드의 장면 길이가 지금 고른 영상 모델이 만들 수 있는 범위를 벗어났습니다. 에피소드 설정에서 길이나 모델을 바꿔 주세요.",
   // Not a failure to fix — the work is already done. The gate that produces this used to answer with the
   // "approve every scene first" sentence, which sent people to re-approve scenes that were already approved.
   // Whether a re-merge should be allowed at all is a separate, product question; until it is, saying the true
@@ -453,7 +453,7 @@ function isLongProjectSettings(value: unknown): value is LongProjectSettings {
   // binds sceneCount straight to a number input's value and clipDurationSeconds to a select's value, and an
   // absent or out-of-range value would silently misrender either control.
   if (!Number.isInteger(value.sceneCount) || (value.sceneCount as number) < MIN_SCENE_COUNT || (value.sceneCount as number) > MAX_SCENE_COUNT) return false;
-  if (!(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number)) return false;
+  if (!isClipDurationSeconds(value.clipDurationSeconds)) return false;
   if (!ASPECT_RATIO_SET.has(value.aspectRatio as string)) return false;
   // Checked rather than assumed: the settings screen binds these straight to checkbox `checked`, and an
   // absent value would silently turn a controlled input into an uncontrolled one.
@@ -551,7 +551,7 @@ function isGetLongProjectSettingsResponse(value: unknown): value is GetLongProje
 function isLongEpisodeSettings(value: unknown): value is LongEpisodeSettings {
   if (!isRecord(value)) return false;
   if (!Number.isInteger(value.sceneCount) || (value.sceneCount as number) < MIN_SCENE_COUNT || (value.sceneCount as number) > MAX_SCENE_COUNT) return false;
-  if (!(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number)) return false;
+  if (!isClipDurationSeconds(value.clipDurationSeconds)) return false;
   if (!Number.isInteger(value.episodeDurationSeconds) || (value.episodeDurationSeconds as number) <= 0) return false;
   return true;
 }
@@ -694,7 +694,8 @@ const isGetEpisodeVideoPreviewResponse = (value: unknown): value is GetLongEpiso
   // RUNWAY_CLIP_DURATIONS would make this guard call a correct server response malformed, and the screen say
   // 서버 응답을 확인할 수 없습니다 about a server that is working. That is not hypothetical — the short
   // project's twin of this line said `=== 5` and cost 캡틴D the entire video step this morning (9fff608).
-  && RUNWAY_CLIP_DURATIONS.includes(value.durationSecondsPerScene as RunwayClipDurationSeconds) && value.executionMode === "sequential" && typeof value.estimatedCostUsd === "number"
+  // B1-b made that happen: an Episode's scene length is now any whole number the contract allows.
+  && isClipDurationSeconds(value.durationSecondsPerScene) && value.executionMode === "sequential" && typeof value.estimatedCostUsd === "number"
   && Array.isArray(value.scenes) && value.scenes.length >= MIN_SCENE_COUNT && value.scenes.length <= MAX_SCENE_COUNT && value.scenes.every(isEpisodeVideoPreview)
   && (value.maximumProviderCalls === undefined || isFiniteNonNegative(value.maximumProviderCalls))
   && isBudgetPreview(value.budget);

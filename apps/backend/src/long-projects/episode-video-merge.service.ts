@@ -6,7 +6,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, clipDurationSecondsPerScene, type RunwayClipDurationSeconds, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, DEFAULT_SCENE_SUBTITLE_LAYOUT, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, isSceneSubtitleLayout, usesBgm, type AudioMode, type GenerationSource, LONG_EPISODE_STATUSES, isSceneNumber, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, clipDurationSecondsPerScene, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, DEFAULT_SCENE_SUBTITLE_LAYOUT, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, isSceneSubtitleLayout, usesBgm, type AudioMode, type GenerationSource, LONG_EPISODE_STATUSES, isSceneNumber, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, type LongEpisodeDetail, type LongEpisodeStatus, type MergeLongEpisodeVideosResponse, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, type MediaCommandRunner, type MergeSceneInput } from "../videos/ffmpeg-merge.service.js";
@@ -149,7 +149,7 @@ export class EpisodeVideoMergeService {
   /** Falls back to 6, matching every Episode stored before scene_count existed (see episode-scripts.service.ts's parseStored). */
   private sceneCount(episode: Episode): number { return storedSceneCount(episode); }
   /** From the contract, because this number is a price as much as a length — see clipDurationSecondsPerScene. */
-  private clipDurationSeconds(episode: Episode): RunwayClipDurationSeconds { return clipDurationSecondsPerScene(Number(episode.duration_seconds), this.sceneCount(episode)); }
+  private clipDurationSeconds(episode: Episode): number { return clipDurationSecondsPerScene(Number(episode.duration_seconds), this.sceneCount(episode)); }
 
   private async approvedClips(id: string, number: number, episode: Episode): Promise<string[]> {
     // `failed` is reachable from exactly one place — a merge that did not finish — and a merge that did not

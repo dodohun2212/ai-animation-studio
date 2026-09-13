@@ -1,4 +1,4 @@
-import { RUNWAY_CLIP_DURATIONS } from "@ai-animation-studio/shared";
+import { CLIP_DURATION_LIMITS } from "@ai-animation-studio/shared";
 import { LONG_EPISODE_STATUSES } from "@ai-animation-studio/shared";
 import type { ListLongProjectsResponse } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -268,6 +268,7 @@ describe("longProjectsApi", () => {
     "LONG_EPISODE_VIDEOS_NOT_ALLOWED",
     "LONG_EPISODE_VIDEOS_INVALID",
     "LONG_EPISODE_VIDEO_ASPECT_UNSUPPORTED",
+    "LONG_EPISODE_VIDEO_DURATION_OUT_OF_RANGE",
     "LONG_EPISODE_VIDEO_JOB_NOT_FOUND",
     "LONG_EPISODE_MERGE_NOT_ALLOWED",
     "LONG_EPISODE_MERGE_BUSY",
@@ -493,14 +494,17 @@ describe("longProjectsApi", () => {
       executionMode: "sequential", estimatedCostUsd: 1.5, scenes: [1, 2].map((sceneNumber) => ({ sceneNumber, prompt: "p", estimatedCostUsd: 0.25, omittedSections: [] })),
     });
 
-    for (const seconds of RUNWAY_CLIP_DURATIONS) {
+    // B1-b: an Episode's scene length is any whole number in CLIP_DURATION_LIMITS, not only 5 and 10.
+    for (const seconds of [CLIP_DURATION_LIMITS.min, 5, 7, 10, 15, CLIP_DURATION_LIMITS.max]) {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview(seconds))));
       const response = await getLongEpisodeVideoPreview("long", 1);
       expect(response.durationSecondsPerScene).toBe(seconds);
     }
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview(7))));
-    await expect(getLongEpisodeVideoPreview("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+    for (const bad of [CLIP_DURATION_LIMITS.max + 1, 7.5, 0]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, preview(bad))));
+      await expect(getLongEpisodeVideoPreview("long", 1), String(bad)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+    }
   });
 
   it("reads Episode settings with the project defaults and the changeable flag", async () => {
@@ -526,10 +530,10 @@ describe("longProjectsApi", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { settings, changeable: true })));
     await expect(getLongEpisodeSettings("long", 1)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
 
-    // Out of the allowed set rather than merely the wrong type: a clip length of 7 would reach a <select> with
+    // Out of the allowed range rather than merely the wrong type: a clip length of 31 would reach a <select> with
     // no matching <option> and render as nothing chosen, which reads as "not set" instead of as bad data.
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, {
-      settings: { sceneCount: 6, clipDurationSeconds: 7, episodeDurationSeconds: 42 },
+      settings: { sceneCount: 6, clipDurationSeconds: 31, episodeDurationSeconds: 186 },
       projectDefaults: settings,
       changeable: true,
     })));

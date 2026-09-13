@@ -377,6 +377,13 @@ describe("PhotoCardService", () => {
    * that read the stored field back would have passed while the video came out the wrong shape — it would have
    * been checking that the service wrote what the service wrote.
    */
+  it("holds a card for 5 or 10 seconds only, though a video scene may now be longer (B1-b)", async () => {
+    const { service, asset } = await setup();
+    vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
+    await expect(service.create({ ...body(asset.asset_id), clipDurationSeconds: 15 as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.create({ ...body(asset.asset_id), clipDurationSeconds: 10 })).resolves.toBeDefined();
+  });
+
   it("stores the orientation where everything that renders reads it", async () => {
     const { projects, service, asset } = await setup();
     vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });

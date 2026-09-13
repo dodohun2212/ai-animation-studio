@@ -102,6 +102,16 @@ describe("LongProjectsService", () => {
     expect(bible.basic).toEqual({});
   });
 
+  it("takes any whole scene length within the limits as a project setting, and refuses one outside them (B1-b)", async () => {
+    const subject = await service();
+    await subject.create({ ...input, settings: { ...input.settings, clipDurationSeconds: 15 } });
+    expect((await subject.getSettings("long_test")).settings).toMatchObject({ clipDurationSeconds: 15, episodeDurationSeconds: 90 });
+    for (const bad of [0, 7.5, 31]) {
+      await expect(subject.updateSettings("long_test", { settings: { ...input.settings, clipDurationSeconds: bad } }), String(bad))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+  });
+
   it("refuses an aspect ratio change once an Episode has images, while every other setting stays editable", async () => {
     // Images, video generation and the merge each read the project's ratio when they run. Change it midway and
     // portrait images get sent to Runway asking for landscape video, which the merge then pads to the new shape

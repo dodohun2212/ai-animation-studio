@@ -8,7 +8,7 @@ import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { errorsOf as episodeErrors, toEpisodeInstagramPost, toEpisodeUsedAudio, toEpisodePreviousInstagramPosts } from "./episode-detail.js";
-import { DEFAULT_SCENE_SUBTITLE_LAYOUT, isSceneSubtitleLayout, LONG_EPISODE_STATUSES, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, STORY_ESTIMATED_COST_USD, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type GetLongEpisodeSettingsResponse, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse, type UpdateLongEpisodeSettingsRequest, type UpdateLongEpisodeSettingsResponse, type RunwayClipDurationSeconds } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, isSceneSubtitleLayout, LONG_EPISODE_STATUSES, MAX_SCENE_COUNT, MIN_SCENE_COUNT, STORY_ESTIMATED_COST_USD, CLIP_DURATION_LIMITS, isClipDurationSeconds, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type GetLongEpisodeSettingsResponse, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse, type UpdateLongEpisodeSettingsRequest, type UpdateLongEpisodeSettingsResponse, type RunwayClipDurationSeconds } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
@@ -357,8 +357,8 @@ export class EpisodeScriptsService {
     const id = projectId.trim(); const outline = await this.outline(id, number); const stored = await this.stored(id, outline);
     if (!isObj(request) || Object.keys(request).length !== 2
       || !Number.isInteger(request.sceneCount) || Number(request.sceneCount) < MIN_SCENE_COUNT || Number(request.sceneCount) > MAX_SCENE_COUNT
-      || !RUNWAY_CLIP_DURATIONS.includes(request.clipDurationSeconds as RunwayClipDurationSeconds)) {
-      throw longInvalidRequest(`sceneCount must be an integer from ${MIN_SCENE_COUNT} to ${MAX_SCENE_COUNT} and clipDurationSeconds one of ${RUNWAY_CLIP_DURATIONS.join(", ")}.`);
+      || !isClipDurationSeconds(request.clipDurationSeconds)) {
+      throw longInvalidRequest(`sceneCount must be an integer from ${MIN_SCENE_COUNT} to ${MAX_SCENE_COUNT} and clipDurationSeconds a whole number from ${CLIP_DURATION_LIMITS.min} to ${CLIP_DURATION_LIMITS.max}.`);
     }
     // Refused once a script exists rather than silently leaving one written for other numbers. `changeable` on
     // the read says the same thing ahead of time, so a screen can disable the fields instead of failing here.

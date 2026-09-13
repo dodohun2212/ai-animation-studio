@@ -87,12 +87,14 @@ describe("EpisodeScriptsService", () => {
   });
 
   it("refuses a scene count or clip length the rest of the pipeline cannot honour", async () => {
-    // Runway offers two clip lengths and the scene count has bounds; a value outside either would be accepted
-    // here and then fail somewhere far away, at a step that costs money.
+    // The scene count has bounds and a clip length is a whole number within CLIP_DURATION_LIMITS (B1-b); a value
+    // outside either would be accepted here and then fail somewhere far away, at a step that costs money.
     const subject = await setup(30, 6);
-    for (const invalid of [{ sceneCount: 1, clipDurationSeconds: 5 }, { sceneCount: 13, clipDurationSeconds: 5 }, { sceneCount: 6, clipDurationSeconds: 7 }]) {
+    for (const invalid of [{ sceneCount: 1, clipDurationSeconds: 5 }, { sceneCount: 13, clipDurationSeconds: 5 }, { sceneCount: 6, clipDurationSeconds: 31 }, { sceneCount: 6, clipDurationSeconds: 7.5 }, { sceneCount: 6, clipDurationSeconds: 0 }]) {
       await expect(subject.updateSettings("long", 1, invalid)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     }
+    // A length only the newer models make is a setting like 5 or 10: the model is asked when the video starts.
+    await expect(subject.updateSettings("long", 1, { sceneCount: 6, clipDurationSeconds: 15 })).resolves.toMatchObject({ settings: { sceneCount: 6, clipDurationSeconds: 15, episodeDurationSeconds: 90 } });
     // And it does not accept a duration it is supposed to derive.
     await expect(subject.updateSettings("long", 1, { sceneCount: 4, clipDurationSeconds: 5, episodeDurationSeconds: 20 } as never))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });

@@ -1,4 +1,4 @@
-import type { RunwayVideoRatio, AspectRatio, AudioMode, FrameFit, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
+import type { RunwayVideoRatio, AspectRatio, AudioMode, FrameFit, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, PhotoCardDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
 import { FINAL_VIDEO_RELATIVE_PATH, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -33,7 +33,7 @@ export interface LongProjectSettings {
   episodeDurationSeconds: number;
   /** Per-Episode scene count — no longer fixed at 6. See MIN_SCENE_COUNT/MAX_SCENE_COUNT in domain.ts. */
   sceneCount: number;
-  /** One of RUNWAY_CLIP_DURATIONS (domain.ts) — Runway is the only supported video Provider today, so this is not yet keyed by provider. Same constraint as ShortProjectSettings.clipDurationSeconds. */
+  /** A whole number within CLIP_DURATION_LIMITS (domain.ts) — same rule as ShortProjectSettings.clipDurationSeconds (B1-b). Whether the chosen model makes it is asked at the Episode's video start (LONG_EPISODE_VIDEO_DURATION_OUT_OF_RANGE), not here, because settings outlive a model choice. */
   clipDurationSeconds: number;
   aspectRatio: AspectRatio;
   audience: string;
@@ -670,8 +670,8 @@ export interface GetLongEpisodeVideoPreviewResponse {
   confirmationId: string;
   model: VideoModel;
   ratio: RunwayVideoRatio;
-  /** Derived from the Episode's own LongProjectSettings.episodeDurationSeconds ÷ 6 (30 -> 5, 60 -> 10). */
-  durationSecondsPerScene: 5 | 10;
+  /** The Episode's own scene length (clipDurationSecondsPerScene): its duration ÷ its scene count, a whole number within CLIP_DURATION_LIMITS. */
+  durationSecondsPerScene: number;
   executionMode: "sequential";
   scenes: LongEpisodeVideoPreview[];
   estimatedCostUsd: number;
@@ -2058,7 +2058,7 @@ export interface CreatePhotoCardRequest {
   projectId: string;
   assetId: string;
   quote: string;
-  clipDurationSeconds: RunwayClipDurationSeconds;
+  clipDurationSeconds: PhotoCardDurationSeconds;
   aspectRatio: AspectRatio;
 }
 

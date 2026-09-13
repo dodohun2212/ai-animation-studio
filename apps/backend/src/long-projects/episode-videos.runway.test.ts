@@ -17,11 +17,11 @@ import { LongProjectsService } from "./long-projects.service.js";
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 
-async function setupWithConnectedRunway(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" | "16:9" | "1:1" = "9:16") {
+async function setupWithConnectedRunway(episodeDurationSeconds: 30 | 60 | 90 = 30, aspectRatio: "9:16" | "16:9" | "1:1" = "9:16") {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-videos-runway-"));
   const projectsRoot = path.join(root, "projects");
   const projects = new LongProjectsService(projectsRoot);
-  await projects.create({ projectId: "long", settings: { ...settings, clipDurationSeconds: episodeDurationSeconds === 60 ? 10 : 5, aspectRatio } });
+  await projects.create({ projectId: "long", settings: { ...settings, clipDurationSeconds: episodeDurationSeconds / settings.sceneCount, aspectRatio } });
   const outline = await projects.preview("long");
   await projects.approve("long", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
   const scripts = new EpisodeScriptsService(projectsRoot); await scripts.generate("long", 1, { userRequestId: "episode-videos.runway-script-1" }); await scripts.approve("long", 1, { approved: true });
@@ -267,6 +267,27 @@ describe("real Runway episode video generation", () => {
 
     const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
     expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ ratio: "1280:720" });
+  });
+
+  // B1-b: an Episode of 15-second scenes (6 × 15 = 90) is refused to gen4 (2-10 s) before any job is written, and sent to H3 Max (5-15 s) at 15.
+  it("refuses an Episode's scene length its model does not make before anything is sent, and sends it to one that does", async () => {
+    const deps = await setupWithConnectedRunway(90);
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const refusedPreview = await videos.preview("long", 1);
+    expect(refusedPreview).toMatchObject({ model: "gen4_turbo", durationSecondsPerScene: 15 });
+    await expect(videos.start("long", 1, { approved: true, confirmationId: refusedPreview.confirmationId, userRequestId: "request_15_gen4", prompts: refusedPreview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEO_DURATION_OUT_OF_RANGE", details: { model: "gen4_turbo", durationSeconds: 15, minDurationSeconds: 2, maxDurationSeconds: 10 } } });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await deps.providerSettings.saveVideoModel({ model: "h3_max_768p" });
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_15_h3", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
+    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ model: "h3_max", duration: 15 });
   });
 
   it("submits a 1:1 Episode square, and refuses it to a model that makes no square before anything is sent", async () => {

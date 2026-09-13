@@ -1,4 +1,4 @@
-import { ASPECT_RATIOS, isAspectRatio, type AspectRatio } from "@ai-animation-studio/shared";
+import { ASPECT_RATIOS, CLIP_DURATION_LIMITS, isAspectRatio, isClipDurationSeconds, type AspectRatio } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { withWarning } from "../projects/warnings.js";
 import { readLongProjectJson } from "./long-project-json.js";
@@ -7,7 +7,7 @@ import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, LONG_OUTLINE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchiveProjectRequest, type ArchiveProjectResponse, type ArchivedLongProjectSummary, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, LONG_OUTLINE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, MIN_SCENE_COUNT, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchiveProjectRequest, type ArchiveProjectResponse, type ArchivedLongProjectSummary, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "../projects/project-archive.js";
@@ -44,7 +44,7 @@ const object = (value: unknown): Record<string, unknown> => { if (!value || type
 const optionalText = (value: unknown): string => (value === undefined ? "" : text(value));
 const text = (value: unknown, required = false): string => { if (typeof value !== "string") throw longInvalidRequest(); const result = value.trim(); if (required && !result) throw longInvalidRequest(); return result; };
 const isValidSceneCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= MIN_SCENE_COUNT && value <= MAX_SCENE_COUNT;
-const isValidClipDuration = (value: unknown): value is number => typeof value === "number" && (RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value);
+const isValidClipDuration = isClipDurationSeconds;
 /**
  * A project stored before sceneCount/clipDurationSeconds existed has neither field — only the older
  * episode_duration_seconds (itself once a free-form number, later constrained to 30/60). Coerces to the nearest
@@ -75,7 +75,7 @@ function settings(value: unknown): LongProjectSettings {
   const episodeCount = data.episodeCount;
   if (!Number.isInteger(episodeCount) || (episodeCount as number) < 1 || (episodeCount as number) > MAX_EPISODES) throw longInvalidRequest();
   if (!isValidSceneCount(data.sceneCount)) throw longInvalidRequest(`settings.sceneCount must be an integer between ${MIN_SCENE_COUNT} and ${MAX_SCENE_COUNT}.`);
-  if (!isValidClipDuration(data.clipDurationSeconds)) throw longInvalidRequest(`settings.clipDurationSeconds must be one of: ${RUNWAY_CLIP_DURATIONS.join(", ")}.`);
+  if (!isValidClipDuration(data.clipDurationSeconds)) throw longInvalidRequest(`settings.clipDurationSeconds must be a whole number of seconds from ${CLIP_DURATION_LIMITS.min} to ${CLIP_DURATION_LIMITS.max}.`);
   if (!isAspectRatio(data.aspectRatio)) throw longInvalidRequest(`settings.aspectRatio must be one of: ${ASPECT_RATIOS.join(", ")}.`);
   if (typeof data.narrationEnabled !== "boolean") throw longInvalidRequest("settings.narrationEnabled must be a boolean.");
   if (typeof data.subtitlesEnabled !== "boolean") throw longInvalidRequest("settings.subtitlesEnabled must be a boolean.");
