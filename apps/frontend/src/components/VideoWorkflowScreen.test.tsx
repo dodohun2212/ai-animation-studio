@@ -19,6 +19,9 @@ function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): Gene
     completedSceneNumbers: [],
     failedSceneNumbers: [],
     sceneNumbers: [1, 2, 3, 4, 5, 6],
+    // Required, not optional — see the guard's own comment (Cowork Round 865/867). Defaulted here so
+    // existing tests that don't care about aspect ratio don't all need to state it.
+    aspectRatio: "9:16",
     ...overrides,
   };
 }
@@ -532,18 +535,37 @@ describe("VideoWorkflowScreen", () => {
     expect(screen.getByTestId("video-review-prompt-3").textContent).toContain("Scene 3 motion prompt");
   });
 
-  // Item 6 (CLI Round 862): the source still and the clip are drawn in the project's own shape, read from the
-  // review response's project — a square project's pictures in a square box, not cropped into a 9:16 slice.
+  // Item 6 (CLI Round 862, re-wired in Round 867): the source still and the clip are drawn in the project's own
+  // shape, now read from the progress response's own `aspectRatio` (required — see makeProgress's comment)
+  // rather than the review response's project — a square project's pictures in a square box, not cropped into
+  // a 9:16 slice.
   it("draws the source image and the clip in the project's own shape", async () => {
-    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6], aspectRatio: "1:1" });
     const square = reviewResponse(sixReviews());
-    square.project = { ...square.project, aspectRatio: "1:1" };
     renderScreen(vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, square)));
 
     await screen.findByTestId("video-review-1");
     expect(screen.getByTestId("video-review-source-image-1").className).toContain("aspect-square");
     expect(screen.getByTestId("video-review-clip-1").className).toContain("aspect-square");
     expect(screen.getByTestId("video-review-clip-1").className).not.toContain("aspect-[9/16]");
+  });
+
+  /**
+   * 🔴 Cowork Round 865, fixed in Round 867: `aspectRatio` used to live in state set only once `getVideoReview`
+   * answered, which only happens after the job reaches `succeeded` — so a landscape project's entire generation
+   * run showed its scene thumbnails cropped into a hardcoded portrait box, not just a brief loading flash. The
+   * fix reads the shape off the progress response itself (required field), which exists from the very first
+   * poll. This test renders a still-`running` job with no review response ever answering, and must go red if
+   * the progress grid falls back to the portrait class instead of reading `progress.aspectRatio`.
+   */
+  it("renders the running scene-progress grid in the project's own shape, before any review response exists", async () => {
+    const running = makeProgress({ status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, aspectRatio: "16:9" });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, running)));
+
+    const scene = await screen.findByTestId("scene-progress-1");
+    const image = scene.querySelector("img");
+    expect(image?.className).toContain("aspect-video");
+    expect(image?.className).not.toContain("aspect-[9/16]");
   });
 
   it("omits the source image for a scene that has none rather than rendering a broken one", async () => {

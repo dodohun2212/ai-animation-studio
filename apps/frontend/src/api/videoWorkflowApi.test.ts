@@ -39,6 +39,9 @@ function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): Gene
     completedSceneNumbers: [1, 2],
     failedSceneNumbers: [],
     sceneNumbers: [1, 2, 3, 4, 5, 6],
+    // Required, not optional — see the guard's own comment (Cowork Round 865/867). Defaulted here so
+    // existing tests that don't care about aspect ratio don't all need to state it.
+    aspectRatio: "9:16",
     ...overrides,
   };
 }
@@ -211,6 +214,20 @@ describe("videoWorkflowApi", () => {
     const { sceneNumbers: _omit, ...withoutSceneNumbers } = makeProgress();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, withoutSceneNumbers)));
 
+    await expect(getVideoProgress("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  /**
+   * A missing or invalid aspect ratio here is exactly the shape that used to fall back to a hardcoded portrait
+   * box for a landscape project's whole generation run (Cowork Round 865, fixed in Round 867) — this guard is
+   * what makes that fallback unreachable now, so it must go red the moment the field regresses to optional.
+   */
+  it("rejects a progress response missing or with an invalid aspect ratio as malformed", async () => {
+    const { aspectRatio: _omit, ...withoutAspectRatio } = makeProgress();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, withoutAspectRatio)));
+    await expect(getVideoProgress("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...makeProgress(), aspectRatio: "3:2" })));
     await expect(getVideoProgress("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 

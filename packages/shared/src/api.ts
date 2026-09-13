@@ -2183,6 +2183,16 @@ export interface GenerationProgressResponse {
   /** Every scene number belonging to this job, 1..N in order — lets a caller render the full scene set without assuming a fixed count. */
   sceneNumbers: SceneNumber[];
   /**
+   * The project's shape — the shape of every picture this job animates, since a project's shape cannot change once
+   * it has pictures (projects.service `aspectRatioLocked`).
+   *
+   * **Always present**, because this is the response a screen shows for the whole generation. The screen used to
+   * learn the shape only from the video review, which is read once the job has succeeded; until then it drew every
+   * picture in a portrait box, and a 16:9 project spent its whole generation looking like a vertical reel being
+   * made — the person watching asked why their landscape project was generating portrait video (Cowork Round 865).
+   */
+  aspectRatio: AspectRatio;
+  /**
    * A short, stable failure code per currently-failed scene (present only for scenes in `failedSceneNumbers`).
    * For a Runway execution, this is one of RunwayErrorCategory ("authentication" | "permission" | "rate_limit" |
    * "invalid_request" | "server" | "network" | "unknown") when the failure happened submitting or checking the

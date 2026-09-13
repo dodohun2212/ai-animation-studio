@@ -5,6 +5,7 @@ import { VIDEO_JOB_STATUSES,
   API_ROUTES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
+  isAspectRatio,
   type ApproveVideoReviewResponse,
   type GenerationProgressResponse,
   type GetVideoReviewResponse,
@@ -180,7 +181,11 @@ function isGenerationProgressResponse(value: unknown): value is GenerationProgre
     isSceneErrorMap(value.sceneErrors) &&
     // Same field, same reason as the Episode's guard: two of its three values are read out loud in front of a
     // paid button. `local-video-workflow.service.ts` fills this for both pipelines.
-    isSceneFailureMap(value.sceneFailures)
+    isSceneFailureMap(value.sceneFailures) &&
+    // Required, not optional — a project's shape cannot change once it has pictures, so this is always known.
+    // A missing/invalid value here used to fall back to a hardcoded portrait box for the whole run, which is
+    // what a landscape project's generation screen showed throughout (Cowork Round 865/867).
+    isAspectRatio(value.aspectRatio)
   );
 }
 

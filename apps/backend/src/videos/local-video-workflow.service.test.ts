@@ -49,6 +49,22 @@ describe("local fake video workflow", () => {
     expect(midway.completedSceneNumbers).toHaveLength(6);
   });
 
+  it("tells the screen the project's shape from the first poll, not only once the job has succeeded", async () => {
+    // The generating screen draws each picture in a box of this shape. It used to learn the shape only from the
+    // video review, read after success, so a 16:9 project showed portrait boxes for its whole generation (Cowork
+    // Round 865). Asserted before the job has run, on a project that is not the portrait default.
+    const { projects, accepted, workflow } = await setup();
+    expect((await workflow.getProgress("video_workflow", accepted.jobId)).aspectRatio).toBe("9:16");
+
+    const project = await projects.findById("video_workflow");
+    await projects.save({ ...project, lore_context: { ...project.lore_context, style_notes: { aspect: "16:9" } } });
+
+    const before = await workflow.getProgress("video_workflow", accepted.jobId);
+    expect(before.status).toBe("created");
+    expect(before.aspectRatio).toBe("16:9");
+    await expect(workflow.stop("video_workflow", accepted.jobId)).resolves.toMatchObject({ status: "interrupted", aspectRatio: "16:9" });
+  });
+
   it("writes six sequential local placeholders, persists restart-safe checkpoints, and never exposes paths", async () => {
     const { projectsRoot, projects, accepted, workflow } = await setup();
     await expect(workflow.run("video_workflow", accepted.jobId)).resolves.toMatchObject({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });

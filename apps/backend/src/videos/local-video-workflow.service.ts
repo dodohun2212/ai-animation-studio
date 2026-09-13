@@ -34,6 +34,7 @@ import { downloadRunwayOutput, getRunwayTask, RunwayAdapterError } from "./runwa
 import { ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
 import { LEGACY_VIDEO_JOB_ID } from "./legacy-job.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
+import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 import { recordedVideoModel } from "./runway-video-adapter.js";
 import { sceneFailureFor } from "./scene-failure.js";
 import { videoRetryNeedsChangedInput,
@@ -223,6 +224,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       paidProvider: records[0]?.execution_mode === "runway",
       jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers,
       sceneNumbers: records.map((record) => record.scene_number),
+      aspectRatio: shortProjectAspectRatio(project),
       ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}),
       ...(Object.keys(sceneFailures).length > 0 ? { sceneFailures } : {}),
       ...(retryEstimate ? { retryEstimate } : {}),
