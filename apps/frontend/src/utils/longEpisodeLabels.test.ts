@@ -6,6 +6,7 @@ import {
   LONG_EPISODE_STATUS_ORDER,
   isLongEpisodeStatusBefore,
   longEpisodeOutlineStatusLabel,
+  longEpisodeStatusesAtOrAfter,
   longEpisodeStatusLabel,
 } from "./longEpisodeLabels.js";
 
@@ -80,5 +81,47 @@ describe("Long Project outline status labels", () => {
     // The episode table answers for a name it does not have by echoing it back. That is the behaviour the
     // outline table must never inherit.
     expect(longEpisodeStatusLabel("in_progress")).toBe("in_progress");
+  });
+});
+
+/**
+ * The stage sets a long project's progress panel counts with ("how many Episodes have reached this stage").
+ *
+ * 🔴 The trap these pin is silent. `indexOf` answers an off-the-line marker with `-1`, and `slice(-1)` returns
+ * **only the last status** — so a mistyped or moved marker would leave a set of `{completed, interrupted}` and
+ * a tally reading 0 or 1, with nothing thrown and nothing red. The marker's type now makes that a compile
+ * error; these make the shape it would have produced visible as a failing test too.
+ */
+describe("longEpisodeStatusesAtOrAfter", () => {
+  it("contains the marker itself — the one thing a -1 slice would lose", () => {
+    // 이 셋이 화면이 실제로 쓰는 표식입니다. -1 이면 셋 다 자기 자신을 잃습니다.
+    for (const marker of ["outline_ready", "script_approved", "waiting_for_video_confirmation"] as const) {
+      expect(longEpisodeStatusesAtOrAfter(marker).has(marker), marker).toBe(true);
+    }
+  });
+
+  it("takes the line from the marker onward, and nothing before it", () => {
+    const set = longEpisodeStatusesAtOrAfter("script_approved");
+    expect(set.has("planned")).toBe(false);
+    expect(set.has("outline_ready")).toBe(false);
+    expect(set.has("script_review")).toBe(false);
+    expect(set.has("videos_ready")).toBe(true);
+    expect(set.has("completed")).toBe(true);
+  });
+
+  /** 멈춘 회차도 그 앞 단계는 끝냈습니다 — 진행률이 뒤로 가지 않도록. 실패는 아무 데도 넣지 않습니다. */
+  it("counts an interrupted run toward every stage, and a failed one toward none", () => {
+    for (const marker of ["outline_ready", "script_approved", "waiting_for_video_confirmation"] as const) {
+      expect(longEpisodeStatusesAtOrAfter(marker).has("interrupted"), marker).toBe(true);
+      expect(longEpisodeStatusesAtOrAfter(marker).has("failed"), marker).toBe(false);
+    }
+  });
+
+  /** 늦은 표식이 이른 표식보다 좁습니다 — 반대가 되면 「이미지 완료」가 「개요 완료」보다 많아집니다. */
+  it("gives a narrower set the later the marker", () => {
+    const outline = longEpisodeStatusesAtOrAfter("outline_ready");
+    const images = longEpisodeStatusesAtOrAfter("waiting_for_video_confirmation");
+    expect(images.size).toBeLessThan(outline.size);
+    for (const status of images) expect(outline.has(status), status).toBe(true);
   });
 });

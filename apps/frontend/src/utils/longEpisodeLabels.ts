@@ -86,14 +86,46 @@ export function longEpisodeOutlineStatusLabel(status: LongEpisodeOutlineStatus):
  * the shared array is maintained in workflow order for exactly this reason.
  */
 /** Not points on the line: a run stops at one of these from wherever it was, so neither is "before" anything. */
-const OFF_THE_LINE: readonly LongEpisodeStatus[] = ["interrupted", "failed"];
+const OFF_THE_LINE = ["interrupted", "failed"] as const;
+
+/**
+ * A status that is actually a point on the line — everything except the two a run stops at.
+ *
+ * 🔴 A **marker** has to be one of these, and the type is what says so, because getting it wrong is silent.
+ * `indexOf` answers an off-the-line marker with `-1`, and every reader here does arithmetic on that answer:
+ * `slice(-1)` quietly returns **only the last status**, and `at < -1` is quietly **always false**. Nothing
+ * throws, nothing goes red, and a stage tally reads 0 or a gate never opens. Narrowing the parameter turns
+ * that into a compile error at the call site instead — the same shape as the `never` case in this file's
+ * resume-target switch.
+ */
+export type LongEpisodeStatusOnLine = Exclude<LongEpisodeStatus, (typeof OFF_THE_LINE)[number]>;
 
 export const LONG_EPISODE_STATUS_ORDER: readonly LongEpisodeStatus[] =
-  LONG_EPISODE_STATUSES.filter((status) => !OFF_THE_LINE.includes(status));
+  LONG_EPISODE_STATUSES.filter((status) => !(OFF_THE_LINE as readonly LongEpisodeStatus[]).includes(status));
 
 /** True only when both statuses are on the line above and `status` comes first. Unknown never reads as before. */
-export function isLongEpisodeStatusBefore(status: LongEpisodeStatus | undefined, marker: LongEpisodeStatus): boolean {
+export function isLongEpisodeStatusBefore(status: LongEpisodeStatus | undefined, marker: LongEpisodeStatusOnLine): boolean {
   if (!status) return false;
   const at = LONG_EPISODE_STATUS_ORDER.indexOf(status);
   return at !== -1 && at < LONG_EPISODE_STATUS_ORDER.indexOf(marker);
+}
+
+/**
+ * Every status from `marker` onward, plus `interrupted` — the set a "how many Episodes have reached this
+ * stage" tally counts.
+ *
+ * Lives here beside `isLongEpisodeStatusBefore` rather than in the screen that draws the tally: both read the
+ * same line the same way, and the screen's private copy had no guard on the marker while this one's neighbour
+ * did. Two readers of one order line is how two answers about what comes after what start to differ.
+ *
+ * Cumulative on purpose: an Episode whose videos are done also finished its script, so it counts toward the
+ * earlier stages too. Counting only the current stage makes the numbers drop as work progresses, which reads
+ * as regression. `interrupted` is added rather than sliced in — a run that stopped still finished the stages
+ * before it, and it is off the line so there is no position to slice from. `failed` is in none.
+ */
+export function longEpisodeStatusesAtOrAfter(marker: LongEpisodeStatusOnLine): ReadonlySet<LongEpisodeStatus> {
+  return new Set<LongEpisodeStatus>([
+    ...LONG_EPISODE_STATUS_ORDER.slice(LONG_EPISODE_STATUS_ORDER.indexOf(marker)),
+    "interrupted",
+  ]);
 }
