@@ -1,5 +1,7 @@
 import {
   API_ROUTES,
+  ASPECT_RATIOS,
+  type AspectRatio,
   type GetVideoLibraryResponse,
   type GetVideoVersionsResponse,
   type RestoreVideoVersionResponse,
@@ -82,8 +84,8 @@ function isCount(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
-function isAspectRatio(value: unknown): value is "9:16" | "16:9" {
-  return value === "9:16" || value === "16:9";
+function isAspectRatio(value: unknown): value is AspectRatio {
+  return (ASPECT_RATIOS as readonly unknown[]).includes(value);
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { FrameFit, VideoClipFacts } from "@ai-animation-studio/shared";
+import { ASPECT_RATIOS, isAspectRatio, MERGE_FRAME_FOR_ASPECT, RUNWAY_RATIO_FOR_ASPECT, type FrameFit, type VideoClipFacts } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -88,8 +88,11 @@ export async function probeClipFacts(clip: string, runner: MediaCommandRunner = 
   }
 }
 
+/** The finished frame for a project's shape, named either way callers hold it ("16:9" or "1280:720"); anything else is portrait. */
 function outputSize(ratio: unknown): [number, number] {
-  return ratio === "16:9" || ratio === "1280:720" ? [1920, 1080] : [1080, 1920];
+  const aspect = isAspectRatio(ratio) ? ratio : ASPECT_RATIOS.find((candidate) => RUNWAY_RATIO_FOR_ASPECT[candidate] === ratio) ?? "9:16";
+  const { width, height } = MERGE_FRAME_FOR_ASPECT[aspect];
+  return [width, height];
 }
 
 export interface MergeSceneInput {

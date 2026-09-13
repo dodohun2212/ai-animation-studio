@@ -52,6 +52,11 @@ describe("videoLibraryApi", () => {
     }
   });
 
+  it("accepts a square project row, which the server now makes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject({ aspectRatio: "1:1" })] })));
+    await expect(getVideoLibrary()).resolves.toMatchObject({ projects: [{ aspectRatio: "1:1" }] });
+  });
+
   it("rejects an unknown aspect ratio rather than guessing a shape for the thumbnail", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject({ aspectRatio: "4:3" })] })));
     await expect(getVideoLibrary()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });

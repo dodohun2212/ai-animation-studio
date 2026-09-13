@@ -648,7 +648,7 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     const still = path.join(root, "card.png");
     await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=#204060:s=1024x1536", "-frames:v", "1", still]);
 
-    const sizeOf = async (ratio: "9:16" | "16:9"): Promise<string> => {
+    const sizeOf = async (ratio: string): Promise<string> => {
       const finalPath = path.join(root, ratio.replace(":", "x"), "instagram_reel.mp4");
       await fs.mkdir(path.dirname(finalPath), { recursive: true });
       await new FfmpegMergeEngine().merge([{ clip: still, stillDurationSeconds: 5 }], 5, finalPath, ratio);
@@ -658,6 +658,9 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
 
     expect(await sizeOf("16:9")).toBe("1920x1080");
     expect(await sizeOf("9:16")).toBe("1080x1920");
+    // Item 6: square either way a caller names it — the short side passes Runway's ratio, the long side the shape.
+    expect(await sizeOf("1:1")).toBe("1080x1080");
+    expect(await sizeOf("960:960")).toBe("1080x1080");
   }, 120000);
 
 

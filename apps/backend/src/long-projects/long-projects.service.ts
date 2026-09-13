@@ -1,3 +1,4 @@
+import { ASPECT_RATIOS, isAspectRatio, type AspectRatio } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { withWarning } from "../projects/warnings.js";
 import { readLongProjectJson } from "./long-project-json.js";
@@ -37,7 +38,7 @@ const MAX_EPISODES = Number(process.env.APP_MAX_LONG_PROJECT_EPISODES ?? "60");
 const BEFORE_IMAGE_GENERATION_STARTS: readonly string[] = ["planned", "outline_ready", "script_review", "script_approved", "waiting_for_asset_mapping_review", "asset_mapping_approved"];
 
 const settingKeys = ["title", "logline", "overview", "genre", "tone", "theme", "episodeCount", "sceneCount", "clipDurationSeconds", "aspectRatio", "audience", "notes", "startingState", "midpoint", "endingDirection", "storyFlowSummary", "narrationEnabled", "subtitlesEnabled", "visualStyle", "color", "lighting", "avoid"] as const;
-type Stored = { project_id: string; project_type: "long_story_project"; title: string; logline: string; overview: string; genre: string; tone: string; theme: string; episode_count: number; scene_count: number; clip_duration_seconds: number; aspect_ratio: "9:16" | "16:9"; audience: string; notes: string; starting_state: string; midpoint: string; ending_direction: string; story_flow_summary: string; narration_enabled: boolean; subtitles_enabled: boolean; visual_style?: string; color?: string; lighting?: string; avoid?: string; created_at: string; updated_at: string; outline_status: "planned" | "outline_ready"; outline_prompt_request?: { prompt_sha256: string; prompt: string; approved_at: string; modified: boolean }; warnings?: string[]; };
+type Stored = { project_id: string; project_type: "long_story_project"; title: string; logline: string; overview: string; genre: string; tone: string; theme: string; episode_count: number; scene_count: number; clip_duration_seconds: number; aspect_ratio: AspectRatio; audience: string; notes: string; starting_state: string; midpoint: string; ending_direction: string; story_flow_summary: string; narration_enabled: boolean; subtitles_enabled: boolean; visual_style?: string; color?: string; lighting?: string; avoid?: string; created_at: string; updated_at: string; outline_status: "planned" | "outline_ready"; outline_prompt_request?: { prompt_sha256: string; prompt: string; approved_at: string; modified: boolean }; warnings?: string[]; };
 const object = (value: unknown): Record<string, unknown> => { if (!value || typeof value !== "object" || Array.isArray(value)) throw longInvalidRequest(); return value as Record<string, unknown>; };
 /** A field that may simply not be in the request. Absent is "" — the same thing "" already means for these — while a non-string is still a bad request. */
 const optionalText = (value: unknown): string => (value === undefined ? "" : text(value));
@@ -75,7 +76,7 @@ function settings(value: unknown): LongProjectSettings {
   if (!Number.isInteger(episodeCount) || (episodeCount as number) < 1 || (episodeCount as number) > MAX_EPISODES) throw longInvalidRequest();
   if (!isValidSceneCount(data.sceneCount)) throw longInvalidRequest(`settings.sceneCount must be an integer between ${MIN_SCENE_COUNT} and ${MAX_SCENE_COUNT}.`);
   if (!isValidClipDuration(data.clipDurationSeconds)) throw longInvalidRequest(`settings.clipDurationSeconds must be one of: ${RUNWAY_CLIP_DURATIONS.join(", ")}.`);
-  if (data.aspectRatio !== "9:16" && data.aspectRatio !== "16:9") throw longInvalidRequest();
+  if (!isAspectRatio(data.aspectRatio)) throw longInvalidRequest(`settings.aspectRatio must be one of: ${ASPECT_RATIOS.join(", ")}.`);
   if (typeof data.narrationEnabled !== "boolean") throw longInvalidRequest("settings.narrationEnabled must be a boolean.");
   if (typeof data.subtitlesEnabled !== "boolean") throw longInvalidRequest("settings.subtitlesEnabled must be a boolean.");
   return {

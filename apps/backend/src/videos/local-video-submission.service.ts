@@ -1,4 +1,4 @@
-import { VIDEO_MODEL_OPTIONS, videoModelTakesDuration } from "@ai-animation-studio/shared";
+import { VIDEO_MODEL_OPTIONS, videoModelTakesDuration, videoModelTakesRatio } from "@ai-animation-studio/shared";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 
@@ -25,7 +25,7 @@ import { LocalVideoPreviewService, utf16Length } from "./video-preview.service.j
 import {
   invalidVideoSubmission,
   videoBudgetExceeded,
-  videoCallLimitExceeded, videoClipDurationOutOfRange,
+  videoCallLimitExceeded, videoAspectRatioUnsupported, videoClipDurationOutOfRange,
   videoConfirmationStale,
   videoRequestIdConflict,
   videoSubmissionNotAllowed,
@@ -199,6 +199,7 @@ export class LocalVideoSubmissionService {
       if (option && !videoModelTakesDuration(option, item.durationSeconds)) {
         throw videoClipDurationOutOfRange({ model: option.id, durationSeconds: item.durationSeconds, minDurationSeconds: option.minDurationSeconds, maxDurationSeconds: option.maxDurationSeconds });
       }
+      if (option && !videoModelTakesRatio(option, item.ratio)) throw videoAspectRatioUnsupported({ model: option.id, ratio: item.ratio });
     }
     // Summed off the preview rather than recomputed: this is the number the person was shown and pressed the
     // button under, so taking it from anywhere else is how a confirmation and a charge come to disagree. It is

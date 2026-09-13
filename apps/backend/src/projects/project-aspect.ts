@@ -1,4 +1,4 @@
-import type { RunwayVideoRatio } from "@ai-animation-studio/shared";
+import { IMAGE_SIZE_FOR_ASPECT, isAspectRatio, RUNWAY_RATIO_FOR_ASPECT, type AspectRatio, type ImageSize, type RunwayVideoRatio } from "@ai-animation-studio/shared";
 import type { StoredProject } from "./project-storage.schema.js";
 
 /**
@@ -16,17 +16,17 @@ import type { StoredProject } from "./project-storage.schema.js";
  * function rather than five: not that copies drift, but that a copy has no place to be corrected.
  *
  * Whitespace is stripped because the value reaches storage as free-ish text ("16 : 9" has been seen), and
- * anything that is not recognisably 16:9 is treated as portrait — the same fallback every copy had, kept
- * because a project with a missing or unreadable value is far more likely to be a vertical short than a
- * mistyped landscape one.
+ * anything that is not recognisably one of ASPECT_RATIOS is treated as portrait — the same fallback every copy
+ * had, kept because a project with a missing or unreadable value is far more likely to be a vertical short than
+ * a mistyped landscape or square one.
  */
-export function shortProjectAspectRatio(project: StoredProject): "9:16" | "16:9" {
+export function shortProjectAspectRatio(project: StoredProject): AspectRatio {
   const styleNotes = project.lore_context.style_notes;
   const raw = typeof styleNotes === "object" && styleNotes !== null
     ? (styleNotes as Record<string, unknown>).aspect
     : undefined;
   const aspect = typeof raw === "string" ? raw.replaceAll(" ", "") : "";
-  return aspect === "16:9" ? "16:9" : "9:16";
+  return isAspectRatio(aspect) ? aspect : "9:16";
 }
 
 /**
@@ -37,11 +37,11 @@ export function shortProjectAspectRatio(project: StoredProject): "9:16" | "16:9"
  * — a mention in a comment counts. Converting a shape into a provider's spelling is not talking to that
  * provider, so the constant belongs here with the setting it derives from rather than in the adapter.
  */
-export function imageSizeForAspect(project: StoredProject): "1024x1536" | "1536x1024" {
-  return shortProjectAspectRatio(project) === "16:9" ? "1536x1024" : "1024x1536";
+export function imageSizeForAspect(project: StoredProject): ImageSize {
+  return IMAGE_SIZE_FOR_ASPECT[shortProjectAspectRatio(project)];
 }
 
 /** The same orientation in the video provider's ratio vocabulary. */
 export function runwayRatioForAspect(project: StoredProject): RunwayVideoRatio {
-  return shortProjectAspectRatio(project) === "16:9" ? "1280:720" : "720:1280";
+  return RUNWAY_RATIO_FOR_ASPECT[shortProjectAspectRatio(project)];
 }

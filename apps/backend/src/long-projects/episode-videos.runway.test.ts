@@ -17,7 +17,7 @@ import { LongProjectsService } from "./long-projects.service.js";
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
 
-async function setupWithConnectedRunway(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" | "16:9" = "9:16") {
+async function setupWithConnectedRunway(episodeDurationSeconds: 30 | 60 = 30, aspectRatio: "9:16" | "16:9" | "1:1" = "9:16") {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-videos-runway-"));
   const projectsRoot = path.join(root, "projects");
   const projects = new LongProjectsService(projectsRoot);
@@ -267,6 +267,27 @@ describe("real Runway episode video generation", () => {
 
     const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
     expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ ratio: "1280:720" });
+  });
+
+  it("submits a 1:1 Episode square, and refuses it to a model that makes no square before anything is sent", async () => {
+    const deps = await setupWithConnectedRunway(30, "1:1");
+    const videos = newVideos(deps);
+    const fetchMock = runwayFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deps.providerSettings.saveVideoModel({ model: "gemini_omni_flash" });
+    const refusedPreview = await videos.preview("long", 1);
+    expect(refusedPreview.ratio).toBe("960:960");
+    await expect(videos.start("long", 1, { approved: true, confirmationId: refusedPreview.confirmationId, userRequestId: "request_square_gemini", prompts: refusedPreview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) }))
+      .rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEO_ASPECT_UNSUPPORTED", details: { model: "gemini_omni_flash", ratio: "960:960" } } });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await deps.providerSettings.saveVideoModel({ model: "gen4_turbo" });
+    const preview = await videos.preview("long", 1);
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_square", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    await videos.run("long", 1, started.jobId);
+    const submitCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/v1/image_to_video"))!;
+    expect(JSON.parse(String((submitCall[1] as RequestInit).body))).toMatchObject({ model: "gen4_turbo", ratio: "960:960" });
   });
 
   it("halts at a scene Runway explicitly reports FAILED, without submitting later scenes, and lets the user regenerate it", async () => {

@@ -164,16 +164,16 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}`,
    */
   it("sends each Seedance entry its own model and its resolution's frame string, the picture as a keyframe, and no audio", async () => {
     const cases = [
-      ["seedance2_720p", "seedance2", "720:1280", "1280:720"],
-      ["seedance2_1080p", "seedance2", "1080:1920", "1920:1080"],
-      ["seedance2_fast", "seedance2_fast", "720:1280", "1280:720"],
-      ["seedance2_mini", "seedance2_mini", "720:1280", "1280:720"],
-      ["seedance2_5_480p", "seedance2_5", "480:854", "854:480"],
-      ["seedance2_5_720p", "seedance2_5", "720:1280", "1280:720"],
-      ["seedance2_5_1080p", "seedance2_5", "1080:1920", "1920:1080"],
+      ["seedance2_720p", "seedance2", "720:1280", "1280:720", "960:960"],
+      ["seedance2_1080p", "seedance2", "1080:1920", "1920:1080", "1440:1440"],
+      ["seedance2_fast", "seedance2_fast", "720:1280", "1280:720", "960:960"],
+      ["seedance2_mini", "seedance2_mini", "720:1280", "1280:720", "960:960"],
+      ["seedance2_5_480p", "seedance2_5", "480:854", "854:480", "640:640"],
+      ["seedance2_5_720p", "seedance2_5", "720:1280", "1280:720", "960:960"],
+      ["seedance2_5_1080p", "seedance2_5", "1080:1920", "1920:1080", "1440:1440"],
     ] as const;
-    for (const [model, wire, vertical, horizontal] of cases) {
-      for (const [frame, expected] of [["720:1280", vertical], ["1280:720", horizontal]] as const) {
+    for (const [model, wire, vertical, horizontal, square] of cases) {
+      for (const [frame, expected] of [["720:1280", vertical], ["1280:720", horizontal], ["960:960", square]] as const) {
         const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
         await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "a hero walks forward", { model, ratio: frame, durationSeconds: 5, fetchImpl: fetchMock, sleep: noSleep });
         const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
@@ -243,6 +243,22 @@ ${SEEDANCE_TEXT_CONSTRAINT}`,
     const accepted = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
     await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "h3_max_768p", durationSeconds: 15, fetchImpl: accepted, sleep: noSleep });
     expect(JSON.parse(String((accepted.mock.calls[0] as [string, RequestInit])[1].body))).toMatchObject({ duration: 15 });
+  });
+
+  it("sends the square to the models that make one, and refuses it to Gemini Omni Flash without calling fetch", async () => {
+    for (const [model, wire] of [["gen4_turbo", "gen4_turbo"], ["gen4_5", "gen4.5"]] as const) {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+      await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model, ratio: "960:960", durationSeconds: 5, fetchImpl: fetchMock, sleep: noSleep });
+      expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body)), model).toMatchObject({ model: wire, ratio: "960:960" });
+    }
+    const refused = vi.fn();
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gemini_omni_flash", ratio: "960:960", durationSeconds: 5, fetchImpl: refused, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(refused).not.toHaveBeenCalled();
+    // A model told no ratio follows the picture: the square goes, and no ratio is named.
+    const follows = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "happyhorse_720p", ratio: "960:960", durationSeconds: 5, fetchImpl: follows, sleep: noSleep });
+    expect(JSON.parse(String((follows.mock.calls[0] as [string, RequestInit])[1].body))).not.toHaveProperty("ratio");
   });
 
   it("refuses a clip shorter than the model makes, by that model's own minimum", async () => {

@@ -151,6 +151,7 @@ const SAFE_ERRORS: Record<string, string> = {
   LONG_EPISODE_IMAGES_PROVIDER_ERROR: "이미지 생성 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.",
   LONG_EPISODE_VIDEOS_NOT_ALLOWED: "지금 이 에피소드 단계에서는 영상 작업을 할 수 없습니다. 기다린다고 풀리지 않으니 에피소드 상태를 확인해 주세요.",
   LONG_EPISODE_VIDEOS_INVALID: "에피소드 영상이나 검토 데이터가 올바르지 않습니다.",
+  LONG_EPISODE_VIDEO_ASPECT_UNSUPPORTED: "지금 고른 영상 모델은 이 프로젝트의 화면 비율로 영상을 만들지 않습니다. 설정에서 모델을 바꿔 주세요.",
   // Not a failure to fix — the work is already done. The gate that produces this used to answer with the
   // "approve every scene first" sentence, which sent people to re-approve scenes that were already approved.
   // Whether a re-merge should be allowed at all is a separate, product question; until it is, saying the true

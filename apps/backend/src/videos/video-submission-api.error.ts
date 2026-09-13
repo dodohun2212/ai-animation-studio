@@ -8,7 +8,8 @@ type VideoSubmissionErrorCode =
   | "VIDEO_REQUEST_ID_CONFLICT"
   | "VIDEO_BUDGET_EXCEEDED"
   | "VIDEO_CALL_LIMIT_EXCEEDED"
-  | "VIDEO_CLIP_DURATION_OUT_OF_RANGE";
+  | "VIDEO_CLIP_DURATION_OUT_OF_RANGE"
+  | "VIDEO_ASPECT_RATIO_UNSUPPORTED";
 
 class VideoSubmissionApiException extends HttpException {
   constructor(code: VideoSubmissionErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -36,3 +37,7 @@ export const videoCallLimitExceeded = () =>
  */
 export const videoClipDurationOutOfRange = (details: { model: string; durationSeconds: number; minDurationSeconds: number; maxDurationSeconds: number }) =>
   new VideoSubmissionApiException("VIDEO_CLIP_DURATION_OUT_OF_RANGE", `The ${details.model} model makes clips of ${details.minDurationSeconds}-${details.maxDurationSeconds} seconds, not ${details.durationSeconds}.`, HttpStatus.CONFLICT, details);
+
+/** The project's frame is one the job's model is told but does not make (a square to Gemini Omni Flash) — same moment and reason as the length above. */
+export const videoAspectRatioUnsupported = (details: { model: string; ratio: string }) =>
+  new VideoSubmissionApiException("VIDEO_ASPECT_RATIO_UNSUPPORTED", `The ${details.model} model does not make ${details.ratio} clips.`, HttpStatus.CONFLICT, details);

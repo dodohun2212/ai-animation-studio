@@ -386,6 +386,9 @@ describe("PhotoCardService", () => {
 
     await service.create({ ...body(asset.asset_id), projectId: "card_two", aspectRatio: "9:16" });
     expect(shortProjectAspectRatio(await projects.findById("card_two"))).toBe("9:16");
+
+    await service.create({ ...body(asset.asset_id), projectId: "card_three", aspectRatio: "1:1" });
+    expect(shortProjectAspectRatio(await projects.findById("card_three"))).toBe("1:1");
   });
 
 });

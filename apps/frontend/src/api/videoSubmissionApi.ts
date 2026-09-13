@@ -40,6 +40,7 @@ const SAFE_ERRORS: Record<string, string> = {
   VIDEO_CALL_LIMIT_EXCEEDED: "허용된 Provider 호출 횟수를 초과했습니다.",
   // The scene length is outside the chosen model's range (VideoModelOption min/max) — refused before any job.
   VIDEO_CLIP_DURATION_OUT_OF_RANGE: "장면 길이가 지금 고른 영상 모델이 만들 수 있는 범위를 벗어났습니다. 설정에서 길이나 모델을 바꿔 주세요.",
+  VIDEO_ASPECT_RATIO_UNSUPPORTED: "지금 고른 영상 모델은 이 프로젝트의 화면 비율로 영상을 만들지 않습니다. 설정에서 모델을 바꿔 주세요.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

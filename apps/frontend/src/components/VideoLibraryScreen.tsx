@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { sceneNumbersFor, type SceneNumber, type VideoLibraryEpisodeSummary, type VideoLibraryLongProjectSummary, type VideoLibraryProjectSummary, type VideoVersionSummary } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, type AspectRatio, type SceneNumber, type VideoLibraryEpisodeSummary, type VideoLibraryLongProjectSummary, type VideoLibraryProjectSummary, type VideoVersionSummary } from "@ai-animation-studio/shared";
 
 import {
   getVideoLibrary,
@@ -105,7 +105,7 @@ interface VersionSlotsProps {
    * 두 줄이 서로를 부정하는, 바로 위 `photoCard` 줄이 고치려던 그 짝입니다.
    */
   photoCard?: boolean;
-  aspectRatio: "9:16" | "16:9";
+  aspectRatio: AspectRatio;
   /** The credit this archive still owes, if any — carried so the restore warning can print the exact wording. */
   attributionRequired?: boolean;
   attributionText?: string;

@@ -1,3 +1,4 @@
+import { isAspectRatio, type AspectRatio } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
@@ -243,9 +244,9 @@ export class EpisodeVideoMergeService {
     }));
   }
 
-  private async ratio(id: string, number: number): Promise<"9:16" | "16:9"> {
+  private async ratio(id: string, number: number): Promise<AspectRatio> {
     const raw = await readLongProjectJson(this.files(id, number).longProject);
-    if (!object(raw) || (raw.aspect_ratio !== "9:16" && raw.aspect_ratio !== "16:9")) throw longInvalidData();
+    if (!object(raw) || !isAspectRatio(raw.aspect_ratio)) throw longInvalidData();
     return raw.aspect_ratio;
   }
 

@@ -1,3 +1,4 @@
+import { IMAGE_SIZE_FOR_ASPECT, isAspectRatio, type ImageSize } from "@ai-animation-studio/shared";
 import { PLACEHOLDER_PNG, isPlaceholderImage } from "../images/placeholder-image.js";
 import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
@@ -101,10 +102,10 @@ export class EpisodeImagesService {
    * from style_profile.aspect on the project itself; a Long Episode has no such per-project style_profile, so
    * this reads the same aspect_ratio field episode-videos.service.ts already trusts for the same Episode.
    */
-  private async imageSize(projectId: string, number: number): Promise<"1024x1536" | "1536x1024"> {
+  private async imageSize(projectId: string, number: number): Promise<ImageSize> {
     const raw = await readLongProjectJson(this.files(projectId, number).longProject);
-    if (!object(raw) || (raw.aspect_ratio !== "9:16" && raw.aspect_ratio !== "16:9")) throw longInvalidData();
-    return raw.aspect_ratio === "16:9" ? "1536x1024" : "1024x1536";
+    if (!object(raw) || !isAspectRatio(raw.aspect_ratio)) throw longInvalidData();
+    return IMAGE_SIZE_FOR_ASPECT[raw.aspect_ratio];
   }
   private async episode(projectId: string, number: number): Promise<StoredEpisode> {
     const files = this.files(projectId, number);

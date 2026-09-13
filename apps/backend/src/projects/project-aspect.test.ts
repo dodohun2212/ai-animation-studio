@@ -62,16 +62,25 @@ describe("provider vocabularies", () => {
     const portrait = projectWithAspect("9:16");
     expect(imageSizeForAspect(portrait)).toBe("1024x1536");
     expect(runwayRatioForAspect(portrait)).toBe("720:1280");
+
+    // Item 6: a square project is square to both, not the portrait fallback every copy used to land on.
+    const square = projectWithAspect("1:1");
+    expect(shortProjectAspectRatio(square)).toBe("1:1");
+    expect(imageSizeForAspect(square)).toBe("1024x1024");
+    expect(runwayRatioForAspect(square)).toBe("960:960");
   });
 
   it("never disagrees with the ratio it derives from", () => {
     // The image is generated first and the video is billed against it. A pair that disagreed would produce a
     // paid-for image in one shape and a paid-for video in another, which is how this surfaced originally.
-    for (const aspect of ["16:9", "9:16", "nonsense", undefined]) {
+    const expected = { "9:16": ["1024x1536", "720:1280"], "16:9": ["1536x1024", "1280:720"], "1:1": ["1024x1024", "960:960"] } as const;
+    for (const aspect of ["16:9", "9:16", "1:1", "1 : 1", "4:5", "nonsense", undefined]) {
       const project = projectWithAspect(aspect);
-      const landscape = shortProjectAspectRatio(project) === "16:9";
-      expect(imageSizeForAspect(project)).toBe(landscape ? "1536x1024" : "1024x1536");
-      expect(runwayRatioForAspect(project)).toBe(landscape ? "1280:720" : "720:1280");
+      const [size, ratio] = expected[shortProjectAspectRatio(project)];
+      expect(imageSizeForAspect(project), String(aspect)).toBe(size);
+      expect(runwayRatioForAspect(project), String(aspect)).toBe(ratio);
     }
+    expect(shortProjectAspectRatio(projectWithAspect("1 : 1"))).toBe("1:1");
+    expect(shortProjectAspectRatio(projectWithAspect("4:5"))).toBe("9:16");
   });
 });

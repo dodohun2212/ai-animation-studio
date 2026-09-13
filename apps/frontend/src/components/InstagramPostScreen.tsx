@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FINAL_VIDEO_RELATIVE_PATH, instagramHashtagCount, INSTAGRAM_CAPTION_MAX, INSTAGRAM_HASHTAG_MAX } from "@ai-animation-studio/shared";
-import type { InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
+import type { AspectRatio, InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { forgetInstagramPost, forgetLongEpisodeInstagramPost, InstagramPublishApiError, publishLongEpisodeToInstagram, publishToInstagram, toInstagramPublishDisplayError, type UnknownAttemptDetails } from "../api/instagramPublishApi.js";
@@ -55,7 +55,7 @@ type PickedState =
       projectId: string;
       episodeNumber: number;
       episode: LongEpisodeDetail;
-      aspectRatio: "9:16" | "16:9";
+      aspectRatio: AspectRatio;
       plannedSeconds: number | null;
     };
 

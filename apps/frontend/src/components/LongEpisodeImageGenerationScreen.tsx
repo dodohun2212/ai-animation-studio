@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageProgress, LongEpisodeImageReview, LongEpisodeStoryBibleLinkDrift, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
+import type { AspectRatio, BudgetPreview, LongEpisodeContinuityReference, LongEpisodeDetail, LongEpisodeImageGenerationPreview, LongEpisodeImageProgress, LongEpisodeImageReview, LongEpisodeStoryBibleLinkDrift, SceneNumber, StartLongEpisodeImageGenerationResponse } from "@ai-animation-studio/shared";
 import { IMAGE_ESTIMATED_COST_USD } from "@ai-animation-studio/shared";
 
 import {
@@ -85,9 +85,9 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
    * a settings request that does not answer must not cost anyone the picture itself, so the box falls back to
    * the app-wide default shape and the image still renders.
    */
-  const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   /** Set once the Episode answers, so the project-settings read below cannot overwrite the more specific value whichever lands first. */
-  const episodeAspect = useRef<"9:16" | "16:9" | null>(null);
+  const episodeAspect = useRef<AspectRatio | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<DisplayError | null>(null);
   const [confirmingGeneration, setConfirmingGeneration] = useState(false);

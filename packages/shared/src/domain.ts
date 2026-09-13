@@ -90,8 +90,28 @@ export function sceneNumbersFor(sceneCount: number): SceneNumber[] {
  * client response guard. Same reason as AUDIO_MODES below: a union the contract states inline is a set neither
  * copy-guard can watch, because there is no array to compare a literal against.
  */
-export const ASPECT_RATIOS = ["9:16", "16:9"] as const;
+export const ASPECT_RATIOS = ["9:16", "16:9", "1:1"] as const;
 export type AspectRatio = (typeof ASPECT_RATIOS)[number];
+export const isAspectRatio = (value: unknown): value is AspectRatio => (ASPECT_RATIOS as readonly unknown[]).includes(value);
+
+/*
+ * One shape in each vocabulary it has to be spoken in (item 6). Records keyed by AspectRatio rather than ternaries
+ * at each use: the ternaries were `=== "16:9" ? landscape : portrait` in eight files, so a third shape silently
+ * became portrait everywhere nobody remembered. A new entry in ASPECT_RATIOS is now a build error at every table
+ * that has not been told what it looks like.
+ *
+ * - The image size is the image model's spelling (2:3, 3:2, 1:1 — the three it makes).
+ * - The video ratio is Runway's spelling for the gen4 models; models that name a resolution inside the ratio map
+ *   it again in the adapter, and models told no ratio follow the picture.
+ * - The merge frame is what the finished video is rendered at; clips that differ are padded or filled into it.
+ */
+export const IMAGE_SIZE_FOR_ASPECT = { "9:16": "1024x1536", "16:9": "1536x1024", "1:1": "1024x1024" } as const satisfies Record<AspectRatio, string>;
+export type ImageSize = (typeof IMAGE_SIZE_FOR_ASPECT)[AspectRatio];
+export const MERGE_FRAME_FOR_ASPECT = {
+  "9:16": { width: 1080, height: 1920 },
+  "16:9": { width: 1920, height: 1080 },
+  "1:1": { width: 1080, height: 1080 },
+} as const satisfies Record<AspectRatio, { width: number; height: number }>;
 
 /**
  * A video generation job's status, as both screens poll it.
@@ -258,12 +278,13 @@ export type VideoFrameShape = (typeof VIDEO_FRAME_SHAPES)[number];
  *   happyhorse_1_0 takes 3–15 s, a first frame only, and a `resolution` of 720p or 1080p, no ratio — Alibaba's own
  *   API reference: "output aspect ratio matches the first frame".
  *   The Seedance models take 4–15 s (2.5: 4–30 s), first and last frame as keyframes, and a `ratio` whose string
- *   carries the resolution (720:1280, 1080:1920, 480:854). Their `ratios` below are this app's two frames in
- *   Runway's names; the adapter picks the string for the entry's resolution. Mini and 2.5 have a minimum charge
+ *   carries the resolution (720:1280, 1080:1920, 480:854). Their `ratios` below are this app's three frames in
+ *   Runway's names (their square is 960:960, 1440:1440 or 640:640 by resolution); the adapter picks the string for the entry's resolution. Mini and 2.5 have a minimum charge
  *   per generation (64 and 80 credits, `minimumChargeUsd`) that 5 s already clears; the quote carries it below that.
  *   Seedance 2.0 at 4K (150 credits/s) is left out: the merge renders 1080×1920, so it would buy pixels that are
  *   scaled away.
- *   gemini_omni_flash takes 3–10 s, a first frame only and a `ratio` of 720:1280 or 1280:720; grok_imagine_1_5
+ *   gemini_omni_flash takes 3–10 s, a first frame only and a `ratio` of 720:1280 or 1280:720 — no square, so a
+ *   1:1 project cannot use it (`videoModelTakesAspect`); grok_imagine_1_5
  *   takes 1–15 s, a first frame and a `resolution` of 480p/720p/1080p, and "output aspect ratio follows the input
  *   image" (Runway's OpenAPI; xAI's own docs say the same). Both bill 1 credit for the first-frame image on top
  *   of the seconds ("plus 1 credit for the first-frame image" / "plus 1 credit per image ... including an
@@ -273,13 +294,13 @@ export type VideoFrameShape = (typeof VIDEO_FRAME_SHAPES)[number];
  * shape. WAN's and HappyHorse's follow the first frame by their own documentation. H3 Max 768p follows it by
  * measurement: 캡틴D's 꽃말_버즘나무 reel (2026-09-13, CLI Round 804) sent four 1024×1536 first frames and got four
  * 768×1152 clips back, and the merged reel carried the bars. H3 Max 480p stays `unconfirmed` — the same model, but no
- * 480p clip has been measured, and a resolution parameter is exactly where an output shape could differ. Our pictures are 2:3 (or 3:2),
- * and the merge fits every clip into the project's 9:16 (or 16:9) frame by padding
+ * 480p clip has been measured, and a resolution parameter is exactly where an output shape could differ. Our pictures are 2:3, 3:2 or 1:1,
+ * and the merge fits every clip into the project's 9:16, 16:9 or 1:1 frame by padding
  * (videos/ffmpeg-merge.service.ts), so a clip that keeps the picture's shape arrives with bars, not broken.
  */
 export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
-  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], minDurationSeconds: 2, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
-  { id: "gen4_5", label: "Runway Gen-4.5", pricePerSecondUsd: 0.12, ratios: ["720:1280", "1280:720"], minDurationSeconds: 2, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
+  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 2, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
+  { id: "gen4_5", label: "Runway Gen-4.5", pricePerSecondUsd: 0.12, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 2, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
   { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], minDurationSeconds: 5, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "unconfirmed" },
   { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], minDurationSeconds: 5, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "follows_first_frame" },
   { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], minDurationSeconds: 2, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
@@ -287,17 +308,17 @@ export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
   { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], minDurationSeconds: 2, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
   { id: "happyhorse_720p", label: "HappyHorse 1.0 (720p)", pricePerSecondUsd: 0.15, ratios: [], minDurationSeconds: 3, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
   { id: "happyhorse_1080p", label: "HappyHorse 1.0 (1080p)", pricePerSecondUsd: 0.3, ratios: [], minDurationSeconds: 3, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
-  { id: "seedance2_720p", label: "Seedance 2.0 (720p)", pricePerSecondUsd: 0.36, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
-  { id: "seedance2_1080p", label: "Seedance 2.0 (1080p)", pricePerSecondUsd: 0.4, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
-  { id: "seedance2_fast", label: "Seedance 2.0 Fast (720p)", pricePerSecondUsd: 0.29, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
-  { id: "seedance2_mini", label: "Seedance 2.0 Mini (720p)", pricePerSecondUsd: 0.16, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.64 },
-  { id: "seedance2_5_480p", label: "Seedance 2.5 (480p)", pricePerSecondUsd: 0.2, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
-  { id: "seedance2_5_720p", label: "Seedance 2.5 (720p)", pricePerSecondUsd: 0.3, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "seedance2_720p", label: "Seedance 2.0 (720p)", pricePerSecondUsd: 0.36, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_1080p", label: "Seedance 2.0 (1080p)", pricePerSecondUsd: 0.4, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_fast", label: "Seedance 2.0 Fast (720p)", pricePerSecondUsd: 0.29, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_mini", label: "Seedance 2.0 Mini (720p)", pricePerSecondUsd: 0.16, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.64 },
+  { id: "seedance2_5_480p", label: "Seedance 2.5 (480p)", pricePerSecondUsd: 0.2, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "seedance2_5_720p", label: "Seedance 2.5 (720p)", pricePerSecondUsd: 0.3, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
   { id: "gemini_omni_flash", label: "Gemini Omni Flash", pricePerSecondUsd: 0.1, perGenerationUsd: 0.01, ratios: ["720:1280", "1280:720"], minDurationSeconds: 3, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
   { id: "grok_imagine_480p", label: "Grok Imagine 1.5 (480p)", pricePerSecondUsd: 0.1, perGenerationUsd: 0.01, ratios: [], minDurationSeconds: 1, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
   { id: "grok_imagine_720p", label: "Grok Imagine 1.5 (720p)", pricePerSecondUsd: 0.16, perGenerationUsd: 0.01, ratios: [], minDurationSeconds: 1, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
   { id: "grok_imagine_1080p", label: "Grok Imagine 1.5 (1080p)", pricePerSecondUsd: 0.29, perGenerationUsd: 0.01, ratios: [], minDurationSeconds: 1, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
-  { id: "seedance2_5_1080p", label: "Seedance 2.5 (1080p)", pricePerSecondUsd: 0.68, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "seedance2_5_1080p", label: "Seedance 2.5 (1080p)", pricePerSecondUsd: 0.68, ratios: ["720:1280", "1280:720", "960:960"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
 ];
 
 /** The one used when nobody has chosen — today's behaviour, unchanged. */
@@ -327,8 +348,20 @@ export function videoModelOption(id: string): VideoModelOption {
  * strings, and Runway's own SDK types show it (hailuo3 speaks '9:16'; h3_max takes no ratio at all, only a
  * resolution). When a second model arrives, its shapes come from its option, not from here.
  */
-export const RUNWAY_VIDEO_RATIOS = ["720:1280", "1280:720"] as const;
+export const RUNWAY_VIDEO_RATIOS = ["720:1280", "1280:720", "960:960"] as const;
 export type RunwayVideoRatio = (typeof RUNWAY_VIDEO_RATIOS)[number];
+export const RUNWAY_RATIO_FOR_ASPECT = { "9:16": "720:1280", "16:9": "1280:720", "1:1": "960:960" } as const satisfies Record<AspectRatio, RunwayVideoRatio>;
+
+/**
+ * Whether a model makes this frame. A model that is told a ratio (`frameShape: "requested"`) makes only the ones
+ * in its `ratios` — Gemini Omni Flash takes 720:1280 and 1280:720 and nothing square. A model told none makes
+ * whatever shape the picture is, so any of this app's pictures will do (an `unconfirmed` one is sent the same
+ * way today, and the screen already says its shape is unmeasured).
+ */
+export const videoModelTakesRatio = (option: VideoModelOption, ratio: RunwayVideoRatio): boolean =>
+  option.frameShape !== "requested" || option.ratios.includes(ratio);
+export const videoModelTakesAspect = (option: VideoModelOption, aspect: AspectRatio): boolean =>
+  videoModelTakesRatio(option, RUNWAY_RATIO_FOR_ASPECT[aspect]);
 
 export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];

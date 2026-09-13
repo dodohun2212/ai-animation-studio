@@ -455,11 +455,12 @@ describe("real OpenAI Episode image generation", () => {
     expect(approved.staleness.imageStale).toContain(1);
   });
 
-  it("derives the requested image size from the Long Project's own aspectRatio setting instead of always hardcoding portrait", async () => {
+  // Item 6 added the square: the same table as the short project (IMAGE_SIZE_FOR_ASPECT), read from the Episode's own setting.
+  it.each([["16:9", "1536x1024"], ["1:1", "1024x1024"]] as const)("derives the requested image size from the Long Project's own aspectRatio setting instead of always hardcoding portrait (%s)", async (aspectRatio, size) => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-openai-"));
     const projectsRoot = path.join(root, "projects");
     const projects = new LongProjectsService(projectsRoot);
-    await projects.create({ projectId: "long", settings: { ...settings, aspectRatio: "16:9" } });
+    await projects.create({ projectId: "long", settings: { ...settings, aspectRatio } });
     const preview = await projects.preview("long");
     await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 });
     const scripts = new EpisodeScriptsService(projectsRoot);
@@ -485,7 +486,7 @@ describe("real OpenAI Episode image generation", () => {
     expect(fetchMock).toHaveBeenCalledTimes(6);
     for (const call of fetchMock.mock.calls) {
       const [, init] = call as [string, RequestInit];
-      expect(JSON.parse(init.body as string)).toMatchObject({ size: "1536x1024" });
+      expect(JSON.parse(init.body as string)).toMatchObject({ size });
     }
   });
 

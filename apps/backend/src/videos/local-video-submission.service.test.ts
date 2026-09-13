@@ -80,6 +80,42 @@ describe("the model's own scene-length range", () => {
   });
 });
 
+/*
+ * Item 6: the project's frame against the job's model, at the same moment and for the same reason as the length
+ * above. Gemini Omni Flash is told a ratio and has no square.
+ */
+describe("the model's own frame", () => {
+  async function squareProject(model?: "gemini_omni_flash") {
+    const base = await setup();
+    const project = await base.projects.findById("video_submit");
+    const notes = project.lore_context.style_notes;
+    project.lore_context = { ...project.lore_context, style_notes: { ...(typeof notes === "object" && notes !== null ? notes : {}), aspect: "1:1" } };
+    await base.projects.save(project);
+    const root = path.dirname(base.projects.projectDirectory("video_submit")).replace(/[\\/]projects$/, "");
+    const providerSettings = new ProviderSettingsService(new ProviderSettingsRepository(root));
+    if (model) await providerSettings.saveVideoModel({ model });
+    const previews = new LocalVideoPreviewService(base.projects, path.join(root, "projects"), new RunwayBudget(root), providerSettings);
+    return { ...base, previews, service: new LocalVideoSubmissionService(base.projects, previews, 10) };
+  }
+
+  it("refuses, before any job is written, a square to a model that makes none", async () => {
+    const { projects, previews, service } = await squareProject("gemini_omni_flash");
+    await expect(service.start("video_submit", await request(previews))).rejects.toMatchObject({
+      response: { code: "VIDEO_ASPECT_RATIO_UNSUPPORTED", details: { model: "gemini_omni_flash", ratio: "960:960" } },
+    });
+    const stored = await projects.findById("video_submit");
+    expect(stored.video_generation_records).toEqual([]);
+    expect(stored.workflow_state).toBe(WorkflowState.WaitingForVideoConfirmation);
+  });
+
+  it("takes the same square on a model that makes it", async () => {
+    const { previews, service } = await squareProject();
+    const confirmed = await request(previews);
+    expect(confirmed.prompts.length).toBeGreaterThan(0);
+    await expect(service.start("video_submit", confirmed)).resolves.toMatchObject({ jobId: expect.any(String) });
+  });
+});
+
 describe("local video submission approval gate", () => {
   it("persists six exact prompt/input-hash checkpoints without any provider call and survives a new instance", async () => {
     const { projects, previews, service } = await setup();

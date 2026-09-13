@@ -1,4 +1,4 @@
-import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODEL_OPTIONS, VIDEO_MODELS, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODEL_OPTIONS, VIDEO_MODELS, videoModelTakesRatio, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
 // Types only — erased at build, so no SDK code ever runs here (see `requestBodyFor` below for why that matters).
 import type { ImageToVideoCreateParams } from "@runwayml/sdk/resources/image-to-video";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
@@ -99,15 +99,17 @@ const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCrea
   happyhorse_1080p: ({ promptImage, promptText, duration }) =>
     ({ model: "happyhorse_1_0", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, resolution: "1080p" }) satisfies ImageToVideoCreateParams.Happyhorse1_0,
   seedance2_720p: (parts) => ({ model: "seedance2", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2,
-  seedance2_1080p: (parts) => ({ model: "seedance2", ...seedanceParts(parts, { "720:1280": "1080:1920", "1280:720": "1920:1080" }) }) satisfies ImageToVideoCreateParams.Seedance2,
+  seedance2_1080p: (parts) => ({ model: "seedance2", ...seedanceParts(parts, SEEDANCE_1080P) }) satisfies ImageToVideoCreateParams.Seedance2,
   seedance2_fast: (parts) => ({ model: "seedance2_fast", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2Fast,
   seedance2_mini: (parts) => ({ model: "seedance2_mini", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2Mini,
-  seedance2_5_480p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "480:854", "1280:720": "854:480" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
+  seedance2_5_480p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "480:854", "1280:720": "854:480", "960:960": "640:640" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
   seedance2_5_720p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2_5,
-  seedance2_5_1080p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "1080:1920", "1280:720": "1920:1080" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
+  seedance2_5_1080p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, SEEDANCE_1080P) }) satisfies ImageToVideoCreateParams.Seedance2_5,
   // "An image to use as the first frame ... Gemini Omni Flash only supports a first frame" — a bare string is it.
+  // It has no square: requestBodyFor has already refused a ratio outside this option's `ratios`, so the narrowing
+  // below states what was checked rather than assuming it.
   gemini_omni_flash: ({ promptImage, promptText, ratio, duration }) =>
-    ({ model: "gemini_omni_flash", promptImage, promptText, ratio, duration }) satisfies ImageToVideoCreateParams.GeminiOmniFlash,
+    ({ model: "gemini_omni_flash", promptImage, promptText, ratio: ratio as "720:1280" | "1280:720", duration }) satisfies ImageToVideoCreateParams.GeminiOmniFlash,
   grok_imagine_480p: (parts) => grokBody(parts, "480p"),
   grok_imagine_720p: (parts) => grokBody(parts, "720p"),
   grok_imagine_1080p: (parts) => grokBody(parts, "1080p"),
@@ -118,10 +120,11 @@ function grokBody({ promptImage, promptText, duration }: RequestParts, resolutio
   return { model: "grok_imagine_1_5", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, resolution } satisfies ImageToVideoCreateParams.GrokImagine1_5;
 }
 
-const SEEDANCE_720P = { "720:1280": "720:1280", "1280:720": "1280:720" } as const;
+const SEEDANCE_720P = { "720:1280": "720:1280", "1280:720": "1280:720", "960:960": "960:960" } as const;
+const SEEDANCE_1080P = { "720:1280": "1080:1920", "1280:720": "1920:1080", "960:960": "1440:1440" } as const;
 
 /**
- * Seedance's resolution is inside its ratio string, so each entry maps this app's two frames to its own strings.
+ * Seedance's resolution is inside its ratio string, so each entry maps this app's three frames to its own strings.
  * Like WAN, a bare image string is a reference image there, so the picture goes as the first keyframe; and its
  * audio defaults to ON, which the merge would throw away, so it is switched off.
  */
@@ -168,6 +171,9 @@ export function requestBodyFor(model: VideoModel, parts: { promptImage: string; 
     throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 장면을 ${option.minDurationSeconds}~${option.maxDurationSeconds}초로만 만듭니다.`);
   }
   if (!(RUNWAY_VIDEO_RATIOS as readonly string[]).includes(parts.ratio)) throw new RunwayAdapterError("invalid_request", "영상 비율이 올바르지 않습니다.");
+  // A frame the model is told but does not make (a square to Gemini Omni Flash) is refused here too: sent, it
+  // would be a provider error per scene, or worse a clip in a shape nobody confirmed.
+  if (!videoModelTakesRatio(option, parts.ratio as RunwayVideoRatio)) throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 이 비율(${parts.ratio})의 영상을 만들지 않습니다.`);
   return REQUEST_BODY[model]({ ...parts, ratio: parts.ratio as RunwayVideoRatio });
 }
 const MAX_DATA_URI_BYTES = 5 * 1024 * 1024;

@@ -1,3 +1,4 @@
+import { isAspectRatio, type AspectRatio } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { isUsableClip, wasPaidRun } from "./placeholder-clip.js";
 import * as fs from "node:fs/promises";
@@ -224,7 +225,7 @@ export class VideoLibraryService {
       const project = await storedObject(path.join(storyRoot, "project.json"));
       if (!project) continue;
       const projectTitle = typeof project.title === "string" ? project.title : projectId;
-      const aspectRatio = project.aspect_ratio === "16:9" ? "16:9" as const : "9:16" as const;
+      const aspectRatio: AspectRatio = isAspectRatio(project.aspect_ratio) ? project.aspect_ratio : "9:16";
       const list = await storedArray(path.join(storyRoot, "episode_outlines.json"));
       const own: VideoLibraryEpisodeSummary[] = [];
       for (let index = 0; index < list.length; index += 1) {
@@ -251,7 +252,7 @@ export class VideoLibraryService {
     };
   }
 
-  private async episodeRow(projectId: string, projectTitle: string, aspectRatio: "9:16" | "16:9", storyRoot: string, episodeNumber: number, outline: unknown): Promise<VideoLibraryEpisodeSummary | undefined> {
+  private async episodeRow(projectId: string, projectTitle: string, aspectRatio: AspectRatio, storyRoot: string, episodeNumber: number, outline: unknown): Promise<VideoLibraryEpisodeSummary | undefined> {
     const directory = path.join(storyRoot, episodeDirectoryName(episodeNumber));
     const stored = await storedObject(path.join(directory, "project.json"));
     if (!stored) return undefined;
