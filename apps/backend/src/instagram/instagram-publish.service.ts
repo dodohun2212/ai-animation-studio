@@ -212,7 +212,7 @@ export class InstagramPublishService {
   private assertCreditCarried(usedAudio: unknown, caption: string): void {
     if (!isObject(usedAudio) || usedAudio.attribution_required !== true) return;
     const credit = typeof usedAudio.attribution_text === "string" ? usedAudio.attribution_text.trim() : "";
-    if (!credit) throw invalidInstagramRequest("This video's music requires a credit and none is recorded for it. Add the credit line in the audio library first.");
+    if (!credit) throw invalidInstagramRequest("This video's music requires a credit and none is recorded for it. The audio library cannot edit a track, so upload the track again with its credit line, merge again with it, and publish that video.");
     const flat = (value: string) => value.replace(/\s+/gu, " ").trim();
     if (!flat(caption).includes(flat(credit))) throw invalidInstagramRequest("This video's music requires a credit and the caption does not carry it.");
   }
