@@ -72,6 +72,56 @@ describe("VideoLibraryScreen", () => {
     expect((await screen.findByTestId("library-summary-1")).textContent).toContain("장면 6/6");
   });
 
+  /**
+   * 같은 카드의 다음 줄에도 같은 모순이 남아 있었습니다. 카드를 열면 「1번 장면」 자리가 먼저 열리는데, 명언
+   * 카드에는 장면 영상이 설계상 없으므로 「최종 영상 있음」 바로 아래에 「아직 저장된 영상이 없습니다」가 붙습니다.
+   */
+  it("opens a photo card at the slot that can hold something, and offers no scene slot at all", async () => {
+    const card = libraryProject({ projectId: "card_1", topic: "명언", sceneCount: 1, videosReadyCount: 0, photoCard: true });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { projects: [card] }))
+      .mockResolvedValue(jsonResponse(200, { versions: [{ versionId: "f001", createdAt: "2026-08-26T17:29:00.000Z", bytes: 9_000_000, isCurrent: true }] }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByText("명언"));
+
+    expect(await screen.findByTestId("library-slot-card_1-final")).toBeTruthy();
+    expect(screen.queryByTestId("library-slot-card_1-1"), "눌러도 빈 자리만 나오는 버튼").toBeNull();
+    expect(screen.queryByTestId("versions-empty"), "카드를 여는 첫 화면이 「없습니다」 이면 안 됩니다").toBeNull();
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("/videos/final/versions");
+  });
+
+  /** 반대쪽: 보통 프로젝트는 그대로 장면 자리를 내고 1번 장면부터 엽니다. */
+  it("still opens an ordinary project at its first scene", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { projects: [libraryProject()] }))
+      .mockResolvedValue(jsonResponse(200, { versions: [] }));
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByText("이배드의 탄생"));
+
+    expect(await screen.findByTestId("library-slot-1-1")).toBeTruthy();
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("/videos/1/versions");
+  });
+
+  /** 아직 합치지 않은 명언 카드에는 열 자리가 하나도 없습니다 — 빈 줄 대신 왜 없는지를 말합니다. */
+  it("says why a card that has not been merged yet has no slots, instead of showing an empty row", async () => {
+    const card = libraryProject({
+      projectId: "card_2", topic: "미완성 명언", sceneCount: 1, videosReadyCount: 0, photoCard: true, finalVideoAvailable: false,
+    });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { projects: [card] })));
+
+    fireEvent.click(await screen.findByText("미완성 명언"));
+
+    const note = await screen.findByTestId("library-no-slots-card_2");
+    expect(note.textContent).toContain("장면 영상이 없습니다");
+    expect(note.textContent, "무엇을 하면 생기는지도").toContain("최종 영상을 만들면");
+    expect(screen.queryByTestId("library-slot-card_2-1")).toBeNull();
+    expect(screen.queryByTestId("library-slot-card_2-final")).toBeNull();
+  });
+
   it("lists projects with their accumulated spend, and opens a scene's versions on expand", async () => {
     const fetchMock = vi
       .fn()
@@ -128,7 +178,10 @@ describe("VideoLibraryScreen", () => {
     const panel = await screen.findByTestId("version-restore-confirm-v001");
     expect(panel.textContent).toContain("비용은 들지 않습니다");
     expect(panel.textContent).toContain("지워지지 않고");
-    expect(panel.textContent).toContain("다시 합쳐야");
+    // 「맞지 않게 된다」만으로는 최종 영상이 그대로 남아 있는 것처럼 읽힙니다 — 실제로는 카드에서 떨어져 나갑니다.
+    expect(panel.textContent).toContain("떨어져 나갑니다");
+    expect(panel.textContent, "카드가 어떻게 바뀌는지 그 말로").toContain("최종 영상 없음");
+    expect(panel.textContent, "되돌릴 길도 같이").toContain("다시 합치면");
 
     fireEvent.click(within(panel).getByRole("button", { name: "예, 되돌립니다" }));
 
@@ -153,7 +206,7 @@ describe("VideoLibraryScreen", () => {
 
     const panel = await screen.findByTestId("version-restore-confirm-f001");
     expect(panel.textContent).toContain("비용은 들지 않습니다");
-    expect(panel.textContent).not.toContain("다시 합쳐야");
+    expect(panel.textContent, "최종 영상을 되돌릴 때는 떨어져 나갈 최종 영상이 없습니다").not.toContain("떨어져 나갑니다");
   });
 
   it("says the archive is empty rather than showing a bare page", async () => {

@@ -31,6 +31,16 @@ type VersionsState =
 /** A scene slot, or the merged result — the same address space the versions endpoint accepts. */
 type Slot = SceneNumber | "final";
 
+/**
+ * Which slot to open when a card is expanded: the one that can actually hold something.
+ *
+ * A photo card has no scene videos by design, so scene 1 is permanently empty for it — opening there greeted
+ * every card with "이 자리에는 아직 저장된 영상이 없습니다" directly under "최종 영상 있음".
+ */
+function firstSlotFor(row: { photoCard?: true; finalVideoAvailable: boolean }): Slot {
+  return row.photoCard === true && row.finalVideoAvailable ? "final" : (1 as SceneNumber);
+}
+
 const smallOutlineButton =
   "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton =
@@ -88,6 +98,13 @@ interface VersionSlotsProps {
   idPrefix: string;
   sceneCount: number;
   finalVideoAvailable: boolean;
+  /**
+   * 명언 카드에는 장면 영상이 **설계상** 없습니다 — 사진 한 장에 느린 줌을 걸어 곧장 최종 영상으로 갑니다.
+   * 그런데도 `sceneNumbersFor(1)` 이 「1번 장면」 버튼을 만들었고, 카드를 열면 그 빈 자리가 먼저 열려서
+   * 「최종 영상 있음」 바로 아래에 「이 자리에는 아직 저장된 영상이 없습니다」 가 붙었습니다 — 카드 한 장에서
+   * 두 줄이 서로를 부정하는, 바로 위 `photoCard` 줄이 고치려던 그 짝입니다.
+   */
+  photoCard?: boolean;
   aspectRatio: "9:16" | "16:9";
   /** The credit this archive still owes, if any — carried so the restore warning can print the exact wording. */
   attributionRequired?: boolean;
@@ -112,14 +129,15 @@ interface VersionSlotsProps {
  * looking at.
  */
 function VersionSlots({
-  target, idPrefix, sceneCount, finalVideoAvailable, aspectRatio, attributionRequired, attributionText,
+  target, idPrefix, sceneCount, finalVideoAvailable, photoCard, aspectRatio, attributionRequired, attributionText,
   openSlot, versions, restoreConfirm, restorePending,
   restoreError, restoredVersionId, onOpenSlot, onAskRestore, onConfirmRestore,
 }: VersionSlotsProps) {
   return (
   <div className="space-y-3" data-testid={`library-slots-${idPrefix}`}>
     <div className="flex flex-wrap gap-2">
-      {sceneNumbersFor(sceneCount).map((sceneNumber) => (
+      {/* 명언 카드에는 장면 자리 자체가 없습니다 — 눌러도 빈 자리만 나오는 버튼은 만들지 않습니다. */}
+      {!photoCard && sceneNumbersFor(sceneCount).map((sceneNumber) => (
         <button
           key={sceneNumber}
           type="button"
@@ -140,6 +158,12 @@ function VersionSlots({
         >
           최종 영상
         </button>
+      )}
+      {/* 버튼이 하나도 없을 때 빈 줄만 남기지 않습니다 — 왜 없는지와 무엇을 하면 생기는지를 말합니다. */}
+      {photoCard && !finalVideoAvailable && (
+        <p data-testid={`library-no-slots-${idPrefix}`} className="text-xs text-slate-400">
+          명언 카드에는 장면 영상이 없습니다. 최종 영상을 만들면 여기에 지난 영상이 쌓입니다.
+        </p>
       )}
     </div>
 
@@ -208,7 +232,11 @@ function VersionSlots({
                   <p className="text-sm font-semibold text-amber-300">이 버전으로 되돌릴까요?</p>
                   <p className="text-xs text-slate-300">
                     비용은 들지 않습니다. 지금 쓰고 있는 영상도 지워지지 않고 이전 버전으로 함께 보관됩니다.
-                    {openSlot !== "final" && " 이미 합쳐 둔 최종 영상은 이 장면과 맞지 않게 되므로 다시 합쳐야 합니다."}
+                    {/* 「맞지 않게 된다」는 최종 영상이 그대로 남아 있다는 뜻으로 읽힙니다. 실제로는 프로젝트가
+                        그 파일을 놓아 버려서(`final_video_path: null`) 카드가 「최종 영상 없음」이 되고, 이 화면의
+                        「최종 영상」 자리도 사라집니다. 되돌린 뒤에 알게 되는 쪽이라 여기서 말합니다. */}
+                    {openSlot !== "final"
+                      && " 이미 합쳐 둔 최종 영상은 이 장면과 맞지 않게 되므로 프로젝트에서 떨어져 나갑니다 — 카드가 「최종 영상 없음」으로 바뀌고 여기서 열 수 없게 됩니다. 다시 합치면 새로 만들어지고, 합치는 데 드는 돈은 없습니다."}
                   </p>
                   {/* Versions are stored per file, but which audio a merge used is stored once
                       per project — so after a restore the app genuinely cannot say which track
@@ -414,7 +442,9 @@ export function VideoLibraryScreen({ onBack }: Props) {
                       type="button"
                       className="text-left text-sm font-semibold text-slate-100"
                       aria-expanded={open}
-                      onClick={() => (open ? setOpenTarget(null) : openSlotVersions(target, 1 as SceneNumber))}
+                      /* 명언 카드는 1번 장면이 늘 비어 있으므로 최종 영상 자리를 엽니다 — 카드를 여는 첫
+                         화면이 「아직 저장된 영상이 없습니다」 이면 안 됩니다. */
+                      onClick={() => (open ? setOpenTarget(null) : openSlotVersions(target, firstSlotFor(project)))}
                     >
                       {project.topic || project.projectId}
                     </button>
@@ -454,6 +484,7 @@ export function VideoLibraryScreen({ onBack }: Props) {
                       idPrefix={project.projectId}
                       sceneCount={project.sceneCount}
                       finalVideoAvailable={project.finalVideoAvailable}
+                      photoCard={project.photoCard === true}
                       aspectRatio={project.aspectRatio}
                       attributionRequired={project.attributionRequired}
                       attributionText={project.attributionText}
