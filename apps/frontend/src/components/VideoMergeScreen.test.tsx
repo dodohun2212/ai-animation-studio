@@ -606,20 +606,99 @@ describe("VideoMergeScreen", () => {
    * 화면만 가져오고 소리는 새로 붙이니까요. 소리 되는 모델에 더 내고 그 소리를 버리는 일이 이 화면에서
    * 보이지 않으면 사람은 그걸 모릅니다. 소리가 없는 릴에서는 이 줄이 **없어야** 합니다.
    */
-  it("says the clips carry sound that the merge will not use, and only when they do", async () => {
+  // (Since B3-a the line introduces the clip-sound level: 0% drops it, as every merge did before.)
+  it("says the clips carry sound and what 0% does with it, and only when they do", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
     const scenes = sixScenes();
     const withSound = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: true }]));
     const first = renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, withSound);
     const line = await screen.findByTestId("merge-clip-audio");
     expect(line.textContent).toContain("6개에 소리가 들어 있습니다");
-    expect(line.textContent).toContain("완성본에 들어가지 않습니다");
+    expect(line.textContent).toContain("0%면 버리고");
     first.render.unmount();
 
     const silent = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: false }]));
     renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, silent);
     await screen.findByTestId("merge-frame-fit");
     expect(screen.queryByTestId("merge-clip-audio")).toBeNull();
+  });
+
+  /**
+   * 🔴 이 화면에 층이 하나 생겼습니다 — 클립 자체 소리. 그런데 버튼 글자는 모드 하나만 읽고 있었고, 그대로
+   * 두면 **「무음으로 병합」을 누르고 소리 있는 릴이 나옵니다.** 오늘 하루 고친 것이 전부 「글자가 참이 아닌
+   * 자리」라, 층을 얹으면서 같은 것을 새로 만들 수는 없습니다.
+   *
+   * 0%일 때 옛 글자가 그대로인 것도 같이 봅니다 — 「무음」이 사라지면 이번엔 반대쪽이 거짓말입니다.
+   */
+  it("never says 무음 when the clips' own sound is going in", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const withSound = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: true }]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, withSound);
+
+    const button = await screen.findByTestId("open-merge-confirm-button");
+    // 기본은 0% — 나레이션이 없는 프로젝트라 모드는 「무음」이고, 글자도 그대로여야 합니다.
+    expect(button.textContent).toBe("무음으로 병합");
+
+    fireEvent.change(screen.getByLabelText("섞는 음량"), { target: { value: "40" } });
+    expect(button.textContent, "소리가 들어가는데 「무음」이라고 하면 안 됩니다").toBe("영상 소리로 병합");
+    expect(button.textContent).not.toContain("무음");
+  });
+
+  /**
+   * 🔴 0% 는 **안 보냅니다.** 계약이 「생략·0 = 오늘과 같음」이니 결과는 같고, 안 보내면 오늘까지의 요청이
+   * 바이트 그대로입니다 — 이 파일의 다른 짝들이 본문을 통째로 비교하고 있어서 `frameFit` 때와 같은 규칙입니다.
+   */
+  it("sends the clip volume only once someone raises it", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const withSound = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: true }]));
+    const { render: first } = renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, withSound);
+
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    expect(JSON.parse(String((mergeFetch.mock.calls[0] as [string, RequestInit])[1].body)).audio)
+      .toEqual({ mode: "silent" });
+    first.unmount();
+
+    const second = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(second, { scenes }, undefined, undefined, undefined, undefined, undefined, withSound);
+    fireEvent.change(await screen.findByLabelText("섞는 음량"), { target: { value: "40" } });
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(second).toHaveBeenCalled());
+    expect(JSON.parse(String((second.mock.calls[0] as [string, RequestInit])[1].body)).audio)
+      .toEqual({ mode: "silent", clipVolume: 0.4 });
+  });
+
+  /** 소리가 들어 있는 클립이 하나도 없으면 칸 자체가 없습니다 — 아무것도 못 하는 칸은 눌러 보게 만듭니다. */
+  it("offers no clip-sound control when no clip carries sound", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const silent = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: false }]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, silent);
+
+    await screen.findByTestId("merge-frame-fit");
+    expect(screen.queryByTestId("merge-clip-audio")).toBeNull();
+  });
+
+  /**
+   * 🔴 완성본이 무엇으로 만들어졌는지는 **기록**이 답합니다. 다시 만들면 화면의 칸은 초기화되지만 이미 만든
+   * 영상은 그대로라, 「이 영상에 클립 소리가 들어 있나」를 화면 상태로 답하면 틀립니다.
+   */
+  it("reads what the finished merge actually used, from the record", async () => {
+    const withClipSound = makeResponse({
+      project: makeProject({ scenes: sixScenes(), usedAudio: { mode: "silent", clipVolume: 0.4 } }),
+    });
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, withClipSound));
+    renderScreen(mergeFetch, { scenes: sixScenes() });
+
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    const line = await screen.findByTestId("merge-used-clip-audio");
+    expect(line.textContent).toContain("40%");
   });
 
   it("sends a photo card's adjusted subtitle layout with the merge", async () => {

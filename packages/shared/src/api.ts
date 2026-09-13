@@ -2313,6 +2313,17 @@ export interface MergeAudioSettings {
   /** Fade-in at the start and fade-out at the end of the whole final video, in seconds. Server default when omitted: 2. */
   fadeSeconds?: number;
   /**
+   * 0 to 1 — the clips' own sound, laid under whatever `mode` makes (narration, music, or silence). Omitted or 0
+   * is the merge as before: the clip's sound is dropped.
+   *
+   * One layer on every mode rather than more modes (CLI Round 821 · Cowork Round 822): `silent` + 1 is 「영상 소리만」,
+   * `narration` + 0.3 is a voice over the clip's ambience — the pairing 캡틴D's H3 Max reel asked for. Only clips
+   * that carry a sound track contribute; a scene whose clip has none is merged as before. The clip layer fades in
+   * and out over 0.15 s at every scene, so the ambience does not snap at the cuts. Refused on a photo card, which
+   * has no clip.
+   */
+  clipVolume?: number;
+  /**
    * Where in the track the music starts, in seconds. Default 0.
    *
    * A song is longer than a Reel — a two-minute upload is cut to the first thirty seconds — and the part

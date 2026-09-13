@@ -22,7 +22,7 @@ import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
 /** Mirrors MergeAudioSettings["mode"] — the stored record and the request speak the same vocabulary. */
 
-interface ResolvedAudioSettings { mode: AudioMode; trackId?: string; volume: number; fadeSeconds: number; startSeconds: number }
+interface ResolvedAudioSettings { mode: AudioMode; trackId?: string; volume: number; fadeSeconds: number; startSeconds: number; clipVolume: number }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -158,12 +158,12 @@ function resolveFrameFit(project: StoredProject, request: unknown): FrameFit {
 function resolveAudioSettings(project: StoredProject, request: unknown): ResolvedAudioSettings {
   const narrationAvailable = narrationAvailableFor(project);
   const defaultMode: AudioMode = narrationAvailable && toShortProjectSettings(project).narrationEnabled ? "narration" : "silent";
-  const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0 };
+  const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0, clipVolume: 0 };
   if (request === undefined) return fallback;
   if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout" && key !== "sceneSubtitleLayout" && key !== "frameFit")) throw videoMergeInvalidRequest();
   if (request.audio === undefined) return fallback;
   const audio = request.audio;
-  if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds"].includes(key))) throw videoMergeInvalidRequest();
+  if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds", "clipVolume"].includes(key))) throw videoMergeInvalidRequest();
   if (!isAudioMode(audio.mode)) throw videoMergeInvalidRequest(`audio.mode must be ${AUDIO_MODES.join(", ")}.`);
   // Deliberately not "bgm": music alone has nothing to mix a voice into, so a project without narration can
   // ask for it. That was the one thing the old vocabulary could not express.
@@ -175,12 +175,16 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
   // Shape only. Whether the number is inside *this* track is asked later, where the track's real length is
   // known — and that refusal carries the length, which is the part a person can act on.
   if (audio.startSeconds !== undefined && (typeof audio.startSeconds !== "number" || !Number.isFinite(audio.startSeconds) || audio.startSeconds < 0)) throw videoMergeInvalidRequest("audio.startSeconds must be a non-negative number.");
+  if (audio.clipVolume !== undefined && (typeof audio.clipVolume !== "number" || !Number.isFinite(audio.clipVolume) || audio.clipVolume < 0 || audio.clipVolume > 1)) throw videoMergeInvalidRequest("audio.clipVolume must be between 0 and 1.");
+  // A photo card has a still, not a clip: there is no clip sound for the field to reach (MergeAudioSettings.clipVolume).
+  if (audio.clipVolume !== undefined && photoCardFor(project)) throw videoMergeInvalidRequest("audio.clipVolume does not apply to photo cards.");
   return {
     mode: audio.mode,
     ...(usesBgm(audio.mode) ? { trackId: audio.trackId as string } : {}),
     volume: typeof audio.volume === "number" ? audio.volume : defaultBgmVolume(audio.mode),
     fadeSeconds: typeof audio.fadeSeconds === "number" ? audio.fadeSeconds : DEFAULT_BGM_FADE_SECONDS,
     startSeconds: typeof audio.startSeconds === "number" ? audio.startSeconds : 0,
+    clipVolume: typeof audio.clipVolume === "number" ? audio.clipVolume : 0,
   };
 }
 
@@ -232,7 +236,7 @@ export class LocalVideoMergeService {
    * ShortProjectSettings.subtitlesEnabled's doc comment): a scene gets a subtitle whenever subtitlesEnabled is on
    * AND that scene has narration text, regardless of whether narration audio exists for it.
    */
-  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number, subtitleLayout?: PhotoCardSubtitleLayout, sceneSubtitleLayout?: SceneSubtitleLayout): Promise<MergeSceneInput[]> {
+  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number, subtitleLayout?: PhotoCardSubtitleLayout, sceneSubtitleLayout?: SceneSubtitleLayout, clipVolume = 0): Promise<MergeSceneInput[]> {
     const settings = toShortProjectSettings(project);
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
@@ -243,9 +247,12 @@ export class LocalVideoMergeService {
       const subtitleText = settings.subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
       // The still-ness of the clip is what decides which layout the renderer reads, so each is attached only
       // on its own side of that branch: a card never carries a scene layout, and a scene never carries a card's.
+      // The clip's sound joins only where the clip has a track to give (measured, as VideoReview.clip is): a
+      // scene without one is merged as before rather than failing the whole reel over a missing stream.
+      const clipAudioVolume = stillDurationSeconds === undefined && clipVolume > 0 && (await probeClipFacts(clips[index]!, this.runner))?.hasAudio ? clipVolume : undefined;
       return stillDurationSeconds !== undefined
         ? { clip: clips[index]!, narrationAudioPath, subtitleText, stillDurationSeconds, ...(subtitleLayout ? { subtitleLayout } : {}) }
-        : { clip: clips[index]!, narrationAudioPath, subtitleText, ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}) };
+        : { clip: clips[index]!, narrationAudioPath, subtitleText, ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(clipAudioVolume !== undefined ? { clipAudioVolume } : {}) };
     }));
   }
 
@@ -382,7 +389,7 @@ export class LocalVideoMergeService {
     }
     const cardScenes: SceneNumber[] = [1 as SceneNumber];
     const renderedScenes = material.stillDurationSeconds === undefined ? scenesFor(project) : cardScenes;
-    const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout);
+    const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout, audio.clipVolume);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
@@ -426,6 +433,7 @@ export class LocalVideoMergeService {
       }
       const usedAudio: StoredUsedAudio = {
         mode: audio.mode,
+        ...(audio.clipVolume > 0 ? { clip_volume: audio.clipVolume } : {}),
         ...(usesBgm(audio.mode) ? { track_id: audio.trackId! } : {}),
         ...(bgmAttribution?.attributionRequired !== undefined ? { attribution_required: bgmAttribution.attributionRequired } : {}),
         ...(bgmAttribution?.attributionText !== undefined ? { attribution_text: bgmAttribution.attributionText } : {}),

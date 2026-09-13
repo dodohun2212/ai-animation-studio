@@ -6,7 +6,7 @@ import { FRAME_FIT_NOTES } from "../utils/videoModelFacts.js";
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
 import type { AudioMode } from "./mergeAudio.js";
-import { AttributionNotice, AUDIO_MODE_LABELS, MergeAudioFieldset, needsTrack, toAudioSettings } from "./mergeAudio.js";
+import { AttributionNotice, MergeAudioFieldset, mergeButtonLabel, needsTrack, toAudioSettings } from "./mergeAudio.js";
 import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
 import { getVideoReview, sceneImageContentUrl } from "../api/videoWorkflowApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
@@ -204,6 +204,9 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   const [clipFacts, setClipFacts] = useState<VideoClipFacts[]>([]);
   /* 잰 클립이 **몇 장면 중 몇 개**인지 — 잰 것만 보고 전체를 말하지 않기 위해서입니다(CLI Round 820). */
   const [clipSceneCount, setClipSceneCount] = useState(0);
+  /* 클립 자체 소리를 얼마나 깔지(0~100). 기본 0 = 오늘과 같음 — 「화면 맞춤」의 「여백」과 같은 규칙으로,
+     고르기 전까지 결과가 지금과 같아야 합니다. */
+  const [clipVolumePercent, setClipVolumePercent] = useState(0);
   const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
   const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
   const [trackId, setTrackId] = useState("");
@@ -352,7 +355,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
      button disabled on a guess is worse than one that fails honestly. Same rule as the Episode's merge. */
   const blocked = !photoCard && approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
-  const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds);
+  /* 포토카드엔 클립이 없어 서버가 거절합니다 — 화면이 아예 안 보내고, 아래 칸도 숨깁니다. */
+  const audioSettings: MergeAudioSettings | null = toAudioSettings(
+    audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds, photoCard ? 0 : clipVolumePercent,
+  );
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
   /* 🔴 잰 값이 먼저입니다. 모델 표는 「이 모델이면 이렇게 될 것이다」이고 `clip` 은 「이 파일이 이렇다」라,
      둘이 갈리면 이기는 쪽이 정해져 있습니다 — 그리고 잰 값에는 「확인 안 됨」이 없어서 단정해도 됩니다. */
@@ -471,10 +477,32 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           그리고 이 앱은 그 소리를 한 번도 쓰지 않습니다: 병합이 클립에서 화면만 가져오고 소리는 내레이션
           아니면 무음으로 새로 붙입니다. 소리 되는 모델을 일부러 골라 더 내고 그 소리를 버리는 일이 여기서
           보이지 않으면, 사람은 그걸 영원히 모릅니다. (선택지 자체는 소리 묶음에서 생깁니다.) */}
-      {(!result || remaking) && audibleClips > 0 && (
-        <p data-testid="merge-clip-audio" className="text-xs text-amber-300/90">
-          이 릴의 클립 {audibleClips}개에 소리가 들어 있습니다 — 지금은 그 소리가 완성본에 들어가지 않습니다.
-        </p>
+      {(!result || remaking) && !photoCard && audibleClips > 0 && (
+        <fieldset data-testid="merge-clip-audio" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+          <legend className="px-1 text-sm font-semibold text-slate-100">영상 소리</legend>
+          {/* 설명이 먼저, 칸이 뒤 — 이 줄은 잰 사실입니다(`VideoReview.clip.hasAudio`). 소리가 들어 있는 클립이
+              하나도 없으면 이 칸 자체가 없습니다: 아무것도 못 하는 칸은 눌러 보게 만듭니다. */}
+          <p className="text-xs text-slate-400">
+            이 릴의 클립 {audibleClips}개에 소리가 들어 있습니다 — 영상 AI 가 만든 환경음입니다. 0%면 버리고, 올리면 위에서 고른 소리 <span className="text-slate-300">밑에</span> 깔립니다.
+          </p>
+          <label className="block text-sm text-slate-300" htmlFor="merge-clip-volume">
+            섞는 음량
+            <input
+              id="merge-clip-volume"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={clipVolumePercent}
+              disabled={pending || confirmOpen}
+              onChange={(event) => setClipVolumePercent(Number(event.target.value))}
+              className="mt-1 w-full accent-violet-500"
+            />
+          </label>
+          <p data-testid="merge-clip-volume-value" className="text-xs tabular-nums text-slate-400">
+            {clipVolumePercent === 0 ? "0% — 쓰지 않습니다(지금까지의 결과)" : `${clipVolumePercent}%`}
+          </p>
+        </fieldset>
       )}
       {(!result || remaking) && audioMode !== null && (
         <MergeAudioFieldset
@@ -504,7 +532,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             onClick={openConfirmation}
             disabled={confirmOpen || pending || blocked || modeUnready}
           >
-            {audioMode ? `${AUDIO_MODE_LABELS[audioMode]}으로 병합` : "최종 영상으로 병합"}
+            {mergeButtonLabel(audioMode, photoCard ? 0 : clipVolumePercent)}
           </button>
           {modeUnready && (
             <p data-testid="merge-audio-track-required" className="text-xs text-amber-300">
@@ -587,6 +615,14 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           <p className="text-sm font-semibold text-emerald-400">
             최종 영상 병합이 완료되었습니다. 이 단계에서는 유료 요청이 전송되지 않았습니다.
           </p>
+          {/* 🔴 완성본이 **무엇으로 만들어졌는지** — 기록에서 읽습니다(`UsedAudio.clipVolume`). 다시 만들면
+              화면의 칸은 초기화되지만 이미 만든 영상은 그대로라, 「이 영상에 클립 소리가 들어 있나」를 답할 수
+              있는 것은 화면의 상태가 아니라 기록뿐입니다. */}
+          {result.project.usedAudio?.clipVolume !== undefined && result.project.usedAudio.clipVolume > 0 && (
+            <p data-testid="merge-used-clip-audio" className="text-xs tabular-nums text-slate-400">
+              이 영상에는 클립 소리가 {Math.round(result.project.usedAudio.clipVolume * 100)}% 음량으로 깔려 있습니다.
+            </p>
+          )}
           <AttributionNotice usedAudio={result.project.usedAudio} />
           <FinalVideoGenerationSourceNotice source={result.project.finalVideoGenerationSource} testId="final-video-generation-source-notice" />
           {unplayable ? (

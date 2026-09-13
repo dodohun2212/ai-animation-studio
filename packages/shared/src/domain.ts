@@ -726,6 +726,8 @@ export interface ProjectSummary {
  */
 export interface UsedAudio {
   mode: AudioMode;
+  /** The clips' own sound under `mode`, when the merge used it (MergeAudioSettings.clipVolume); absent when it did not. */
+  clipVolume?: number;
   trackId?: string;
   attributionRequired?: boolean;
   attributionText?: string;

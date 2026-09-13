@@ -73,6 +73,62 @@ describe("probeClipFacts", () => {
   });
 });
 
+/*
+ * MergeAudioSettings.clipVolume — the clip's own sound under narration or alone, faded at the scene's edges and
+ * brought to the anullsrc format so every normalised scene joins the same way.
+ */
+describe("FfmpegMergeEngine.merge clip sound", () => {
+  const graphOf = (call: string[]) => call[call.indexOf("-filter_complex") + 1]!;
+
+  it("lays the clip's sound under the narration at its level, faded at both edges, without amix's normalisation", async () => {
+    const calls: string[][] = [];
+    const { finalPath, fontsDir } = await setup();
+    await new FfmpegMergeEngine(runner(calls), fontsDir).merge([{ clip: "scene1.mp4", narrationAudioPath: "n1.mp3", clipAudioVolume: 0.3 }], 5, finalPath, "9:16");
+    const call = calls.find((args) => args.includes("-filter_complex"))!;
+    expect(graphOf(call)).toBe("[1:a]apad[narr];[0:a]volume=0.3,afade=t=in:st=0:d=0.15,afade=t=out:st=4.850:d=0.15[clip];[narr][clip]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    expect(call).toContain("n1.mp3");
+    expect(call).not.toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+  });
+
+  it("uses the clip's sound alone, in place of the silence, when there is no narration", async () => {
+    const calls: string[][] = [];
+    const { finalPath, fontsDir } = await setup();
+    await new FfmpegMergeEngine(runner(calls), fontsDir).merge([{ clip: "scene1.mp4", clipAudioVolume: 1 }, { clip: "scene2.mp4" }], 5, finalPath, "9:16");
+    const [first, second] = calls.filter((args) => args.includes("-vf"));
+    expect(graphOf(first!)).toBe("[0:a]volume=1,afade=t=in:st=0:d=0.15,afade=t=out:st=4.850:d=0.15,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    expect(first).not.toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    // The scene without a clip level is merged exactly as before.
+    expect(second).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+  });
+
+  it("puts audible clip sound into a real file, next to a silent scene, and joins them", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "clip-sound-real-")); roots.push(root);
+    const withSound = path.join(root, "scene1.mp4");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x568:d=2", "-f", "lavfi", "-i", "sine=frequency=330:duration=2:sample_rate=44100",
+      "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "1", withSound]);
+    const silent = path.join(root, "scene2.mp4");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x568:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", silent]);
+    const meanVolume = async (file: string): Promise<number> => {
+      const { stderr } = await runMediaCommand(["ffmpeg", "-i", file, "-af", "volumedetect", "-f", "null", "-"]);
+      return Number(/mean_volume:\s*(-?[0-9.]+) dB/.exec(stderr)?.[1] ?? NaN);
+    };
+    const mergeInto = async (label: string, scenes: MergeSceneInput[]) => {
+      const finalPath = path.join(root, label, "instagram_reel.mp4");
+      await fs.mkdir(path.dirname(finalPath), { recursive: true });
+      await new FfmpegMergeEngine().merge(scenes, 2, finalPath, "9:16");
+      return finalPath;
+    };
+
+    const withClipSound = await mergeInto("with", [{ clip: withSound, clipAudioVolume: 1 }, { clip: silent }]);
+    const without = await mergeInto("without", [{ clip: withSound }, { clip: silent }]);
+
+    expect(await meanVolume(withClipSound), "the tone is in the reel").toBeGreaterThan(-40);
+    expect(await meanVolume(without), "and was not before").toBeLessThan(-80);
+  });
+});
+
 describe("FfmpegMergeEngine.merge narration audio mixing", () => {
   /*
    * 🔴 The bars on the first chained reel (h3_max_768p returns 2:3 from a 2:3 picture) — FRAME_FITS. `fill`

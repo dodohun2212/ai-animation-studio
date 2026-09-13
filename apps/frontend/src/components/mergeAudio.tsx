@@ -38,11 +38,18 @@ export function toAudioSettings(
   startSeconds = 0,
   volumePercent: number | null = null,
   fadeSeconds: number | null = null,
+  /**
+   * 클립 자체 소리를 모드가 만든 소리 **밑에** 까는 음량(0~100). 0 은 오늘과 같음(버림)이라 **보내지 않습니다** —
+   * 계약이 「생략·0 = 오늘과 같음」이니 결과는 같고, 안 보내면 오늘까지의 요청이 바이트 그대로입니다
+   * (`frameFit` 과 같은 규칙).
+   */
+  clipVolumePercent = 0,
 ): MergeAudioSettings | null {
   if (mode === null) return null;
+  const clip = clipVolumePercent > 0 ? { clipVolume: clipVolumePercent / 100 } : {};
   // A start point without a track is meaningless, and 0 is what the server does anyway — sending it would put a
   // number in the request that says nothing, and later read as a choice someone made.
-  if (!needsTrack(mode)) return { mode };
+  if (!needsTrack(mode)) return { mode, ...clip };
   if (!trackId) return null;
   /*
    * Untouched is null, and null is not sent.
@@ -59,7 +66,21 @@ export function toAudioSettings(
     ...(startSeconds > 0 ? { startSeconds } : {}),
     ...(volumePercent !== null ? { volume: volumePercent / 100 } : {}),
     ...(fadeSeconds !== null ? { fadeSeconds } : {}),
+    ...clip,
   };
+}
+
+/**
+ * 병합 버튼에 적을 말 — **모드와 클립 소리를 같이** 읽습니다.
+ *
+ * 🔴 모드만 읽던 시절엔 `mode: "silent" + clipVolume > 0` 에서 **「무음으로 병합」을 누르고 소리 있는 릴이**
+ * 나왔습니다. 오늘 하루 고친 것이 「글자가 참이 아닌 자리」라, 클립 소리를 얹으면서 같은 것을 새로 만들 수는
+ * 없습니다. 버튼은 누르면 무슨 일이 일어나는지를 말해야 합니다.
+ */
+export function mergeButtonLabel(mode: AudioMode | null, clipVolumePercent: number): string {
+  if (mode === null) return "최종 영상으로 병합";
+  if (clipVolumePercent <= 0) return `${AUDIO_MODE_LABELS[mode]}으로 병합`;
+  return mode === "silent" ? "영상 소리로 병합" : `${AUDIO_MODE_LABELS[mode]} + 영상 소리로 병합`;
 }
 
 /** m:ss, so a position can be compared against the track length a person sees on the player. */

@@ -63,6 +63,8 @@ export const USED_AUDIO_MODES = AUDIO_MODES;
 /** What the most recently completed merge actually used — see ProjectSummary.usedAudio's own doc comment for why attribution is copied by value here rather than kept as a live reference to the track. */
 export interface StoredUsedAudio {
   mode: (typeof USED_AUDIO_MODES)[number];
+  /** MergeAudioSettings.clipVolume as the merge used it — present only when above 0. */
+  clip_volume?: number;
   track_id?: string;
   attribution_required?: boolean;
   attribution_text?: string;
@@ -297,6 +299,9 @@ function usedAudioField(data: Record<string, unknown>): StoredUsedAudio | null {
   if (record.track_id !== undefined && typeof record.track_id !== "string") {
     throw dataInvalid(`Field "${key}.track_id" must be a string.`);
   }
+  if (record.clip_volume !== undefined && (typeof record.clip_volume !== "number" || !Number.isFinite(record.clip_volume) || record.clip_volume < 0 || record.clip_volume > 1)) {
+    throw dataInvalid(`Field "${key}.clip_volume" must be a number from 0 to 1.`);
+  }
   if (record.attribution_required !== undefined && typeof record.attribution_required !== "boolean") {
     throw dataInvalid(`Field "${key}.attribution_required" must be a boolean.`);
   }
@@ -305,6 +310,7 @@ function usedAudioField(data: Record<string, unknown>): StoredUsedAudio | null {
   }
   return {
     mode: record.mode as StoredUsedAudio["mode"],
+    ...(record.clip_volume !== undefined ? { clip_volume: record.clip_volume as number } : {}),
     ...(record.track_id !== undefined ? { track_id: record.track_id as string } : {}),
     ...(record.attribution_required !== undefined ? { attribution_required: record.attribution_required as boolean } : {}),
     ...(record.attribution_text !== undefined ? { attribution_text: record.attribution_text as string } : {}),

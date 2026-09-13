@@ -119,6 +119,11 @@ export interface MergeSceneInput {
   sceneSubtitleLayout?: SceneSubtitleLayout;
   /** Path to that scene's narration audio, or null/undefined to fall back to silence. */
   narrationAudioPath?: string | null;
+  /**
+   * The clip's own sound at this level (0–1), under the narration or silence — MergeAudioSettings.clipVolume. Set
+   * only for a clip that has an audio track (the caller measures it); absent keeps the clip's sound out, as before.
+   */
+  clipAudioVolume?: number;
   /** That scene's narration text, or null/undefined to burn in no subtitle line. Independent of narrationAudioPath — video-merge.service.ts sets this based on ShortProjectSettings.subtitlesEnabled, which can be on with no narration audio at all (subtitles-only, no TTS spend, a real Shorts use case since many viewers watch muted). */
   subtitleText?: string | null;
 }
@@ -171,6 +176,11 @@ export interface MergeSceneInput {
  * encoder setting is how one of them silently keeps the old default.
  */
 const X264_QUALITY = ["-crf", "18", "-preset", "slow"] as const;
+
+/** The clip-sound layer's fade at each scene's start and end (MergeAudioSettings.clipVolume) — short enough not to
+ * swallow the scene, long enough that ambience does not click at the cut. Cowork Round 822 notes it may read as a
+ * pulse on a steady sound; overlapping crossfades are the next step if it does. */
+const CLIP_AUDIO_EDGE_FADE_SECONDS = 0.15;
 
 function kenBurns(width: number, height: number, seconds: number): string {
   const frames = Math.max(1, Math.round(seconds * 30));
@@ -253,7 +263,18 @@ export class FfmpegMergeEngine {
       const input = stillSeconds === undefined ? ["-i", scene.clip] : ["-loop", "1", "-framerate", "30", "-t", String(stillSeconds), "-i", scene.clip];
       const sceneFilter = stillSeconds === undefined ? filter : `${kenBurns(width, height, stillSeconds)},${filter}`;
       try {
-        if (scene.narrationAudioPath) {
+        if (scene.clipAudioVolume !== undefined && scene.clipAudioVolume > 0 && stillSeconds === undefined) {
+          // The clip's own sound, faded in and out at the scene's edges so the ambience does not snap at the cuts,
+          // mixed under the narration (or alone) without amix's own level normalisation — the same principle as
+          // the bgm mix. Resampled to the anullsrc format so every normalised scene joins the same way.
+          const fadeOutStart = Math.max(0, clipDurationSeconds - CLIP_AUDIO_EDGE_FADE_SECONDS).toFixed(3);
+          const clipLayer = `[0:a]volume=${scene.clipAudioVolume},afade=t=in:st=0:d=${CLIP_AUDIO_EDGE_FADE_SECONDS},afade=t=out:st=${fadeOutStart}:d=${CLIP_AUDIO_EDGE_FADE_SECONDS}`;
+          const format = "aformat=sample_rates=48000:channel_layouts=stereo";
+          const graph = scene.narrationAudioPath
+            ? `[1:a]apad[narr];${clipLayer}[clip];[narr][clip]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,${format}[aout]`
+            : `${clipLayer},apad,${format}[aout]`;
+          await this.command(["ffmpeg", "-y", ...input, ...(scene.narrationAudioPath ? ["-i", scene.narrationAudioPath] : []), "-filter_complex", graph, "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
+        } else if (scene.narrationAudioPath) {
           await this.command(["ffmpeg", "-y", ...input, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
         } else {
           await this.command(["ffmpeg", "-y", ...input, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-map", "0:v:0", "-map", "1:a:0", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);

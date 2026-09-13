@@ -96,7 +96,7 @@ export function videoModelLastFrameLine(option: VideoModelOption): string {
  * would be exactly the reassuring-direction error the frame-shape field exists to avoid.
  */
 export const VIDEO_CLIP_AUDIO_NOTE =
-  "영상 AI 가 만든 소리는 완성본에 들어가지 않습니다 — 소리는 내레이션과 배경 음악으로만 만듭니다.";
+  "영상 AI 가 만든 소리는 기본으로는 완성본에 들어가지 않습니다 — 합치기 화면에서 음량을 올리면 깔 수 있습니다.";
 
 /** A fact worth a line, and whether it is a warning. `caution` is the amber the picker already uses. */
 export interface VideoModelFact {

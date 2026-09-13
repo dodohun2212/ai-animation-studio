@@ -399,6 +399,55 @@ describe("local FFmpeg video merge", () => {
     expect(probed.map((file) => path.relative(projectsRoot, file))).toEqual([1, 2, 3].map((scene) => path.join("video_merge", "videos", "runway", `scene${scene}.mp4`)));
   });
 
+  /*
+   * MergeAudioSettings.clipVolume through the service: measured per scene, applied only where the clip has a sound
+   * track, recorded on what the merge used, and refused where it cannot mean anything.
+   */
+  it("lays the clips' own sound under the mix where a clip has one, and records that it did", async () => {
+    const { projectsRoot, projects } = await setup();
+    const calls: string[][] = [];
+    const withAudioOnOddScenes: MediaCommandRunner = async (args) => {
+      calls.push([...args]);
+      if (args[0] === "ffprobe") {
+        const scene = Number(/scene(\d)\.mp4$/.exec(args.at(-1)!)?.[1]);
+        const streams = [{ codec_type: "video", width: 768, height: 1152 }, ...(scene % 2 === 1 ? [{ codec_type: "audio" }] : [])];
+        return { stdout: JSON.stringify({ streams, format: { duration: "5.0" } }), stderr: "" };
+      }
+      await fs.writeFile(args.at(-1)!, Buffer.from("rendered"));
+      return { stdout: "", stderr: "" };
+    };
+
+    const merged = await new LocalVideoMergeService(projects, projectsRoot, withAudioOnOddScenes).merge("video_merge", { audio: { mode: "silent", clipVolume: 0.4 } });
+
+    const scenes = calls.filter((args) => args.includes("-vf"));
+    expect(scenes).toHaveLength(6);
+    scenes.forEach((call, index) => {
+      const scene = index + 1;
+      if (scene % 2 === 1) expect(call.join(" "), `scene ${scene}`).toContain("[0:a]volume=0.4");
+      else expect(call, `scene ${scene} has no sound to give`).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    });
+    expect(merged.project.usedAudio).toMatchObject({ mode: "silent", clipVolume: 0.4 });
+    expect((await projects.findById("video_merge")).used_audio?.clip_volume).toBe(0.4);
+  });
+
+  it("keeps the clips' sound out, and records nothing about it, when the request does not ask", async () => {
+    const { projectsRoot, projects } = await setup();
+    const calls: string[][] = [];
+    const merged = await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", { audio: { mode: "silent" } });
+    expect(calls.filter((args) => args.includes("-vf")).every((call) => !call.join(" ").includes("[0:a]volume="))).toBe(true);
+    expect(merged.project.usedAudio?.clipVolume).toBeUndefined();
+  });
+
+  it("refuses a clip level out of range, and any clip level on a photo card", async () => {
+    const { projectsRoot, projects } = await setup();
+    const service = new LocalVideoMergeService(projects, projectsRoot, runner({}, []));
+    await expect(service.merge("video_merge", { audio: { mode: "silent", clipVolume: 1.5 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    const card = await projects.findById("video_merge");
+    card.lore_context = { ...card.lore_context, photo_card: true };
+    await projects.save(card);
+    await expect(service.merge("video_merge", { audio: { mode: "silent", clipVolume: 0.5 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
   /** A project whose scenes carry narration text, so every merge below actually writes a subtitle file. */
   async function withSubtitles(projects: LocalProjectRepository): Promise<void> {
     const project = await projects.findById("video_merge");

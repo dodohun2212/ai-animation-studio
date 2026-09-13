@@ -96,15 +96,16 @@ describe("VideoPromptPreviewScreen", () => {
    * 모델마다 같은지 같이 봅니다 — 이건 모델의 성질이 아니라 이 앱이 합치는 방식입니다. (카탈로그에 없는 이름은
    * 화면까지 오지 못합니다: 응답 가드가 먼저 거절합니다 — videoPreviewApi.test.ts.)
    */
-  it("says the clip's own sound is never used, whichever model the request uses", async () => {
+  // (Since B3-a the merge can lay the clip's sound under the mix — the sentence now says it is left out by default.)
+  it("says the clip's own sound is left out by default, whichever model the request uses", async () => {
     const first = renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse())));
-    expect((await screen.findByTestId("preview-model-audio")).textContent).toContain("소리는 내레이션과 배경 음악으로만");
+    expect((await screen.findByTestId("preview-model-audio")).textContent).toContain("기본으로는 완성본에 들어가지 않습니다");
     // Taken down first: with both mounted, the search can return the first screen's line before the second loads.
     first.unmount();
 
     const other = makePreviews(2).map((preview) => ({ ...preview, model: "h3_max_480p" as VideoPromptPreview["model"] }));
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews: other, confirmationId: "c1" })));
-    expect((await screen.findByTestId("preview-model-audio")).textContent).toContain("소리는 내레이션과 배경 음악으로만");
+    expect((await screen.findByTestId("preview-model-audio")).textContent).toContain("기본으로는 완성본에 들어가지 않습니다");
   });
 
   /**
