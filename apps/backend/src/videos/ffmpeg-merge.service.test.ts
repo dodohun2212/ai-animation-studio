@@ -39,6 +39,27 @@ async function setup() {
 }
 
 describe("FfmpegMergeEngine.merge narration audio mixing", () => {
+  /*
+   * 🔴 The bars on the first chained reel (h3_max_768p returns 2:3 from a 2:3 picture) — FRAME_FITS. `fill`
+   * covers the frame and cuts at the centre; the default stays the merge as it always was.
+   */
+  it("fills the frame and cuts at the centre when asked, and pads by default", async () => {
+    for (const [options, expected, absent] of [
+      [{ frameFit: "fill" as const }, "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,fps=30,format=yuv420p", "pad="],
+      [{}, "scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p", "crop="],
+    ] as const) {
+      const calls: string[][] = [];
+      const { finalPath, fontsDir } = await setup();
+      await new FfmpegMergeEngine(runner(calls), fontsDir).merge([{ clip: "scene1.mp4" }, { clip: "scene2.mp4" }], 5, finalPath, "9:16", options);
+      const normalize = calls.filter((args) => args.includes("-vf"));
+      expect(normalize, JSON.stringify(options)).toHaveLength(2);
+      for (const call of normalize) {
+        expect(call[call.indexOf("-vf") + 1], JSON.stringify(options)).toBe(expected);
+        expect(call[call.indexOf("-vf") + 1]).not.toContain(absent);
+      }
+    }
+  });
+
   it("uses anullsrc silence when a scene has no narration file, unchanged from before narration existed", async () => {
     const calls: string[][] = [];
     const { finalPath, fontsDir } = await setup();

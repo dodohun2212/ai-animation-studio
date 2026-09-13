@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout } from "@ai-animation-studio/shared";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, WorkflowState } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -122,6 +122,14 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   /** null until the project loads: the default mode is derived from what this project actually has, never assumed. */
   const [narrationAvailable, setNarrationAvailable] = useState<boolean | null>(null);
+  /* 기본값은 「여백」 — 캡틴D 가 고르기 전까지 결과가 지금과 같아야 합니다. 저장되는 값이 아니라 이 렌더
+     한 번에 대한 선택이라, 화면을 떠나면 다시 기본값입니다(계약의 `frameFit` 주석 그대로).
+
+     🔴 「여백」일 때는 칸을 **안 보냅니다.** 계약이 「생략 = pad」라고 적었으니 보내나 마나 결과는 같은데,
+     안 보내면 오늘까지의 요청과 **바이트가 같습니다** — 이 파일의 `audio`·`subtitleLayout` 이 이미 그 규칙을
+     따릅니다(「사람에게 실제로 물어본 호출만 보낸다」). 덕분에 지금 있는 병합 짝들이 본문을 통째로 비교해도
+     그대로 참이고, 새 칸이 생겼다는 이유만으로 다른 화면의 짝을 고치지 않아도 됩니다. */
+  const [frameFit, setFrameFit] = useState<FrameFit>("pad");
   const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
   const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
   const [trackId, setTrackId] = useState("");
@@ -235,7 +243,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
     setPending(true);
     setError(null);
     try {
-      const response = await mergeVideos(projectId, audioSettings ?? undefined, photoCard ? layout : undefined, sceneSubtitleAdjustable ? sceneLayout : undefined);
+      const response = await mergeVideos(projectId, audioSettings ?? undefined, photoCard ? layout : undefined, sceneSubtitleAdjustable ? sceneLayout : undefined, photoCard || frameFit === "pad" ? undefined : frameFit);
       setResult(response);
       // Back to showing the finished video: the request the button existed for has been made.
       setRemaking(false);
@@ -325,6 +333,45 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           onChange={setSceneLayout}
           disabled={pending || confirmOpen}
         />
+      )}
+
+      {/* 🔴 2026-09-13 에 완성된 첫 릴 위아래에 검은 띠가 붙었습니다. 원인은 병합이 아니라 모델입니다 —
+          클립이 릴 틀과 다른 모양으로 오고(h3_max_768p 는 장면 그림의 2:3 을 그대로 내보냅니다), 병합은
+          그 모양을 틀 안에 넣느라 여백을 붙였습니다. 잘라 채우면 **어느 모델을 골랐든** 띠가 없어집니다.
+
+          🔴 여기서 「지금 고른 모델」을 읽어 문장을 쓰지 않습니다. 띠를 만드는 것은 설정이 아니라 **이미
+          만들어진 클립**이고, 둘은 다를 수 있습니다 — 같은 날 저는 확인 화면의 설정을 읽고 이 릴이 무엇으로
+          나갔는지 틀리게 보고했습니다(CLI Round 809 · F5). 그래서 두 줄은 모델과 무관하게 참인 말만 합니다.
+
+          포토카드는 틀에 맞춰 그려지므로 선택이 아무것도 바꾸지 않고, 서버도 거절합니다 — 그래서 숨깁니다. */}
+      {(!result || remaking) && !photoCard && (
+        <fieldset data-testid="merge-frame-fit" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+          <legend className="px-1 text-sm font-semibold text-slate-100">화면 맞춤</legend>
+          {FRAME_FITS.map((value) => (
+            <label key={value} className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
+              <input
+                type="radio"
+                name="merge-frame-fit"
+                className="mt-1"
+                value={value}
+                checked={frameFit === value}
+                disabled={pending || confirmOpen}
+                onChange={() => setFrameFit(value)}
+                data-testid={`merge-frame-fit-${value}`}
+              />
+              <span>
+                <span className="block text-slate-100">{value === "pad" ? "여백 두기" : "꽉 채우기"}</span>
+                <span className="block text-xs text-slate-400">
+                  {value === "pad"
+                    ? "클립이 릴 틀과 다른 모양이면 빈 자리에 검은 띠가 남습니다 — 지금까지의 결과입니다."
+                    : aspectVertical
+                      ? "띠 없이 틀을 채우고, 대신 좌우 가장자리가 조금 잘립니다."
+                      : "띠 없이 틀을 채우고, 대신 위아래 가장자리가 조금 잘립니다."}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
       )}
 
       {(!result || remaking) && audioMode !== null && (

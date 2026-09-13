@@ -113,6 +113,21 @@ export type AudioMode = (typeof AUDIO_MODES)[number];
 export const isAudioMode = (value: unknown): value is AudioMode => AUDIO_MODES.includes(value as AudioMode);
 
 /**
+ * How the merge fits a clip whose shape is not the reel's.
+ * - `pad` — the whole clip, with bars where the shapes differ. The default, and what every merge did before.
+ * - `fill` — scaled to cover the frame and cut at the centre: no bars, and the edges of the wider axis go. A 2:3
+ *   clip in a 9:16 reel loses about 8% at each side; a 3:2 clip in a 16:9 reel about 8% top and bottom.
+ *
+ * Why it exists: every model that keeps the first frame's shape (`VideoModelOption.frameShape` —
+ * `follows_first_frame`) returns 2:3 clips from our 2:3 pictures, and the first chained reel came back with bars
+ * (h3_max_768p, 2026-09-13, Cowork Round 803 · CLI Round 804). Filling makes the choice of model independent of
+ * the bars.
+ */
+export const FRAME_FITS = ["pad", "fill"] as const;
+export type FrameFit = (typeof FRAME_FITS)[number];
+export const isFrameFit = (value: unknown): value is FrameFit => FRAME_FITS.includes(value as FrameFit);
+
+/**
  * What a merge does about background music when the request does not say.
  *
  * Both merges answered this identically and separately: two copies of 0.25, two copies of 2, two spellings of

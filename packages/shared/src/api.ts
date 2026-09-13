@@ -1,4 +1,4 @@
-import type { RunwayVideoRatio, AspectRatio, AudioMode, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
+import type { RunwayVideoRatio, AspectRatio, AudioMode, FrameFit, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, RunwayClipDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
 import { FINAL_VIDEO_RELATIVE_PATH, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -2326,6 +2326,14 @@ export interface MergeVideosRequest {
    * layout out of a scene's subtitle is that they never share a name — see {@link SceneSubtitleLayout}.
    */
   sceneSubtitleLayout?: { scale?: number; center?: number };
+  /**
+   * Ordinary projects only: whether clips whose shape differs from the reel's get bars or fill the frame — see
+   * FRAME_FITS. Omitted is `pad`, the merge as it always was.
+   *
+   * Not stored: it is a choice about this render, and the screen sends it each time. Refused on a photo card,
+   * which is drawn to the frame already — a control there would change nothing about the video.
+   */
+  frameFit?: FrameFit;
 }
 
 /** The local FFmpeg render result never exposes an absolute filesystem path. */

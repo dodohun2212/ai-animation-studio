@@ -1,3 +1,4 @@
+import { FRAME_FITS, isFrameFit, type FrameFit } from "@ai-animation-studio/shared";
 import * as fs from "node:fs/promises";
 import { isUsableClip, wasPaidRun } from "./placeholder-clip.js";
 import { PLACEHOLDER_ADAPTER } from "../narration/placeholder-narration.js";
@@ -141,12 +142,24 @@ function resolveSceneSubtitleLayout(project: StoredProject, request: unknown): S
   return merged;
 }
 
+/**
+ * How this render fits clips whose shape is not the reel's (MergeVideosRequest.frameFit). Omitted is `pad`, the
+ * merge as it always was; nothing is stored. Refused on a photo card for the reason `sceneSubtitleLayout` is: a
+ * card is drawn to the frame already, and accepting the field would let a screen believe it had a control.
+ */
+function resolveFrameFit(project: StoredProject, request: unknown): FrameFit {
+  if (!isObject(request) || request.frameFit === undefined) return "pad";
+  if (photoCardFor(project)) throw videoMergeInvalidRequest("frameFit does not apply to photo cards.");
+  if (!isFrameFit(request.frameFit)) throw videoMergeInvalidRequest(`frameFit must be ${FRAME_FITS.join(", ")}.`);
+  return request.frameFit;
+}
+
 function resolveAudioSettings(project: StoredProject, request: unknown): ResolvedAudioSettings {
   const narrationAvailable = narrationAvailableFor(project);
   const defaultMode: AudioMode = narrationAvailable && toShortProjectSettings(project).narrationEnabled ? "narration" : "silent";
   const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0 };
   if (request === undefined) return fallback;
-  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout" && key !== "sceneSubtitleLayout")) throw videoMergeInvalidRequest();
+  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout" && key !== "sceneSubtitleLayout" && key !== "frameFit")) throw videoMergeInvalidRequest();
   if (request.audio === undefined) return fallback;
   const audio = request.audio;
   if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds"].includes(key))) throw videoMergeInvalidRequest();
@@ -319,6 +332,7 @@ export class LocalVideoMergeService {
     const audio = resolveAudioSettings(project, request);
     const subtitleLayout = resolveSubtitleLayout(project, request);
     const sceneSubtitleLayout = resolveSceneSubtitleLayout(project, request);
+    const frameFit = resolveFrameFit(project, request);
     // Resolved before any state changes or rendering work starts — an unknown/unavailable track should fail
     // fast, the same as approvedClips() failing fast on invalid clips below, not mid-render.
     let bgmPath: string | undefined;
@@ -355,7 +369,7 @@ export class LocalVideoMergeService {
     // Held across the render and the save that follows it. The Instagram publish takes this same key while it
     // reads the file, so a post can never be built from a cut this merge is in the middle of replacing — the
     // one action in this app that cannot be undone must not race the one that rewrites what it sends.
-    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, () => this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, () => this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes, frameFit), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch(async (error: unknown) => {
         if (!(error instanceof ProjectLockTimeoutError)) throw error;
         // Nothing was rendered, so the project must not be left saying it is rendering.
@@ -376,6 +390,7 @@ export class LocalVideoMergeService {
     clipDurationSeconds: number,
     /** The scene each merge input stands for, so a failure inside FFmpeg can be named by scene number. */
     renderedScenes: readonly SceneNumber[],
+    frameFit: FrameFit,
   ): Promise<MergeVideosResponse> {
     const project = rendering;
     try {
@@ -385,7 +400,7 @@ export class LocalVideoMergeService {
       // The project's own setting, read from where it is actually stored (project-aspect.ts). This passed
       // `style_profile.aspect` until that field turned out to be written by nothing, so every merge padded to a
       // portrait canvas — including landscape footage, which came out pillarboxed.
-      await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, shortProjectAspectRatio(rendering));
+      await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, shortProjectAspectRatio(rendering), { frameFit });
       if (usesBgm(audio.mode) && bgmPath) {
         await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath, audio.startSeconds);
       }

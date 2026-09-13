@@ -1,3 +1,4 @@
+import type { FrameFit } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -201,13 +202,18 @@ export class FfmpegMergeEngine {
    * or empty fonts directory degrades to whatever libass's system font matching finds (readable, but not
    * guaranteed to match the intended look) rather than failing the merge.
    */
-  async merge(scenes: readonly MergeSceneInput[], clipDurationSeconds: number, finalPath: string, ratio: unknown): Promise<void> {
+  async merge(scenes: readonly MergeSceneInput[], clipDurationSeconds: number, finalPath: string, ratio: unknown, options: { frameFit?: FrameFit } = {}): Promise<void> {
     const [width, height] = outputSize(ratio);
     const directory = path.dirname(finalPath);
     const normalizedDirectory = path.join(directory, "normalized");
     await fs.mkdir(normalizedDirectory, { recursive: true });
     const normalized: string[] = [];
-    const baseFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p`;
+    // `pad` keeps the whole clip and adds bars; `fill` covers the frame and cuts the overflow at the centre
+    // (FRAME_FITS). A still is unaffected either way: kenBurns has already drawn it to the exact frame.
+    const fit = options.frameFit === "fill"
+      ? `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}`
+      : `scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`;
+    const baseFilter = `${fit},fps=30,format=yuv420p`;
     for (const [index, scene] of scenes.entries()) {
       const target = path.join(normalizedDirectory, `scene${index + 1}.mp4`);
       let filter = baseFilter;

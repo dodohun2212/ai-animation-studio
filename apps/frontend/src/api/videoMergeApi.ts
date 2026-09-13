@@ -1,4 +1,4 @@
-import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type FrameFit, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 import { mergeClipsInvalidMessage, mergeFailureMessage } from "../utils/sceneFailureAdvice.js";
 
@@ -150,13 +150,18 @@ export async function mergeVideos(
    * either, because the two are the same shape and nothing but the name keeps a card's centre out of a scene.
    */
   sceneSubtitleLayout?: SceneSubtitleLayout,
+  /**
+   * 릴 틀과 클립 모양이 다를 때 여백을 둘지 잘라 채울지 — 이 렌더 한 번에 대한 선택이라 저장되지 않고, 화면이
+   * 매번 실어 보냅니다(계약의 `frameFit` 주석 그대로). 포토카드에선 서버가 거절하므로 화면이 아예 안 보냅니다.
+   */
+  frameFit?: FrameFit,
 ): Promise<MergeVideosResponse> {
   let response: Response;
   try {
     // Omitting the body entirely is not the same as sending an empty one: the server then keeps the project's
     // own narration/subtitle toggles, which is the right behaviour for a caller that has no opinion. Only a
     // caller that actually asked the user sends `audio` — and the same rule holds for `subtitleLayout`.
-    const payload = { ...(audio ? { audio } : {}), ...(subtitleLayout ? { subtitleLayout } : {}), ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}) };
+    const payload = { ...(audio ? { audio } : {}), ...(subtitleLayout ? { subtitleLayout } : {}), ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(frameFit ? { frameFit } : {}) };
     response = await fetch(API_ROUTES.videoMerge(projectId), Object.keys(payload).length > 0
       ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }
       : { method: "POST" });

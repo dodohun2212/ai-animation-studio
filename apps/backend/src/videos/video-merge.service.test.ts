@@ -345,6 +345,32 @@ describe("local FFmpeg video merge", () => {
     expect(assFiles.get("scene2.ass")).toContain("장면 2 내레이션");
   });
 
+  /** FRAME_FITS: the request's choice reaches every scene's filter; omitted is the old pad; nothing is stored. */
+  it("fits the clips the way the request asks, and pads when it does not ask", async () => {
+    for (const [request, expected] of [[{ frameFit: "fill" }, "crop=1080:1920"], [{}, "pad=1080:1920"]] as const) {
+      const { projectsRoot, projects } = await setup();
+      const calls: string[][] = [];
+      await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", request);
+      const filters = calls.filter((args) => args.includes("-vf")).map((args) => args[args.indexOf("-vf") + 1]!);
+      expect(filters, JSON.stringify(request)).toHaveLength(6);
+      for (const filter of filters) expect(filter, JSON.stringify(request)).toContain(expected);
+      expect(JSON.stringify((await projects.findById("video_merge")).lore_context)).not.toContain("fill");
+    }
+  });
+
+  it("refuses a frameFit it does not know, and any frameFit on a photo card, before rendering anything", async () => {
+    const { projectsRoot, projects } = await setup();
+    const calls: string[][] = [];
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", { frameFit: "stretch" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    const card = await projects.findById("video_merge");
+    card.lore_context = { ...card.lore_context, photo_card: true };
+    await projects.save(card);
+    await expect(new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", { frameFit: "fill" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect(calls).toHaveLength(0);
+  });
+
   /** A project whose scenes carry narration text, so every merge below actually writes a subtitle file. */
   async function withSubtitles(projects: LocalProjectRepository): Promise<void> {
     const project = await projects.findById("video_merge");

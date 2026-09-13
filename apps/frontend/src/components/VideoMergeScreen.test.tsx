@@ -379,6 +379,56 @@ describe("VideoMergeScreen", () => {
    * on the merge — the one request that actually uses them — so what is stored is always a layout some video
    * was really made with.
    */
+  /**
+   * 🔴 2026-09-13 에 완성된 첫 릴 위아래에 검은 띠가 붙었습니다. 원인은 병합이 아니라 모델입니다 — 클립이
+   * 릴 틀과 다른 모양(장면 그림의 2:3)으로 왔고, 병합은 그 모양을 틀 안에 넣느라 여백을 붙였습니다.
+   * 잘라 채우면 **어느 모델을 골랐든** 띠가 없어집니다.
+   *
+   * 🔴 「여백」일 때는 칸을 아예 안 보냅니다. 계약이 「생략 = pad」이니 결과는 같은데, 안 보내면 오늘까지의
+   * 요청과 바이트가 같습니다 — 이 파일의 다른 짝들이 본문을 통째로 비교하고 있어서, 늘 보내면 새 칸이
+   * 생겼다는 이유만으로 그 짝들이 전부 빨개집니다. 그건 기능이 아니라 남의 짝을 고치는 일입니다.
+   */
+  it("sends the frame fit only when it is not the default", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { scenes: sixScenes() });
+
+    // 기본값은 「여백 두기」 — 고르기 전 결과는 지금까지와 같아야 합니다.
+    expect((await screen.findByTestId("merge-frame-fit-pad")) as HTMLInputElement).toBeTruthy();
+    expect(((screen.getByTestId("merge-frame-fit-pad")) as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    expect(Object.keys(JSON.parse(String((mergeFetch.mock.calls[0] as [string, RequestInit])[1].body))))
+      .not.toContain("frameFit");
+  });
+
+  it("sends fill once someone asks for it", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { scenes: sixScenes() });
+
+    fireEvent.click(await screen.findByTestId("merge-frame-fit-fill"));
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).frameFit).toBe("fill");
+  });
+
+  /**
+   * 🔴 포토카드는 틀에 맞춰 그려지므로 이 선택이 아무것도 바꾸지 않고, 서버도 거절합니다(INVALID_REQUEST).
+   * 아무것도 못 하는 선택을 보여 주면 사람은 눌러 보고, 눌러서 병합이 실패합니다.
+   */
+  it("hides the frame fit on a photo card, where it would only be refused", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "한 줄" }];
+    renderScreen(mergeFetch, { photoCard: true, scenes: still }, undefined, undefined, []);
+
+    await screen.findByTestId("open-merge-confirm-button");
+    expect(screen.queryByTestId("merge-frame-fit")).toBeNull();
+  });
+
   it("sends a photo card's adjusted subtitle layout with the merge", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
     const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
