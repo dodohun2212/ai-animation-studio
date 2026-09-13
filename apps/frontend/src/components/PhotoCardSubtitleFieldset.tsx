@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import type { AspectRatio, PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 import {
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
+  MERGE_FRAME_FOR_ASPECT,
   PHOTO_CARD_HEADING_RATIO,
   PHOTO_CARD_SUBTITLE_CENTER,
   PHOTO_CARD_SUBTITLE_CSS_RATIO,
@@ -18,7 +19,8 @@ interface Props {
   projectId: string;
   /** The card's own line, exactly as it will be burned in — newlines included, since the first one splits the two styles. */
   quote: string;
-  vertical: boolean;
+  /** The project's shape — the preview is drawn at the merge's real frame for it (MERGE_FRAME_FOR_ASPECT), 1:1 and 4:5 included. */
+  aspectRatio: AspectRatio;
   layout: PhotoCardSubtitleLayout;
   onChange: (layout: PhotoCardSubtitleLayout) => void;
   disabled?: boolean;
@@ -40,7 +42,7 @@ const label = "flex items-baseline justify-between text-sm text-slate-300";
  * numbers are the same ones the server accepts, read from the shared bounds rather than repeated, so a slider
  * cannot reach a value the merge would refuse.
  */
-export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, onChange, disabled }: Props) {
+export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layout, onChange, disabled }: Props) {
   /*
    * Drawn at the video's real size and scaled down, not laid out small.
    *
@@ -50,10 +52,12 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, vertical, layout, 
    * differently would show those cases fitting. So the frame is 1080x1920 here too, and only the last step —
    * a CSS scale — makes it small enough to sit beside the sliders.
    */
-  const frameWidth = vertical ? 1080 : 1920;
-  const frameHeight = vertical ? 1920 : 1080;
-  const width = vertical ? Math.round(PREVIEW_LONG_SIDE * 9 / 16) : PREVIEW_LONG_SIDE;
-  const height = vertical ? PREVIEW_LONG_SIDE : Math.round(PREVIEW_LONG_SIDE * 9 / 16);
+  // The merge's own frame for this shape (1080x1920, 1920x1080, 1080x1080, 1080x1350), its long side scaled to
+  // PREVIEW_LONG_SIDE. Was `vertical ? 1080x1920 : 1920x1080`, which drew a square or 4:5 project's text on a
+  // 9:16 frame — wrapped and placed for a video nobody makes.
+  const { width: frameWidth, height: frameHeight } = MERGE_FRAME_FOR_ASPECT[aspectRatio];
+  const width = Math.round(PREVIEW_LONG_SIDE * frameWidth / Math.max(frameWidth, frameHeight));
+  const height = Math.round(PREVIEW_LONG_SIDE * frameHeight / Math.max(frameWidth, frameHeight));
   const scale = width / frameWidth;
   // The renderer's own arithmetic, called rather than repeated. It used to be five lines copied out of
   // `subtitle-file.ts`, which is a preview that can be silently wrong — showing a picture of a video nobody

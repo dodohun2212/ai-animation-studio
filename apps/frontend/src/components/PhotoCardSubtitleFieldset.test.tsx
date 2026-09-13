@@ -11,7 +11,7 @@ function renderFieldset(quote: string, layout = DEFAULT_PHOTO_CARD_SUBTITLE_LAYO
     <PhotoCardSubtitleFieldset
       projectId="card_1"
       quote={quote}
-      vertical
+      aspectRatio="9:16"
       layout={layout}
       onChange={onChange}
     />,
@@ -56,6 +56,22 @@ describe("PhotoCardSubtitleFieldset", () => {
    * rest is the meaning. A card written as one line has no 사자성어 — setting it in the quote face anyway would
    * be the preview claiming a distinction the renderer does not make.
    */
+  // Item 6: the preview is the merge's real frame for the card's shape — a 4:5 card's text wraps on 1080 x 1350,
+  // not on the 9:16 frame a `vertical` switch used to draw for anything that was not 16:9.
+  it("draws the card's text on the merge's own frame for its shape", () => {
+    const frameOf = (aspectRatio: "9:16" | "16:9" | "1:1" | "4:5") => {
+      const { unmount } = render(<PhotoCardSubtitleFieldset projectId="card_1" quote="한 줄" aspectRatio={aspectRatio} layout={DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT} onChange={vi.fn()} />);
+      const inner = screen.getByTestId("photo-card-subtitle-preview").firstElementChild as HTMLElement;
+      const size = `${inner.style.width} ${inner.style.height}`;
+      unmount();
+      return size;
+    };
+    expect(frameOf("9:16")).toBe("1080px 1920px");
+    expect(frameOf("16:9")).toBe("1920px 1080px");
+    expect(frameOf("1:1")).toBe("1080px 1080px");
+    expect(frameOf("4:5")).toBe("1080px 1350px");
+  });
+
   it("gives the first line the quote face only when there is a second line", () => {
     renderFieldset(TWO_PART);
     const preview = screen.getByTestId("photo-card-subtitle-preview");

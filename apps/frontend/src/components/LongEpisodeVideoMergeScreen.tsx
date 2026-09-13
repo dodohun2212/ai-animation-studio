@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
-import { DEFAULT_SCENE_SUBTITLE_LAYOUT, type AudioLibraryTrack, type GenerationSource, type MergeLongEpisodeVideosResponse, type SceneSubtitleLayout, type UsedAudio } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, isAspectRatio, type AspectRatio, type AudioLibraryTrack, type GenerationSource, type MergeLongEpisodeVideosResponse, type SceneSubtitleLayout, type UsedAudio } from "@ai-animation-studio/shared";
 
 import { getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoReview, getLongProjectSettings, longEpisodeFinalVideoContentUrl, longEpisodeImageContentUrl, mergeLongEpisodeVideos, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -91,7 +91,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   const [sceneLayout, setSceneLayout] = useState<SceneSubtitleLayout>(DEFAULT_SCENE_SUBTITLE_LAYOUT);
   const [subtitledScenes, setSubtitledScenes] = useState<SubtitledScene[]>([]);
-  const [aspectVertical, setAspectVertical] = useState(true);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   /**
    * How many of this Episode's scene videos are actually 확정됨.
    *
@@ -179,7 +179,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
       .then(({ settings }) => {
         if (!cancelled) {
           setMediaMode({ narrationEnabled: settings.narrationEnabled, subtitlesEnabled: settings.subtitlesEnabled });
-          setAspectVertical(settings.aspectRatio !== "16:9");
+          setAspectRatio(isAspectRatio(settings.aspectRatio) ? settings.aspectRatio : "9:16");
         }
       })
       .catch(() => {});
@@ -255,7 +255,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         <SceneSubtitleFieldset
           previewImageUrl={(sceneNumber) => longEpisodeImageContentUrl(projectId, episodeNumber, sceneNumber, imageVersion)}
           scenes={subtitledScenes}
-          vertical={aspectVertical}
+          aspectRatio={aspectRatio}
           layout={sceneLayout}
           onChange={setSceneLayout}
           disabled={pending || confirmationOpen}

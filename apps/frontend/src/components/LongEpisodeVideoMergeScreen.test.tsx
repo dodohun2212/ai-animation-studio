@@ -198,6 +198,23 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(notice.textContent).toContain("자막만 입힙니다");
   });
 
+  // Item 6 (CLI Round 860): the Episode's own shape reaches the subtitle preview — a 4:5 story's captions are placed on
+  // the 1080 x 1350 frame the merge renders, not on the 9:16 one a portrait/landscape switch drew for it.
+  it("places Episode subtitles on the merge's own frame for the story's shape", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithSubtitles(4) },
+      [`GET ${SETTINGS_URL}`]: { ...mediaSettings(false, true), settings: makeLongProjectSettings({ narrationEnabled: false, subtitlesEnabled: true, aspectRatio: "4:5" }) },
+      ...confirmedRoutes(4, 4),
+    }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const preview = await screen.findByTestId("scene-subtitle-preview");
+    await waitFor(() => {
+      const frame = Array.from(preview.querySelectorAll("div")).find((node) => (node as HTMLElement).style.transform.startsWith("scale")) as HTMLElement;
+      expect(`${frame.style.width} ${frame.style.height}`).toBe("1080px 1350px");
+    });
+  });
+
   it("places Episode scene subtitles before audio and sends the chosen layout only when they will be burned in", async () => {
     const mergeFetch = stubFetchByRoute({
       [`GET ${EPISODE_URL}`]: { episode: episodeWithSubtitles(4) },

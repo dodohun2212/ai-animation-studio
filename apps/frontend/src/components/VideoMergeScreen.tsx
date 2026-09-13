@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoClipFacts, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, VIDEO_MODEL_OPTIONS, WorkflowState } from "@ai-animation-studio/shared";
-import { FRAME_FIT_NOTES } from "../utils/videoModelFacts.js";
+import type { AspectRatio, AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoClipFacts, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, isAspectRatio, MERGE_FRAME_FOR_ASPECT, VIDEO_MODEL_OPTIONS, WorkflowState } from "@ai-animation-studio/shared";
+import { FRAME_FIT_NOTES, frameFitOutcome } from "../utils/videoModelFacts.js";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -29,6 +29,19 @@ type LoadState = { status: "loading" } | { status: "error"; error: DisplayError 
 const FRAME_RATIO_TOLERANCE = 0.01;
 
 /**
+ * Which edge 「꽉 채우기」 trims, by the reel's shape — for the clips that shape usually gets: 2:3 pictures in a 9:16
+ * reel lose their sides, 3:2 in a 16:9 reel their top and bottom, 3:4 requests in a 4:5 reel their top and bottom.
+ * A square reel's clips are square (both kinds of model), so only a clip that is not loses anything. A `Record`,
+ * so a new shape is a compile error here rather than a sentence about the wrong edge (CLI Round 860).
+ */
+const FILL_CROP_NOTE: Record<AspectRatio, string> = {
+  "9:16": "띠 없이 틀을 채우고, 대신 좌우 가장자리가 조금 잘립니다.",
+  "16:9": "띠 없이 틀을 채우고, 대신 위아래 가장자리가 조금 잘립니다.",
+  "1:1": "띠 없이 틀을 채웁니다 — 틀과 모양이 다른 클립만 가장자리가 조금 잘립니다.",
+  "4:5": "띠 없이 틀을 채우고, 대신 위아래 가장자리가 조금 잘립니다.",
+};
+
+/**
  * 디스크의 클립을 **잰** 값으로 쓰는 문장 — 모델로 짐작한 문장보다 먼저입니다.
  *
  * 🔴 여기엔 「확인 안 됨」이 없습니다. 모델 표는 그 모델이 무엇을 할지 몰라서 세 갈래였지만, 파일은 이미
@@ -40,11 +53,13 @@ const FRAME_RATIO_TOLERANCE = 0.01;
  */
 function measuredFrameNote(
   clips: readonly VideoClipFacts[],
-  vertical: boolean,
+  aspectRatio: AspectRatio,
   sceneCount: number,
 ): { text: string; bars: boolean } | null {
   if (clips.length === 0) return null;
-  const target = vertical ? 9 / 16 : 16 / 9;
+  // The merge's real frame for this shape — was `vertical ? 9/16 : 16/9`, which called a square reel's square
+  // clips "a different shape" (CLI Round 860).
+  const target = MERGE_FRAME_FOR_ASPECT[aspectRatio].width / MERGE_FRAME_FOR_ASPECT[aspectRatio].height;
   const matches = clips.map((clip) => Math.abs(clip.width / clip.height - target) < FRAME_RATIO_TOLERANCE);
   const sizes = [...new Set(clips.map((clip) => `${clip.width}×${clip.height}`))].join(" · ");
   /* 🔴 잰 것만 보고 전체를 말하지 않습니다. 파일 하나가 깨졌거나 ffprobe 가 한 번 실패하면 다섯 개만 재지는데,
@@ -75,7 +90,7 @@ function measuredFrameNote(
  * 🔴 카탈로그가 모르는 이름이 하나라도 있으면 아무 말도 하지 않습니다. `videoModelOption` 은 모르는 이름에
  * 던지므로 쓰지 않고(그 던짐은 값 계산에서 옳습니다), 여기서는 조용히 비켜섭니다.
  */
-function frameNoteFor(models: readonly VideoModel[]): { text: string; bars: boolean } | null {
+function frameNoteFor(models: readonly VideoModel[], aspectRatio: AspectRatio): { text: string; bars: boolean } | null {
   if (models.length === 0) return null;
   const options = models.map((id) => VIDEO_MODEL_OPTIONS.find((option) => option.id === id));
   if (options.some((option) => option === undefined)) return null;
@@ -84,7 +99,7 @@ function frameNoteFor(models: readonly VideoModel[]): { text: string; bars: bool
   if (known.length > 1) {
     return { text: `이 릴의 클립은 서로 다른 모델로 만들어졌습니다(${names}) — 일부 클립에만 띠가 생길 수 있습니다.`, bars: true };
   }
-  const note = FRAME_FIT_NOTES[known[0]!.frameShape];
+  const note = FRAME_FIT_NOTES[frameFitOutcome(known[0]!, aspectRatio)];
   return { text: `이 릴의 클립은 ${names}로 만들어졌고 ${note.text}`, bars: note.bars };
 }
 
@@ -170,7 +185,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    */
   const [subtitledScenes, setSubtitledScenes] = useState<SubtitledScene[]>([]);
   /** The frame's shape, read from the project's one `aspectRatio` field rather than assumed — the preview box has to match the video it previews. */
-  const [aspectVertical, setAspectVertical] = useState(true);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   /**
    * Whether this card is already out on Instagram, and whether the person has asked to make it again.
    *
@@ -261,7 +276,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             .map((scene) => ({ number: scene.number, text: (scene.narration ?? "").trim() }))
             .filter((scene) => scene.text.length > 0),
         );
-        setAspectVertical(response.project.aspectRatio !== "16:9");
+        setAspectRatio(isAspectRatio(response.project.aspectRatio) ? response.project.aspectRatio : "9:16");
         setPublished(Boolean(response.project.instagramPost));
         // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
         // defaulting to it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011).
@@ -362,7 +377,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
   /* 🔴 잰 값이 먼저입니다. 모델 표는 「이 모델이면 이렇게 될 것이다」이고 `clip` 은 「이 파일이 이렇다」라,
      둘이 갈리면 이기는 쪽이 정해져 있습니다 — 그리고 잰 값에는 「확인 안 됨」이 없어서 단정해도 됩니다. */
-  const clipFrameNote = measuredFrameNote(clipFacts, aspectVertical, clipSceneCount) ?? frameNoteFor(clipModels);
+  const clipFrameNote = measuredFrameNote(clipFacts, aspectRatio, clipSceneCount) ?? frameNoteFor(clipModels, aspectRatio);
   const audibleClips = clipFacts.filter((clip) => clip.hasAudio).length;
 
   return (
@@ -404,7 +419,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         <PhotoCardSubtitleFieldset
           projectId={projectId}
           quote={quote}
-          vertical={aspectVertical}
+          aspectRatio={aspectRatio}
           layout={layout}
           onChange={setLayout}
           disabled={pending || confirmOpen}
@@ -418,7 +433,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         <SceneSubtitleFieldset
           previewImageUrl={(sceneNumber) => sceneImageContentUrl(projectId, sceneNumber)}
           scenes={subtitledScenes}
-          vertical={aspectVertical}
+          aspectRatio={aspectRatio}
           layout={sceneLayout}
           onChange={setSceneLayout}
           disabled={pending || confirmOpen}
@@ -454,9 +469,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
                 <span className="block text-xs text-slate-400">
                   {value === "pad"
                     ? "클립이 릴 틀과 다른 모양이면 빈 자리에 검은 띠가 남습니다 — 지금까지의 결과입니다."
-                    : aspectVertical
-                      ? "띠 없이 틀을 채우고, 대신 좌우 가장자리가 조금 잘립니다."
-                      : "띠 없이 틀을 채우고, 대신 위아래 가장자리가 조금 잘립니다."}
+                    : FILL_CROP_NOTE[aspectRatio]}
                 </span>
               </span>
             </label>

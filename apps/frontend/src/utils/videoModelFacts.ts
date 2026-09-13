@@ -1,5 +1,5 @@
-import type { RunwayVideoRatio, VideoFrameShape, VideoModelOption } from "@ai-animation-studio/shared";
-import { VIDEO_MODEL_OPTIONS, videoModelTakesRatio, videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
+import type { AspectRatio, RunwayVideoRatio, VideoFrameShape, VideoModelOption } from "@ai-animation-studio/shared";
+import { ASPECT_RATIOS, IMAGE_SIZE_FOR_ASPECT, MERGE_FRAME_FOR_ASPECT, RUNWAY_RATIO_FOR_ASPECT, VIDEO_MODEL_OPTIONS, videoModelTakesRatio, videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 
 /**
  * What is known about one video model, as sentences — in one place, because two screens say it.
@@ -188,15 +188,24 @@ export function videoSetupIssues(option: VideoModelOption, setup: VideoSetup): V
     });
   }
 
-  /* `requested` 만 비율을 실제로 받습니다. 나머지 둘은 「받지 않는다」가 같고, 확실한지만 다릅니다 — 그 차이를
-     문장에 둡니다(하나는 생깁니다, 하나는 생길 수 있습니다). */
-  if (option.frameShape === "follows_first_frame") {
+  /* 클립이 병합 틀과 같은 모양인지는 모델만으로 정해지지 않습니다 — 프로젝트 비율이 같이 정합니다
+     (`frameFitOutcome`). 9:16·16:9 에선 비율을 받는 모델이 틀과 같고 그림을 따르는 모델이 다르지만, 1:1 에선
+     둘 다 같고, 4:5 에선 거꾸로입니다(4:5 를 받는 모델이 없어 3:4 로 청하고, 그림은 4:5). 「확인 안 됨」은
+     그대로 「생길 수 있습니다」입니다. */
+  const fit = frameFitOutcome(option, aspectForRunwayRatio(setup.ratio));
+  if (fit === "differs" && option.frameShape === "requested") {
     issues.push({
       id: "ratio",
       severity: "warning",
-      text: `${option.label}은(는) 비율 설정을 쓰지 않고 장면 그림의 비율을 그대로 내보냅니다 — 완성본 위아래에 띠가 생깁니다.`,
+      text: `${option.label}은(는) 이 프로젝트의 비율을 받지 않아 가장 가까운 ${setup.ratio} 로 만들고, 병합에서 틀에 맞춥니다 — 「여백 두기」로 합치면 띠가 생깁니다.`,
     });
-  } else if (option.frameShape === "unconfirmed") {
+  } else if (fit === "differs") {
+    issues.push({
+      id: "ratio",
+      severity: "warning",
+      text: `${option.label}은(는) 비율 설정을 쓰지 않고 장면 그림의 비율을 그대로 내보냅니다 — 「여백 두기」로 합치면 완성본에 띠가 생깁니다.`,
+    });
+  } else if (fit === "unknown") {
     issues.push({
       id: "ratio",
       severity: "warning",
@@ -273,13 +282,39 @@ export const videoModelSceneUsd = (option: VideoModelOption, seconds = 5): numbe
  * 하나를 두면 **같은 릴에 대해 두 화면의 확신이 달라집니다.** (CLI Round 816 지적. 제가 두 라운드 전에
  * `generatesAudio` 를 두고 똑같은 주장을 해 놓고 여기서 참/거짓을 썼습니다.)
  *
- * 🔴 `Record` 라 네 번째 모양이 생기면 여기서 컴파일 오류가 납니다 — 조용히 한 갈래가 빠지는 대신에.
+ * 🔴 모델의 성질(`frameShape`)이 아니라 **이 프로젝트에서의 결과**(`frameFitOutcome`)로 가릅니다. 9:16·16:9 만
+ * 있을 땐 둘이 같은 말이었지만(비율을 받는 모델 = 틀과 같음), 1:1 에선 그림을 따르는 모델도 틀과 같고, 4:5
+ * 에선 비율을 받는 모델이 3:4 로 나와 오히려 틀과 다릅니다(CLI Round 860).
+ *
+ * 🔴 `Record` 라 네 번째 결과가 생기면 여기서 컴파일 오류가 납니다 — 조용히 한 갈래가 빠지는 대신에.
  */
-export const FRAME_FIT_NOTES: Record<VideoFrameShape, { text: string; bars: boolean }> = {
-  requested: { text: "릴 틀에 맞는 모양입니다 — 어느 쪽을 골라도 띠가 없습니다.", bars: false },
-  follows_first_frame: { text: "릴 틀과 다른 모양입니다 — 「여백 두기」로 합치면 띠가 남습니다.", bars: true },
-  unconfirmed: { text: "어떤 모양으로 나오는지 확인되지 않았습니다 — 「여백 두기」로 합치면 띠가 남을 수 있습니다.", bars: true },
+export const FRAME_FIT_NOTES: Record<FrameFitOutcome, { text: string; bars: boolean }> = {
+  same: { text: "릴 틀에 맞는 모양입니다 — 어느 쪽을 골라도 띠가 없습니다.", bars: false },
+  differs: { text: "릴 틀과 다른 모양입니다 — 「여백 두기」로 합치면 띠가 남습니다.", bars: true },
+  unknown: { text: "어떤 모양으로 나오는지 확인되지 않았습니다 — 「여백 두기」로 합치면 띠가 남을 수 있습니다.", bars: true },
 };
+
+/** A clip this model makes for a project of this shape, against the merge frame — `unknown` when nobody has measured it. */
+export type FrameFitOutcome = "same" | "differs" | "unknown";
+
+/**
+ * Computed from the three shared tables rather than written per shape: a model told a ratio makes
+ * `RUNWAY_RATIO_FOR_ASPECT[aspect]`, a model told none makes the picture's shape (`IMAGE_SIZE_FOR_ASPECT[aspect]`),
+ * and the merge renders `MERGE_FRAME_FOR_ASPECT[aspect]`. A fifth shape needs no edit here.
+ */
+export function frameFitOutcome(option: VideoModelOption, aspect: AspectRatio): FrameFitOutcome {
+  if (option.frameShape === "unconfirmed") return "unknown";
+  const [width, height] = option.frameShape === "requested"
+    ? RUNWAY_RATIO_FOR_ASPECT[aspect].split(":").map(Number)
+    : IMAGE_SIZE_FOR_ASPECT[aspect].split("x").map(Number);
+  const frame = MERGE_FRAME_FOR_ASPECT[aspect];
+  return Math.abs(width! / height! - frame.width / frame.height) < 0.01 ? "same" : "differs";
+}
+
+/** The project shape a request's Runway ratio stands for — the table is one-to-one, so this is exact. Unknown reads as portrait, the app's fallback everywhere. */
+export function aspectForRunwayRatio(ratio: string): AspectRatio {
+  return ASPECT_RATIOS.find((aspect) => RUNWAY_RATIO_FOR_ASPECT[aspect] === ratio) ?? "9:16";
+}
 
 export const VIDEO_MODEL_FILTERS = ["all", "last_frame", "exact_ratio"] as const;
 export type VideoModelFilter = (typeof VIDEO_MODEL_FILTERS)[number];

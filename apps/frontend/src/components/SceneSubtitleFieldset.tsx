@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { SceneNumber, SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import type { AspectRatio, SceneNumber, SceneSubtitleLayout } from "@ai-animation-studio/shared";
 import {
   DEFAULT_SCENE_SUBTITLE_LAYOUT,
+  MERGE_FRAME_FOR_ASPECT,
   SCENE_SUBTITLE_CENTER,
   SCENE_SUBTITLE_CSS_RATIO,
   SCENE_SUBTITLE_OUTLINE,
@@ -23,7 +24,8 @@ interface Props {
   /** The owner supplies this because short-project and Episode image routes are different. */
   previewImageUrl: (sceneNumber: SceneNumber) => string;
   scenes: SubtitledScene[];
-  vertical: boolean;
+  /** The project's shape — the preview is drawn at the merge's real frame for it (MERGE_FRAME_FOR_ASPECT), 1:1 and 4:5 included. */
+  aspectRatio: AspectRatio;
   layout: SceneSubtitleLayout;
   onChange: (layout: SceneSubtitleLayout) => void;
   disabled?: boolean;
@@ -50,7 +52,7 @@ const label = "flex items-baseline justify-between text-sm text-slate-300";
  * The bounds come from the shared ranges rather than being repeated, so a slider cannot reach a value the merge
  * would refuse.
  */
-export function SceneSubtitleFieldset({ previewImageUrl, scenes, vertical, layout, onChange, disabled }: Props) {
+export function SceneSubtitleFieldset({ previewImageUrl, scenes, aspectRatio, layout, onChange, disabled }: Props) {
   /*
    * Drawn at the video's real size and scaled down, not laid out small.
    *
@@ -60,10 +62,12 @@ export function SceneSubtitleFieldset({ previewImageUrl, scenes, vertical, layou
    * block's height depends on how much text there is, so this measurement is the only thing that closes that
    * hole (see SCENE_SUBTITLE_CENTER's own note, and CLI Round 667's correction of the number I read it from).
    */
-  const frameWidth = vertical ? 1080 : 1920;
-  const frameHeight = vertical ? 1920 : 1080;
-  const width = vertical ? Math.round(PREVIEW_LONG_SIDE * 9 / 16) : PREVIEW_LONG_SIDE;
-  const height = vertical ? PREVIEW_LONG_SIDE : Math.round(PREVIEW_LONG_SIDE * 9 / 16);
+  // The merge's own frame for this shape (1080x1920, 1920x1080, 1080x1080, 1080x1350), its long side scaled to
+  // PREVIEW_LONG_SIDE. Was `vertical ? 1080x1920 : 1920x1080`, which drew a square or 4:5 project's text on a
+  // 9:16 frame — wrapped and placed for a video nobody makes.
+  const { width: frameWidth, height: frameHeight } = MERGE_FRAME_FOR_ASPECT[aspectRatio];
+  const width = Math.round(PREVIEW_LONG_SIDE * frameWidth / Math.max(frameWidth, frameHeight));
+  const height = Math.round(PREVIEW_LONG_SIDE * frameHeight / Math.max(frameWidth, frameHeight));
   const previewScale = width / frameWidth;
   // The renderer's own arithmetic, called rather than copied — a preview that re-implements it is a preview
   // that can be wrong without saying so.

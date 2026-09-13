@@ -1,6 +1,6 @@
 import type { MergeVideosResponse, Project, Scene } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeProject } from "../api/testUtils.js";
@@ -503,6 +503,35 @@ describe("VideoMergeScreen", () => {
 
     const note = await screen.findByTestId("merge-frame-fit-clip-models");
     expect(note.textContent).toContain("어느 쪽을 골라도 띠가 없습니다");
+  });
+
+  /*
+   * Item 6 (CLI Round 860): the frame is the project's own, not a portrait/landscape switch. A square reel's
+   * measured square clips fit; a 4:5 reel made with gen4 does not (its requests go out 3:4), while one made with a
+   * model that follows the 4:5 picture does — the opposite of what the model table says for 9:16.
+   */
+  it("measures a square reel against a square frame, not a portrait one", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const models = Object.fromEntries(scenes.map((scene) => [scene.number, "gen4_turbo"]));
+    const facts = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 960, height: 960, hasAudio: false }]));
+    renderScreen(mergeFetch, { scenes, aspectRatio: "1:1" }, undefined, undefined, undefined, undefined, models, facts);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("960×960");
+    expect(note.textContent).toContain("어느 쪽을 골라도 띠가 없습니다");
+  });
+
+  it("tells a 4:5 reel the model-table answer for 4:5, which turns the 9:16 one round", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    renderScreen(mergeFetch, { scenes, aspectRatio: "4:5" }, undefined, undefined, undefined, undefined, Object.fromEntries(scenes.map((scene) => [scene.number, "gen4_turbo"])));
+    expect((await screen.findByTestId("merge-frame-fit-clip-models")).textContent).toContain("릴 틀과 다른 모양입니다");
+    expect(screen.getByTestId("merge-frame-fit").textContent).toContain("위아래 가장자리가 조금 잘립니다");
+    cleanup();
+
+    renderScreen(mergeFetch, { scenes, aspectRatio: "4:5" }, undefined, undefined, undefined, undefined, Object.fromEntries(scenes.map((scene) => [scene.number, "wan3_720p"])));
+    expect((await screen.findByTestId("merge-frame-fit-clip-models")).textContent).toContain("릴 틀에 맞는 모양입니다");
   });
 
   /** 설정을 바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 모양이 다른 클립이 섞입니다 — 지어낸 경우가 아닙니다. */
