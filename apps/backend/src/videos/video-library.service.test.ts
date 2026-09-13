@@ -537,6 +537,35 @@ describe("VideoLibraryService.list — Episodes", () => {
     expect(result.longProjects).toEqual([]);
   });
 
+  /*
+   * The screen groups episode rows under their story's row (`episodeGroups`, VideoLibraryScreen) and draws a
+   * group only from a story row — so an episode row whose story row is missing would not be drawn at all. The
+   * frontend has no way to tell that apart from "no episodes"; the promise is the server's to keep, so it is
+   * pinned here (Cowork · CLI Round 835): every episode row has exactly one story row, and every story row has
+   * episode rows under it, with their video spend.
+   */
+  it("gives every episode row exactly one story row to sit under, and no story row without episodes", async () => {
+    const { projectsRoot, budget, service } = await setup();
+    await createEpisodeWithVideos(projectsRoot, "story_a", 1, { finalVideo: true });
+    await createEpisodeWithVideos(projectsRoot, "story_a", 2, { finalVideo: false });
+    await createEpisodeWithVideos(projectsRoot, "story_b", 3, { finalVideo: true });
+    await createEpisodeWithVideos(projectsRoot, "story_empty", 1, { scenes: [], finalVideo: false });
+    await budget.record("story_a:episode1", 1, "video", true, 0.5);
+    await budget.record("story_b:episode3", 1, "video", true, 0.25);
+
+    const result = await service.list();
+
+    const heads = result.longProjects.map((row) => row.projectId);
+    expect(new Set(heads).size, "one row per story").toBe(heads.length);
+    for (const row of result.episodes) expect(heads.filter((id) => id === row.projectId), `${row.projectId}/${row.episodeNumber}`).toHaveLength(1);
+    for (const head of result.longProjects) {
+      const under = result.episodes.filter((row) => row.projectId === head.projectId);
+      expect(under.length, head.projectId).toBeGreaterThan(0);
+      expect(head.episodesCostUsd, head.projectId).toBeCloseTo(under.reduce((sum, row) => sum + row.totalActualCostUsd, 0), 8);
+    }
+    expect([...heads].sort()).toEqual(["story_a", "story_b"]);
+  });
+
   /**
    * The credit line belongs on the card someone comes back to. Publishing happens days after merging, and the
    * short row has carried these two fields for exactly that reason — an Episode built on a CC BY track was the
