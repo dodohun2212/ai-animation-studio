@@ -240,6 +240,62 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(JSON.parse(String(init.body))).toEqual({ audio: { mode: "silent" }, sceneSubtitleLayout: { scale: 0.04, center: 0.62 } });
   });
 
+  /**
+   * 캡틴D Cowork Round 866/868: 16:9 에피소드를 잘리는 부분도 검은 띠도 없이 9:16 릴로 내보내는 회전
+   * 선택지 — 그 모양이 아니면 서버가 렌더 전에 거절하므로(계약 주석), 화면은 16:9 일 때만 이 칸을 보여준다.
+   */
+  it("hides the rotate option on a vertical Episode, where the server would refuse it", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
+      [`GET ${SETTINGS_URL}`]: mediaSettings(false, false),
+    }));
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    await screen.findByTestId("episode-open-merge-confirm");
+    expect(screen.queryByTestId("episode-merge-rotate")).toBeNull();
+  });
+
+  it("shows the rotate option on a 16:9 Episode and omits it from the request by default", async () => {
+    const mergeFetch = stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
+      [`GET ${SETTINGS_URL}`]: { ...mediaSettings(false, false), settings: makeLongProjectSettings({ narrationEnabled: false, subtitlesEnabled: false, aspectRatio: "16:9" }) },
+      [`POST ${MERGE_URL}`]: response(),
+    });
+    vi.stubGlobal("fetch", mergeFetch);
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    expect((await screen.findByTestId("episode-merge-rotate-toggle")) as HTMLInputElement).toBeTruthy();
+    expect(((screen.getByTestId("episode-merge-rotate-toggle")) as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
+    await screen.findByTestId("episode-merge-success");
+
+    const post = mergeFetch.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "POST");
+    const [, init] = post as [string, RequestInit];
+    expect(Object.keys(JSON.parse(String(init.body)))).not.toContain("rotateClockwise");
+  });
+
+  it("sends rotateClockwise once someone turns it on, and names the trade-off before confirming", async () => {
+    const mergeFetch = stubFetchByRoute({
+      [`GET ${EPISODE_URL}`]: { episode: episodeWithScenes(4) },
+      [`GET ${SETTINGS_URL}`]: { ...mediaSettings(false, false), settings: makeLongProjectSettings({ narrationEnabled: false, subtitlesEnabled: false, aspectRatio: "16:9" }) },
+      [`POST ${MERGE_URL}`]: response(),
+    });
+    vi.stubGlobal("fetch", mergeFetch);
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByTestId("episode-merge-rotate-toggle"));
+    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    expect((await screen.findByTestId("episode-merge-confirm-rotate-notice")).textContent).toContain("폰을 눕혀서 보는 영상이 됩니다");
+    fireEvent.click(screen.getByTestId("episode-confirm-merge"));
+
+    await screen.findByTestId("episode-merge-success");
+    const post = mergeFetch.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === "POST");
+    const [, init] = post as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).rotateClockwise).toBe(true);
+  });
+
   it("says nothing about audio or subtitles when the settings could not be read", async () => {
     // A wrong claim here is worse than none: someone would confirm a merge expecting narration on it.
     vi.stubGlobal("fetch", stubFetchByRoute(

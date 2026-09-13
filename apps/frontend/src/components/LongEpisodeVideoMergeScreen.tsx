@@ -92,6 +92,10 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const [sceneLayout, setSceneLayout] = useState<SceneSubtitleLayout>(DEFAULT_SCENE_SUBTITLE_LAYOUT);
   const [subtitledScenes, setSubtitledScenes] = useState<SubtitledScene[]>([]);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
+  /* 기본값은 「돌리지 않음」 — 캡틴D 가 고르기 전까지 결과가 지금과 같아야 합니다. 저장되지 않는 이 렌더
+     한 번의 선택이라, 꺼진 채로는 칸 자체를 보내지 않습니다(계약의 `rotateClockwise` 주석, 캡틴D Cowork
+     Round 866/868). 16:9 가 아니면 서버가 거절하므로 아래에서 그 모양일 때만 보여줍니다. */
+  const [rotateClockwise, setRotateClockwise] = useState(false);
   /**
    * How many of this Episode's scene videos are actually 확정됨.
    *
@@ -203,6 +207,9 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   const audioSettings = toAudioSettings(audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
   const sceneSubtitleAdjustable = subtitledScenes.length > 0 && mediaMode?.subtitlesEnabled === true;
+  /* 서버는 16:9 가 아닌 프로젝트에서 `rotateClockwise: true` 를 받으면 렌더 전에 거절합니다(계약 주석) —
+     그래서 그 모양일 때만 선택지를 보여줍니다. */
+  const rotatable = aspectRatio === "16:9";
 
   function openConfirmation(): void {
     if (busy.current || result || blocked) return;
@@ -216,7 +223,13 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
     setPending(true);
     setError(null);
     try {
-      const merged = await mergeLongEpisodeVideos(projectId, episodeNumber, audioSettings ?? undefined, sceneSubtitleAdjustable ? sceneLayout : undefined);
+      const merged = await mergeLongEpisodeVideos(
+        projectId,
+        episodeNumber,
+        audioSettings ?? undefined,
+        sceneSubtitleAdjustable ? sceneLayout : undefined,
+        rotatable && rotateClockwise ? true : undefined,
+      );
       setResult(merged);
       setUsedAudio(merged.episode.usedAudio);
       setFinalVideoGenerationSource(merged.episode.finalVideoGenerationSource);
@@ -260,6 +273,30 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
           onChange={setSceneLayout}
           disabled={pending || confirmationOpen}
         />
+      )}
+      {/* 캡틴D Cowork Round 866/868: 16:9 에피소드를 인스타 릴로 올릴 때 위아래 검은 띠 대신, 영상 자체를
+          시계 방향으로 90도 돌려 잘리는 부분도 띠도 없이 정확히 9:16 릴로 만든다. 자막은 돌리기 전에 입혀서
+          돌아간 채로도 똑바로 읽힌다. 16:9 가 아니면 서버가 거절하므로(계약 주석) 그 모양일 때만 보여준다. */}
+      {!result && !alreadyMerged && rotatable && (
+        <fieldset data-testid="episode-merge-rotate" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+          <legend className="px-1 text-sm font-semibold text-slate-100">화면 회전</legend>
+          <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={rotateClockwise}
+              disabled={pending || confirmationOpen}
+              onChange={(event) => setRotateClockwise(event.target.checked)}
+              data-testid="episode-merge-rotate-toggle"
+            />
+            <span>
+              <span className="block text-slate-100">돌려서 세로 릴로 내보내기</span>
+              <span className="block text-xs text-slate-400">
+                영상을 시계 방향으로 90도 돌려 잘리는 부분도 검은 띠도 없이 9:16 릴로 만듭니다 — 보는 사람이 폰을 반시계로 눕혀서 봐야 화면이 똑바로 보입니다. 끄면 지금까지처럼 가로 그대로 저장됩니다.
+              </span>
+            </span>
+          </label>
+        </fieldset>
       )}
       {!result && !alreadyMerged && audioMode !== null && (
         <MergeAudioFieldset
@@ -309,6 +346,11 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
                 아직 시작되지 않았습니다. 확인을 눌러야 최종 영상 만들기가 시작됩니다.
                 {contentSentence ? ` ${contentSentence}` : ""} 유료 요청은 전송되지 않습니다.
               </p>
+              {rotatable && rotateClockwise && (
+                <p data-testid="episode-merge-confirm-rotate-notice" className="text-sm text-amber-200">
+                  90도 돌려서 만듭니다 — 폰을 눕혀서 보는 영상이 됩니다.
+                </p>
+              )}
               <div className="flex gap-3">
                 <button
                   type="button"

@@ -1198,8 +1198,8 @@ export function recoverLongEpisodeVideos(projectId: string, episodeNumber: numbe
  * narration/subtitle toggles, which is right for a caller that has no opinion. Only a caller that actually
  * asked the user sends `audio`. Same rule as the short project's mergeVideos, deliberately.
  */
-export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number, audio?: MergeAudioSettings, sceneSubtitleLayout?: SceneSubtitleLayout): Promise<MergeLongEpisodeVideosResponse> {
-  const body = { ...(audio ? { audio } : {}), ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}) };
+export function mergeLongEpisodeVideos(projectId: string, episodeNumber: number, audio?: MergeAudioSettings, sceneSubtitleLayout?: SceneSubtitleLayout, rotateClockwise?: boolean): Promise<MergeLongEpisodeVideosResponse> {
+  const body = { ...(audio ? { audio } : {}), ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(rotateClockwise ? { rotateClockwise } : {}) };
   const init: RequestInit = Object.keys(body).length > 0
     ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
     : { method: "POST" };

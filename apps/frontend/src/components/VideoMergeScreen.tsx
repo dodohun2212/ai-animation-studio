@@ -209,6 +209,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
      따릅니다(「사람에게 실제로 물어본 호출만 보낸다」). 덕분에 지금 있는 병합 짝들이 본문을 통째로 비교해도
      그대로 참이고, 새 칸이 생겼다는 이유만으로 다른 화면의 짝을 고치지 않아도 됩니다. */
   const [frameFit, setFrameFit] = useState<FrameFit>("pad");
+  /* 기본값은 「돌리지 않음」 — 캡틴D 가 고르기 전까지 결과가 지금과 같아야 합니다. `frameFit`과 같은 규칙으로
+     저장되지 않는 이 렌더 한 번의 선택이라, 꺼진 채로는 칸 자체를 보내지 않습니다(계약의 `rotateClockwise`
+     주석, 캡틴D Cowork Round 866/868). 16:9 가 아니면 서버가 거절하므로 아래에서 그 모양일 때만 보여줍니다. */
+  const [rotateClockwise, setRotateClockwise] = useState(false);
   /* 클립을 **만든** 모델들 — 오늘 설정이 아니라 작업 기록에서(`VideoReview.model`, CLI Round 813). 둘은 다를 수
      있고, 띠를 만드는 것은 설정이 아니라 이미 만들어진 클립입니다. 여러 개인 것도 실제 상태입니다: 설정을
      바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 모양이 다른 클립이 섞입니다. */
@@ -341,7 +345,14 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
     setPending(true);
     setError(null);
     try {
-      const response = await mergeVideos(projectId, audioSettings ?? undefined, photoCard ? layout : undefined, sceneSubtitleAdjustable ? sceneLayout : undefined, photoCard || frameFit === "pad" ? undefined : frameFit);
+      const response = await mergeVideos(
+        projectId,
+        audioSettings ?? undefined,
+        photoCard ? layout : undefined,
+        sceneSubtitleAdjustable ? sceneLayout : undefined,
+        photoCard || frameFit === "pad" ? undefined : frameFit,
+        rotatable && rotateClockwise ? true : undefined,
+      );
       setResult(response);
       // Back to showing the finished video: the request the button existed for has been made.
       setRemaking(false);
@@ -365,6 +376,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    * not the question; "will any of it appear" is.
    */
   const sceneSubtitleAdjustable = !photoCard && subtitledScenes.length > 0 && mediaMode?.subtitlesEnabled === true;
+  /* 서버는 16:9 가 아닌 프로젝트에서 `rotateClockwise: true` 를 받으면 렌더 전에 거절합니다(계약 주석) — 그래서
+     그 모양일 때만 선택지를 보여줍니다. 포토카드는 `frameFit`과 같은 이유로 뺍니다: 틀에 맞춰 그려지는 쪽이라
+     이 선택이 실제로 바꾸는 것을 아직 확인하지 못했습니다. */
+  const rotatable = !photoCard && aspectRatio === "16:9";
   const contentSentence = mergeContentSentence(mediaMode);
   /* Only blocks on a count we actually read. Unknown stays unblocked — the server refuses either way, and a
      button disabled on a guess is worse than one that fails honestly. Same rule as the Episode's merge. */
@@ -486,6 +501,32 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         </fieldset>
       )}
 
+      {/* 캡틴D Cowork Round 866/868: 16:9 프로젝트를 인스타 릴로 올릴 때 위아래 검은 띠(패딩)로 세로 화면에
+          맞추는 대신, 영상 자체를 시계 방향으로 90도 돌려 잘리는 부분도 띠도 없이 정확히 9:16 릴로 만든다.
+          자막은 돌리기 전에 입혀서, 돌아간 채로도 똑바로 읽힌다. 16:9 가 아니면 서버가 거절하므로(계약 주석)
+          그 모양일 때만 보여준다. */}
+      {(!result || remaking) && rotatable && (
+        <fieldset data-testid="merge-rotate" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+          <legend className="px-1 text-sm font-semibold text-slate-100">화면 회전</legend>
+          <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={rotateClockwise}
+              disabled={pending || confirmOpen}
+              onChange={(event) => setRotateClockwise(event.target.checked)}
+              data-testid="merge-rotate-toggle"
+            />
+            <span>
+              <span className="block text-slate-100">돌려서 세로 릴로 내보내기</span>
+              <span className="block text-xs text-slate-400">
+                영상을 시계 방향으로 90도 돌려 잘리는 부분도 검은 띠도 없이 9:16 릴로 만듭니다 — 보는 사람이 폰을 반시계로 눕혀서 봐야 화면이 똑바로 보입니다. 끄면 지금까지처럼 가로 그대로 저장됩니다.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+      )}
+
       {/* 🔴 잰 값이라 이제 근거 있게 말합니다 — 클립 파일에 소리 트랙이 실제로 있습니다(`VideoReview.clip`).
           그리고 이 앱은 그 소리를 한 번도 쓰지 않습니다: 병합이 클립에서 화면만 가져오고 소리는 내레이션
           아니면 무음으로 새로 붙입니다. 소리 되는 모델을 일부러 골라 더 내고 그 소리를 버리는 일이 여기서
@@ -571,6 +612,11 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
                 아직 병합이 시작되지 않았습니다. 확인을 누르면 이 컴퓨터의 영상 병합 프로그램이 실행됩니다.
                 {contentSentence ? ` ${contentSentence}` : ""} 유료 요청은 전송되지 않습니다.
               </p>
+              {rotatable && rotateClockwise && (
+                <p data-testid="merge-confirm-rotate-notice" className="text-sm text-amber-200">
+                  90도 돌려서 만듭니다 — 폰을 눕혀서 보는 영상이 됩니다.
+                </p>
+              )}
               <div className="flex gap-3">
                 <button
                   type="button"

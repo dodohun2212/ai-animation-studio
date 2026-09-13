@@ -459,6 +459,54 @@ describe("VideoMergeScreen", () => {
   });
 
   /**
+   * 캡틴D Cowork Round 866/868: 16:9 를 잘리는 부분도 검은 띠도 없이 9:16 릴로 내보내는 회전 선택지 —
+   * 그 모양이 아니면 서버가 렌더 전에 거절하므로(계약 주석), 화면은 16:9 프로젝트에서만 이 칸을 보여준다.
+   */
+  it("hides the rotate option on a vertical project, where the server would refuse it", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { scenes: sixScenes(), aspectRatio: "9:16" });
+    await screen.findByTestId("open-merge-confirm-button");
+    expect(screen.queryByTestId("merge-rotate")).toBeNull();
+  });
+
+  it("shows the rotate option on a 16:9 project and omits it from the request by default", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { scenes: sixScenes(), aspectRatio: "16:9" });
+
+    expect((await screen.findByTestId("merge-rotate-toggle")) as HTMLInputElement).toBeTruthy();
+    expect(((screen.getByTestId("merge-rotate-toggle")) as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    expect(Object.keys(JSON.parse(String((mergeFetch.mock.calls[0] as [string, RequestInit])[1].body))))
+      .not.toContain("rotateClockwise");
+  });
+
+  it("sends rotateClockwise once someone turns it on, and names the trade-off before confirming", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { scenes: sixScenes(), aspectRatio: "16:9" });
+
+    fireEvent.click(await screen.findByTestId("merge-rotate-toggle"));
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    expect((await screen.findByTestId("merge-confirm-rotate-notice")).textContent).toContain("폰을 눕혀서 보는 영상이 됩니다");
+    fireEvent.click(screen.getByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const [, init] = mergeFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).rotateClockwise).toBe(true);
+  });
+
+  it("hides the rotate option on a photo card even at 16:9, where it has not been confirmed to do anything", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "한 줄" }];
+    renderScreen(mergeFetch, { photoCard: true, scenes: still, aspectRatio: "16:9" }, undefined, undefined, []);
+
+    await screen.findByTestId("open-merge-confirm-button");
+    expect(screen.queryByTestId("merge-rotate")).toBeNull();
+  });
+
+  /**
    * 🔴 띠를 만드는 것은 **설정이 아니라 이미 만들어진 클립**입니다. 2026-09-13 에 확인 화면의 설정을 읽고 이
    * 릴이 무엇으로 나갔는지 틀리게 보고한 일이 있었고(CLI Round 809), 그래서 이 문장은 `VideoReview.model` —
    * 작업 기록의 모델 — 에서만 나옵니다. 설정을 아무리 바꿔도 이 줄은 안 바뀝니다.

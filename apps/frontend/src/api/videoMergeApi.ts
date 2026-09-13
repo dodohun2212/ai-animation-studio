@@ -155,13 +155,26 @@ export async function mergeVideos(
    * 매번 실어 보냅니다(계약의 `frameFit` 주석 그대로). 포토카드에선 서버가 거절하므로 화면이 아예 안 보냅니다.
    */
   frameFit?: FrameFit,
+  /**
+   * 완성된 영상을 시계 방향으로 90도 돌려, 16:9 프로젝트를 잘리는 부분도 검은 띠도 없이 그대로 9:16 릴로
+   * 만듭니다 — 보는 사람은 폰을 반시계로 눕혀서 봅니다(계약의 `rotateClockwise` 주석, 캡틴D Cowork Round
+   * 866/868). 저장되지 않는 선택이라 매번 실어 보내고, `false`/미선택은 아예 보내지 않습니다 — 서버가
+   * 16:9 가 아닌 프로젝트에서 `true` 를 받으면 렌더 전에 거절하므로, 여기서도 16:9 가 아니면 화면이 안 보냅니다.
+   */
+  rotateClockwise?: boolean,
 ): Promise<MergeVideosResponse> {
   let response: Response;
   try {
     // Omitting the body entirely is not the same as sending an empty one: the server then keeps the project's
     // own narration/subtitle toggles, which is the right behaviour for a caller that has no opinion. Only a
     // caller that actually asked the user sends `audio` — and the same rule holds for `subtitleLayout`.
-    const payload = { ...(audio ? { audio } : {}), ...(subtitleLayout ? { subtitleLayout } : {}), ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(frameFit ? { frameFit } : {}) };
+    const payload = {
+      ...(audio ? { audio } : {}),
+      ...(subtitleLayout ? { subtitleLayout } : {}),
+      ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}),
+      ...(frameFit ? { frameFit } : {}),
+      ...(rotateClockwise ? { rotateClockwise } : {}),
+    };
     response = await fetch(API_ROUTES.videoMerge(projectId), Object.keys(payload).length > 0
       ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }
       : { method: "POST" });
