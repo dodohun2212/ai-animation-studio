@@ -6,7 +6,15 @@ import { getVideoPromptPreview, toVideoPreviewDisplayError } from "../api/videoP
 import { imageReviewContentUrl } from "../api/imageReviewApi.js";
 import { startVideoSubmission, toVideoSubmissionDisplayError } from "../api/videoSubmissionApi.js";
 import { Spinner } from "./Spinner.js";
-import { VIDEO_CLIP_AUDIO_NOTE, videoModelFacts, videoModelPriceLine } from "../utils/videoModelFacts.js";
+import {
+  VIDEO_CLIP_AUDIO_NOTE,
+  hasBlockingIssue,
+  suggestedVideoModels,
+  videoModelFacts,
+  videoModelPriceLine,
+  videoSetupIssues,
+  videoSetupTotalUsd,
+} from "../utils/videoModelFacts.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { omittedSectionLabel } from "../utils/omittedSectionLabels.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
@@ -36,6 +44,32 @@ const PROMPT_UTF16_LIMIT = RUNWAY_PROMPT_AUTHORING_LIMIT;
 /** JavaScript string length already counts UTF-16 code units, matching the Backend's limit. */
 function utf16Length(value: string): number {
   return value.length;
+}
+
+/**
+ * How tall one prompt box should be — counted from the text, never measured off the screen.
+ *
+ * 🔴 It was `rows={6}` for every prompt. The prompts this screen shows run 601–795 characters over ten labelled
+ * lines (Starts at / Action / Performance / Ends at / Motivated camera / Environment / Pacing …), so six rows
+ * showed about half of one and hid the rest behind an inner scrollbar — on the one screen whose whole job is
+ * letting a person read what they are about to pay for. A section that has to be scrolled to is a section that
+ * does not get read, which is the same failure as the frame-shape warning nobody read (see `videoSetupIssues`).
+ *
+ * 🔴 Counted, not measured: `scrollHeight` is 0 in jsdom, so a height taken from the DOM would be untestable —
+ * and worse, it would be *silently* untestable, passing while showing nothing. A number derived from the string
+ * is the same number in the browser and in the pair.
+ *
+ * The cap is not decoration: an edited prompt can be pasted to any length, and a box that grows without limit
+ * pushes the approve button and the cost panel off the screen.
+ */
+const PROMPT_WRAP_COLUMNS = 64;
+const PROMPT_MIN_ROWS = 6;
+const PROMPT_MAX_ROWS = 24;
+export function promptRows(text: string): number {
+  const wrapped = text
+    .split("\n")
+    .reduce((rows, line) => rows + Math.max(1, Math.ceil(line.length / PROMPT_WRAP_COLUMNS)), 0);
+  return Math.min(PROMPT_MAX_ROWS, Math.max(PROMPT_MIN_ROWS, wrapped));
 }
 
 /**
@@ -102,6 +136,14 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
 
   const previews = state.status === "ready" ? state.previews : [];
   const totalCostUsd = previews.reduce((sum, preview) => sum + preview.estimatedCostUsd, 0);
+  /* 이 요청이 실제로 들고 있는 값으로 대조합니다 — 카탈로그가 아니라. 카탈로그는 「그 모델이 할 수 있는 것」이고,
+     여기서 물어야 하는 것은 「지금 이 설정으로 나갈 수 있는가」입니다. */
+  const setupOption = previews.length > 0 ? catalogueOption(previews[0]!.model) : undefined;
+  const setup = previews.length > 0 ? { durationSeconds: previews[0]!.durationSeconds, sceneCount: previews.length } : undefined;
+  const setupIssues = setupOption && setup ? videoSetupIssues(setupOption, setup) : [];
+  /* 🔴 프론트 카탈로그가 모르는 모델이면 대조를 못 합니다. 그때 잠그면 **멀쩡한 요청을 막는** 쪽으로 틀리게 되고,
+     그건 이 화면이 피해야 할 방향입니다 — 서버는 그 조합을 알고 있고, 어댑터가 한 번 더 막습니다. */
+  const blocked = hasBlockingIssue(setupIssues);
   const confirmationId = state.status === "ready" ? state.confirmationId : undefined;
   const budget = state.status === "ready" ? state.budget : undefined;
   const maximumProviderCalls = state.status === "ready" ? state.maximumProviderCalls : undefined;
@@ -220,9 +262,69 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 <p data-testid="preview-model-audio" className="text-xs text-slate-500">
                   {VIDEO_CLIP_AUDIO_NOTE}
                 </p>
+                {/* 🔴 이 화면은 **열 때 한 번** 미리보기를 받습니다. 열어 둔 채 「API 설정」에서 모델을 바꾸면
+                    위의 이름·값·경고가 전부 옛 모델의 것이고, `confirmationId` 도 그 모델로 굳어 있습니다 —
+                    사람은 옛 모델을 읽으면서 그 모델로 돈을 씁니다. 2026-09-13 에 이 화면을 읽은 쪽(저)이
+                    실제로 나간 모델을 틀리게 보고했고, 그때는 손해가 없었지만 방향만 반대였습니다.
+                    시각을 찍지 않는 이유: 「8시 55분에 받음」은 읽는 사람이 직접 계산해야 하는 값이고,
+                    필요한 것은 계산이 아니라 다시 받는 일입니다. */}
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <p data-testid="preview-snapshot-note" className="text-xs text-slate-500">
+                    이 값들은 화면을 열 때 받은 것입니다 — 그 뒤에 모델이나 설정을 바꿨다면 다시 받아야 맞습니다.
+                  </p>
+                  <button
+                    type="button"
+                    data-testid="preview-reload"
+                    className="rounded-full border border-white/10 px-2.5 py-0.5 text-xs text-slate-300 disabled:opacity-50"
+                    onClick={() => void load()}
+                    disabled={confirmOpen || submitPending || Boolean(submitted)}
+                  >
+                    다시 받기
+                  </button>
+                </div>
               </section>
             );
           })()}
+          {setupOption && setup && setupIssues.length > 0 && (
+            <section
+              aria-label="이 모델과 지금 설정"
+              data-testid="setup-issues"
+              className={`space-y-2 rounded-2xl border p-4 ${blocked ? "border-rose-400/40 bg-rose-950/20" : "border-amber-400/30 bg-amber-500/[0.06]"}`}
+            >
+              <h3 className={`text-sm font-semibold ${blocked ? "text-rose-300" : "text-amber-300"}`}>
+                {blocked ? "이대로는 전송되지 않습니다" : "이 설정으로 보내면 이렇게 됩니다"}
+              </h3>
+              <ul className="space-y-1">
+                {setupIssues.map((issue) => (
+                  <li
+                    key={issue.id}
+                    data-testid={`setup-issue-${issue.id}`}
+                    className={issue.severity === "blocking" ? "text-sm text-rose-200" : "text-sm text-amber-200/90"}
+                  >
+                    {issue.text}
+                  </li>
+                ))}
+              </ul>
+              {/* 문제를 말해 놓고 답을 안 주면 설정 화면에서 스무 줄을 직접 비교하게 됩니다 — 오늘 그래서 띠가 나왔습니다. */}
+              {(() => {
+                const alternatives = suggestedVideoModels(setupOption, setup);
+                if (alternatives.length === 0) return null;
+                return (
+                  <div data-testid="setup-suggestions" className="space-y-1 pt-1">
+                    <p className="text-xs text-slate-400">이 설정에서 걸리는 것이 없는 모델 (이 요청 전체 기준, 싼 것부터)</p>
+                    <ul className="space-y-0.5">
+                      {alternatives.map((option) => (
+                        <li key={option.id} data-testid={`setup-suggestion-${option.id}`} className="text-xs tabular-nums text-slate-300">
+                          {option.label} — 이 요청 ${videoSetupTotalUsd(option, setup).toFixed(2)}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-slate-500">모델은 「API 설정」에서 바꾸고, 이 화면을 다시 열면 값이 바뀝니다.</p>
+                  </div>
+                );
+              })()}
+            </section>
+          )}
           <ul className="space-y-3" data-testid="preview-list">
             {previews.map((preview) => {
               const promptText = promptFor(preview);
@@ -292,7 +394,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                     <textarea
                       id={`prompt-${preview.sceneNumber}`}
                       className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
-                      rows={6}
+                      rows={promptRows(promptText)}
                       value={promptText}
                       disabled={confirmOpen || submitPending || Boolean(submitted)}
                       onChange={(event) => updatePrompt(preview.sceneNumber, event.target.value)}
@@ -362,7 +464,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
                 data-testid="open-confirm-button"
                 onClick={openConfirmation}
-                disabled={confirmOpen || submitPending || hasBlockingPromptError || !confirmationId}
+                disabled={confirmOpen || submitPending || hasBlockingPromptError || blocked || !confirmationId}
               >
                 이 프롬프트로 전송 승인
               </button>
@@ -390,7 +492,8 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                   further up the page where it may be scrolled out of view. */}
               <dl data-testid="confirm-preflight" className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-slate-300">
                 <dt className="text-slate-400">모델</dt>
-                <dd>{previews[0]!.model}</dd>
+                {/* 승인 직전에도 이름으로 — 여기만 슬러그로 남아 있으면, 사람이 마지막으로 읽는 줄이 제일 안 읽히는 줄이 됩니다. */}
+                <dd>{setupOption ? `${setupOption.label} (${previews[0]!.model})` : previews[0]!.model}</dd>
                 <dt className="text-slate-400">해상도 / 비율</dt>
                 <dd>{videoRatioLabel(previews[0]!.ratio)}</dd>
                 <dt className="text-slate-400">장면 수 / 길이</dt>

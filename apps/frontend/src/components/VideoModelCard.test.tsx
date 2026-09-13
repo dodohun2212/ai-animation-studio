@@ -5,6 +5,7 @@ import { DEFAULT_VIDEO_MODEL, VIDEO_FRAME_SHAPES, VIDEO_MODEL_OPTIONS, videoScen
 import { jsonResponse } from "../api/testUtils.js";
 import { scrollList } from "./ui/surfaces.js";
 import { VideoModelCard, videoModelPriceLine } from "./VideoModelCard.js";
+import { visibleVideoModels } from "../utils/videoModelFacts.js";
 
 /**
  * The picker, exercised on a second model that does not exist yet.
@@ -42,9 +43,89 @@ const oneOption: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault:
    catalogue-wide check below is what keeps this honest as the list changes. */
 const seamless = { ...second, id: "gen4_seam" as VideoModel, label: "이음새 되는 모델", acceptsLastFrame: true };
 const mixedOptions: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: [VIDEO_MODEL_OPTIONS[0]!, seamless] };
+/* 거르기·정렬은 목록이 길 때만 뜻이 있습니다 — 카탈로그 전체가 그 경우이고, 숫자를 적지 않고 카탈로그에서
+   세는 것은 이 파일이 이미 쓰는 방식입니다(목록이 하나 → 셋 → 스물로 자라는 동안 아무 줄도 안 고쳐졌습니다). */
+const everyOption: VideoModelSetting = { selected: DEFAULT_VIDEO_MODEL, isDefault: false, options: VIDEO_MODEL_OPTIONS };
+const renderedModelIds = (): string[] =>
+  Array.from(document.querySelectorAll("[data-testid^=\"video-model-option-\"]"))
+    .map((node) => node.getAttribute("data-testid")!.replace("video-model-option-", ""));
 
 describe("VideoModelCard", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
+
+  /**
+   * 🔴 이 카드가 쓰였을 때 목록은 한 줄이었습니다. 지금은 스물이고, 「지금 쓰는 게 뭔지」조차 스크롤해야
+   * 보입니다. 2026-09-13 에 캡틴D 는 이어지는 릴에 쓸 모델을 스무 줄에서 눈으로 골랐고, 비율을 안 받는
+   * 모델을 골라 완성본에 띠가 붙었습니다 — 조작 줄은 그 고르기를 이름으로 부르는 자리입니다.
+   *
+   * 기본값이 지금과 같아야 하는 이유: 거르기가 기본으로 켜져 있으면 사람은 자기가 **못 보는 모델이 있다는
+   * 사실조차** 모릅니다. 목록에서 빠진 것은 없는 것으로 읽힙니다.
+   */
+  it("shows every model until someone asks for fewer", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<VideoModelCard setting={everyOption} onChange={() => {}} />);
+
+    expect(renderedModelIds().length).toBe(VIDEO_MODEL_OPTIONS.length);
+    expect(screen.getByTestId("video-model-count").textContent)
+      .toBe(`${VIDEO_MODEL_OPTIONS.length}개 중 ${VIDEO_MODEL_OPTIONS.length}개`);
+    expect(screen.getByTestId("video-model-filter-all")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("video-model-sort-catalogue")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  /**
+   * 🔴 거르기가 지금 쓰는 모델을 숨기면 라디오 묶음에서 켜진 칸이 사라지고, 사람은 화면에서 「내가 뭘 쓰고
+   * 있는지」를 잃습니다. 고른 것은 조건에 안 맞아도 남습니다 — 안 맞는다는 말은 그 줄에 이미 적혀 있습니다.
+   */
+  it("keeps the chosen model visible even when it fails the filter", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<VideoModelCard setting={everyOption} onChange={() => {}} />);
+    // 기본값 gen4_turbo 는 끝 그림을 못 받습니다 — 이 거르기에서 빠져야 할 쪽입니다.
+    expect(VIDEO_MODEL_OPTIONS.find((option) => option.id === DEFAULT_VIDEO_MODEL)!.acceptsLastFrame).toBe(false);
+
+    fireEvent.click(screen.getByTestId("video-model-filter-last_frame"));
+
+    const ids = renderedModelIds();
+    expect(ids, "지금 쓰는 모델은 조건에 안 맞아도 남습니다").toContain(DEFAULT_VIDEO_MODEL);
+    for (const option of VIDEO_MODEL_OPTIONS) {
+      if (option.id === DEFAULT_VIDEO_MODEL) continue;
+      expect(ids.includes(option.id), `${option.label}`).toBe(option.acceptsLastFrame);
+    }
+    expect(screen.getByTestId("video-model-count").textContent).toBe(`${VIDEO_MODEL_OPTIONS.length}개 중 ${ids.length}개`);
+  });
+
+  /**
+   * 🔴 초당 요율로 세우면 안 됩니다. 최소 청구액이 붙는 모델과 장면당 요금이 붙는 모델은 요율 순서와 실제
+   * 값 순서가 다릅니다 — 요율로 세운 「싼 것부터」는 첫 줄이 제일 싸지 않은 목록이고, 값을 보라고 만든
+   * 목록이 값에 대해 거짓말하는 꼴입니다.
+   */
+  it("orders by what a scene actually costs, not by the per-second rate", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<VideoModelCard setting={everyOption} onChange={() => {}} />);
+
+    fireEvent.click(screen.getByTestId("video-model-sort-price"));
+
+    const ids = renderedModelIds();
+    const costs = ids.map((id) => videoSceneEstimatedCostUsd(5, VIDEO_MODEL_OPTIONS.find((option) => option.id === id)!));
+    expect(costs, "싼 값부터").toEqual([...costs].sort((a, b) => a - b));
+    // 되돌릴 수 있어야 합니다 — 한 번 누르면 끝인 정렬은 정렬이 아니라 덫입니다.
+    fireEvent.click(screen.getByTestId("video-model-sort-catalogue"));
+    expect(renderedModelIds()).toEqual(VIDEO_MODEL_OPTIONS.map((option) => option.id));
+
+    // 🔴 오늘 카탈로그에는 5초에서 두 순서가 갈리는 짝이 없습니다(최소 청구액이 5초에선 안 걸림) — 그래서 위만으로는
+    // 요율로 세워도 초록이었습니다(CLI Round 811 깨기). 두 순서가 실제로 갈리는 두 줄로 따로 묻습니다.
+    const floor = { ...VIDEO_MODEL_OPTIONS[0]!, id: "floor_model" as VideoModel, pricePerSecondUsd: 0.05, minimumChargeUsd: 1 };
+    const flat = { ...VIDEO_MODEL_OPTIONS[0]!, id: "flat_model" as VideoModel, pricePerSecondUsd: 0.1 };
+    expect(visibleVideoModels([floor, flat], "none", "all", "price").map((option) => option.id), "요율은 floor 가 싸도 한 장면은 flat 이 쌉니다")
+      .toEqual(["flat_model", "floor_model"]);
+  });
+
+  /** 고를 것이 하나면 순서도 거르기도 할 일이 없습니다 — 아무것도 안 하는 단추는 눌러 보게 만듭니다. */
+  it("offers no controls when there is nothing to order or filter", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<VideoModelCard setting={oneOption} onChange={() => {}} />);
+
+    expect(screen.queryByTestId("video-model-controls")).toBeNull();
+  });
 
   it("prices every option from its own rate, not the selected one's", () => {
     vi.stubGlobal("fetch", vi.fn());

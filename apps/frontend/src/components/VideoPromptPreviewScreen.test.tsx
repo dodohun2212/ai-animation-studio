@@ -1,11 +1,12 @@
 import type { GetVideoPromptPreviewResponse, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
-import { RUNWAY_PROMPT_AUTHORING_LIMIT } from "@ai-animation-studio/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse } from "../api/testUtils.js";
 import { VideoSubmissionApiError, toVideoSubmissionDisplayError } from "../api/videoSubmissionApi.js";
-import { VideoPromptPreviewScreen } from "./VideoPromptPreviewScreen.js";
+import { VideoPromptPreviewScreen, promptRows } from "./VideoPromptPreviewScreen.js";
+import { hasBlockingIssue, videoSetupIssues } from "../utils/videoModelFacts.js";
 
 function makePreviews(count = 6): VideoPromptPreview[] {
   return Array.from({ length: count }, (_, index) => index + 1).map((sceneNumber): VideoPromptPreview => ({
@@ -147,6 +148,107 @@ describe("VideoPromptPreviewScreen", () => {
     const last = screen.getByTestId("frames-2");
     expect(last.querySelectorAll("img").length).toBe(1);
     expect(screen.getByTestId("frames-single-2").textContent).toContain("이 한 장만 보냅니다");
+  });
+
+  /**
+   * 🔴 2026-09-13 에 실제로 일어난 일의 짝입니다. 캡틴D 는 `wan3_720p` 로 4장면을 보냈고, 화면에는
+   * 「이 모델은 장면 그림의 비율을 그대로 따릅니다 — 띠가 생길 수 있습니다」가 **성질 설명 자리에** 있었고,
+   * 그대로 눌렀고, 위아래에 띠가 붙은 릴이 나왔습니다. 문장은 맞았습니다 — 자리가 틀렸습니다.
+   *
+   * 그래서 이 화면은 성질을 나열하는 것과 별개로, **지금 설정과 대조한 결과**를 따로 말해야 합니다.
+   */
+  it("says what this model will do to this request — not just what the model is like", async () => {
+    const previews = makePreviews(4).map((preview) => ({ ...preview, model: "wan3_720p" as VideoPromptPreview["model"] }));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
+
+    const issues = await screen.findByTestId("setup-issues");
+    expect(issues.textContent).toContain("비율 설정을 쓰지 않고");
+    // WAN 은 끝 그림을 받습니다 — 안 걸리는 것을 걸린다고 하면 옆의 진짜 경고까지 안 읽힙니다.
+    expect(screen.queryByTestId("setup-issue-chain")).toBeNull();
+    // 띠는 나가긴 나갑니다. 경고지 잠금이 아닙니다.
+    expect((screen.getByTestId("open-confirm-button") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  /**
+   * 🔴 설정 길이가 모델 최대를 넘으면 어댑터가 유료 호출 **직전에** 거부합니다(`runway-video-adapter.ts`).
+   * 돈은 안 나가지만, 그걸 아는 화면이 「작업 워크플로우」뿐이라 승인 버튼이 있는 화면은 총액까지 멀쩡히
+   * 보여 준 뒤 네 장면을 한꺼번에 실패시킵니다. 여기서 잠그는 것이 그 실패를 없애는 유일한 자리입니다.
+   */
+  /*
+   * Asked of the function, not the screen, for now: a 15-second preview cannot reach this screen today — the
+   * response guard accepts only RUNWAY_CLIP_DURATIONS (5 · 10) — and every model in the catalogue takes at least
+   * 10 seconds, so no request the app can make trips this lock yet. It becomes reachable with B1 (lengths per
+   * model); the screen-level pair belongs to that round.
+   */
+  it("locks the approve button when the request cannot be sent at all", () => {
+    const gen4 = VIDEO_MODEL_OPTIONS.find((option) => option.id === "gen4_turbo")!;
+    const issues = videoSetupIssues(gen4, { durationSeconds: 15, sceneCount: 2 });
+    expect(issues.find((issue) => issue.id === "duration")?.text).toContain("최대 10초");
+    expect(hasBlockingIssue(issues), "눌러도 전송이 거부되는 조합").toBe(true);
+    // And a length the model takes is not a lock.
+    expect(hasBlockingIssue(videoSetupIssues(gen4, { durationSeconds: 10, sceneCount: 2 }))).toBe(false);
+  });
+
+  /**
+   * 🔴 문제를 말해 놓고 답을 안 주면, 읽는 사람은 설정 화면으로 건너가 스무 줄을 직접 비교합니다 — 오늘 그래서
+   * 띠가 나왔습니다. 값은 장면당이 아니라 **이 요청 전체**라야 옆의 총액과 비교가 됩니다.
+   */
+  it("offers the models that clear every issue, cheapest first, without naming the current one", async () => {
+    const previews = makePreviews(4).map((preview) => ({ ...preview, model: "wan3_720p" as VideoPromptPreview["model"] }));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
+
+    const suggestions = await screen.findByTestId("setup-suggestions");
+    expect(screen.queryByTestId("setup-suggestion-wan3_720p"), "지금 쓰는 모델을 다시 권하지 않습니다").toBeNull();
+    // 비율을 실제로 받으면서 끝 그림도 받는 모델은 Seedance 뿐이고, 그중 제일 싼 것이 Mini 입니다.
+    const first = suggestions.querySelectorAll("[data-testid^=\"setup-suggestion-\"]")[0];
+    expect(first?.getAttribute("data-testid")).toBe("setup-suggestion-seedance2_mini");
+    // 4장면 × 5초, 최소 청구액이 붙는 모델이라 초당 요율만으로는 못 맞추는 값입니다.
+    expect(first?.textContent).toContain("$3.20");
+  });
+
+  /** 걸리는 것이 없으면 아무 말도 하지 않습니다 — 늘 떠 있는 경고는 경고가 아닙니다. */
+  it("stays quiet when the model and the settings agree", async () => {
+    const previews = makePreviews(4).map((preview) => ({ ...preview, model: "seedance2_720p" as VideoPromptPreview["model"] }));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
+
+    await screen.findByTestId("preview-list");
+    expect(screen.queryByTestId("setup-issues")).toBeNull();
+    expect((screen.getByTestId("open-confirm-button") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  /**
+   * 🔴 여섯 줄 고정이었습니다. 이 화면이 보여 주는 프롬프트는 601~795자에 라벨 줄이 열 개라, 여섯 줄은 그중
+   * 절반쯤을 보여 주고 나머지는 상자 안 스크롤 뒤에 숨겼습니다 — **무엇을 사는지 읽으라고 있는 화면**에서.
+   * 스크롤해야 보이는 문단은 안 읽히는 문단이고, 그건 아무도 안 읽은 비율 경고와 같은 실패입니다.
+   *
+   * 위아래 한계가 둘 다 있어야 합니다: 짧은 프롬프트에도 상자가 쪼그라들면 고치기 불편하고, 붙여넣기로
+   * 길어진 프롬프트에 상자가 끝없이 자라면 승인 버튼과 비용 칸이 화면 밖으로 밀립니다.
+   */
+  it("grows the prompt box with the prompt, between a floor and a ceiling", () => {
+    expect(promptRows("한 줄"), "짧아도 바닥 아래로는 안 내려갑니다").toBe(6);
+    // 열 줄짜리 실제 프롬프트 모양 — 여섯 줄로는 못 담습니다.
+    expect(promptRows(Array.from({ length: 10 }, (_, index) => `Line ${index}`).join("\n"))).toBe(10);
+    // 한 줄이라도 길면 접혀서 여러 줄을 차지합니다.
+    expect(promptRows("x".repeat(64 * 5))).toBe(6);
+    expect(promptRows("x".repeat(64 * 9))).toBe(9);
+    expect(promptRows("x".repeat(64 * 400)), "붙여넣기로 길어져도 천장에서 멈춥니다").toBe(24);
+  });
+
+  /**
+   * 🔴 이 화면은 **열 때 한 번** 미리보기를 받습니다. 열어 둔 채 설정에서 모델을 바꾸면 화면의 이름·값·경고가
+   * 전부 옛 모델의 것이고 `confirmationId` 도 그 모델로 굳어 있는데, 화면은 그 사실을 말하지 않았습니다.
+   * 말하는 것만으로는 부족해서 다시 받는 길을 같이 둡니다 — 필요한 것은 계산이 아니라 다시 받는 일입니다.
+   */
+  it("says these values are a snapshot, and gives a way to take a new one", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, makePreviewResponse()));
+    renderScreen(fetchMock);
+
+    const note = await screen.findByTestId("preview-snapshot-note");
+    expect(note.textContent).toContain("화면을 열 때 받은 것입니다");
+
+    const calls = fetchMock.mock.calls.length;
+    fireEvent.click(screen.getByTestId("preview-reload"));
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(calls));
   });
 
   it("names the sections the server had to drop, and leaves untouched scenes unmarked", async () => {

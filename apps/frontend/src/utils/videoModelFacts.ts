@@ -1,5 +1,5 @@
 import type { VideoFrameShape, VideoModelOption } from "@ai-animation-studio/shared";
-import { videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
+import { VIDEO_MODEL_OPTIONS, videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 
 /**
  * What is known about one video model, as sentences — in one place, because two screens say it.
@@ -123,4 +123,157 @@ export function videoModelFacts(option: VideoModelOption): VideoModelFact[] {
     },
     ...(shapeNote === null ? [] : [{ text: shapeNote, tone: "caution" as const }]),
   ];
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   이 모델 × 지금 설정
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 🔴 왜 이게 따로 있는가 — 카드는 모델의 성질을 **나열**하고, 이건 그 성질을 **지금 설정과 대조**합니다. 둘은
+ * 다른 일입니다. 2026-09-13 에 캡틴D 는 「이 모델은 장면 그림의 비율을 그대로 따릅니다 — 띠가 생길 수 있습니다」를
+ * 화면에서 읽고, 그대로 눌렀고, 띠가 붙은 릴을 받았습니다. 문장은 맞았습니다. 틀린 것은 그 문장이 **성질 설명**의
+ * 자리에 있었다는 점입니다 — 스무 줄짜리 목록에서 한 줄은 읽히지 않습니다.
+ *
+ * 그리고 길이는 더 나쁩니다: 설정 길이가 모델 최대를 넘으면 어댑터가 유료 호출 직전에 거부하는데
+ * (`runway-video-adapter.ts`), 그 사실을 아는 화면은 「작업 워크플로우」뿐이고 **승인 버튼이 있는 화면은
+ * 아무 말도 하지 않습니다.** 총액까지 멀쩡히 보여 준 뒤 네 장면이 한꺼번에 실패합니다.
+ */
+export interface VideoSetupIssue {
+  id: "duration" | "ratio" | "chain";
+  /** `blocking` 은 「눌러도 전송 자체가 거부된다」입니다 — 경고가 아니라 잠금. */
+  severity: "blocking" | "warning";
+  text: string;
+}
+
+export interface VideoSetup {
+  /** 장면 하나의 길이(초) — 카탈로그가 아니라 이번 요청이 실제로 들고 있는 값. */
+  durationSeconds: number;
+  sceneCount: number;
+}
+
+export function videoSetupIssues(option: VideoModelOption, setup: VideoSetup): VideoSetupIssue[] {
+  const issues: VideoSetupIssue[] = [];
+
+  if (setup.durationSeconds > option.maxDurationSeconds) {
+    issues.push({
+      id: "duration",
+      severity: "blocking",
+      text: `장면 길이 ${setup.durationSeconds}초는 ${option.label}의 최대 ${option.maxDurationSeconds}초를 넘습니다 — 이대로 누르면 전송이 거부되고 영상이 하나도 안 나옵니다.`,
+    });
+  }
+
+  /* `requested` 만 비율을 실제로 받습니다. 나머지 둘은 「받지 않는다」가 같고, 확실한지만 다릅니다 — 그 차이를
+     문장에 둡니다(하나는 생깁니다, 하나는 생길 수 있습니다). */
+  if (option.frameShape === "follows_first_frame") {
+    issues.push({
+      id: "ratio",
+      severity: "warning",
+      text: `${option.label}은(는) 비율 설정을 쓰지 않고 장면 그림의 비율을 그대로 내보냅니다 — 완성본 위아래에 띠가 생깁니다.`,
+    });
+  } else if (option.frameShape === "unconfirmed") {
+    issues.push({
+      id: "ratio",
+      severity: "warning",
+      text: `${option.label}이(가) 어떤 비율로 내보내는지는 확인되지 않았습니다 — 완성본 위아래에 띠가 생길 수 있습니다.`,
+    });
+  }
+
+  /* 장면이 하나뿐이면 이어 붙일 컷이 없습니다 — 그때 이 경고는 참이지만 쓸모가 없고, 쓸모없는 경고는 옆의
+     경고까지 같이 안 읽히게 만듭니다. */
+  if (!option.acceptsLastFrame && setup.sceneCount > 1) {
+    issues.push({
+      id: "chain",
+      severity: "warning",
+      text: `${option.label}은(는) 끝 그림을 받지 못합니다 — 장면이 바뀔 때 컷이 뒤로 돌아갈 수 있습니다.`,
+    });
+  }
+
+  return issues;
+}
+
+export const hasBlockingIssue = (issues: readonly VideoSetupIssue[]): boolean =>
+  issues.some((issue) => issue.severity === "blocking");
+
+/**
+ * 같은 설정에서 **아무 문제도 없는** 모델들, 이 요청 기준으로 싼 것부터.
+ *
+ * 🔴 「고르세요」가 아니라 「이런 것도 있습니다」입니다. 문제를 말해 놓고 답을 안 주면, 읽는 사람은 스무 줄짜리
+ * 설정 화면으로 건너가 직접 비교해야 합니다 — 오늘 캡틴D 가 한 일이 정확히 그것이고, 그래서 띠가 나왔습니다.
+ *
+ * 🔴 값은 `videoSceneEstimatedCostUsd` 로 **이 요청의 길이·장면 수**에 맞춰 계산합니다. 초당 요율만 비교하면
+ * 최소 청구액이 붙는 모델(Mini·2.5)에서 실제보다 싸게 보입니다.
+ */
+export function suggestedVideoModels(current: VideoModelOption, setup: VideoSetup, limit = 3): VideoModelOption[] {
+  return VIDEO_MODEL_OPTIONS
+    .filter((option) => option.id !== current.id && videoSetupIssues(option, setup).length === 0)
+    .sort((a, b) => videoSceneEstimatedCostUsd(setup.durationSeconds, a) - videoSceneEstimatedCostUsd(setup.durationSeconds, b))
+    .slice(0, limit);
+}
+
+/** 이 요청 전체를 그 모델로 보냈을 때의 값 — 장면당이 아니라 총액이라야 옆의 총액과 비교가 됩니다. */
+export const videoSetupTotalUsd = (option: VideoModelOption, setup: VideoSetup): number =>
+  videoSceneEstimatedCostUsd(setup.durationSeconds, option) * setup.sceneCount;
+
+/* ────────────────────────────────────────────────────────────────────────────
+   스무 줄을 다루는 법
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 한 장면 값 — 목록을 값순으로 세울 때 쓰는 기준.
+ *
+ * 🔴 `pricePerSecondUsd` 로 정렬하면 안 됩니다. 최소 청구액이 붙는 모델(Mini · 2.5)과 장면당 요금이 붙는
+ * 모델(Gemini · Grok)은 초당 요율 순서와 실제 값 순서가 다릅니다 — 요율로 세운 「싼 것부터」는 제일 싼 줄이
+ * 제일 싸지 않은 목록이고, 그건 값을 보라고 만든 목록이 값에 대해 거짓말하는 것입니다.
+ */
+export const videoModelSceneUsd = (option: VideoModelOption, seconds = 5): number =>
+  videoSceneEstimatedCostUsd(seconds, option);
+
+/**
+ * 스무 줄에서 찾는 법 — 고르는 이유별로 거릅니다.
+ *
+ * 🔴 「전부」가 기본값이고, 기본값일 때 화면은 지금과 한 글자도 다르지 않습니다. 거르기가 기본으로 켜져 있으면
+ * 사람은 자기가 못 보는 모델이 있다는 걸 모릅니다 — 목록에서 빠진 것은 없는 것으로 읽힙니다.
+ *
+ * 두 조건은 이 앱이 실제로 겪은 두 실패에서 나왔습니다: 끝 그림을 못 받는 모델로 이어지는 릴을 만들면 컷이
+ * 뒤로 돌아가고(788), 비율을 안 받는 모델로 만들면 완성본에 띠가 붙습니다(2026-09-13 실측).
+ */
+export const VIDEO_MODEL_FILTERS = ["all", "last_frame", "exact_ratio"] as const;
+export type VideoModelFilter = (typeof VIDEO_MODEL_FILTERS)[number];
+
+export const VIDEO_MODEL_FILTER_LABELS: Record<VideoModelFilter, string> = {
+  all: "전부",
+  last_frame: "컷이 이어지는 것",
+  exact_ratio: "비율이 지켜지는 것",
+};
+
+export function matchesVideoModelFilter(option: VideoModelOption, filter: VideoModelFilter): boolean {
+  if (filter === "last_frame") return option.acceptsLastFrame;
+  if (filter === "exact_ratio") return option.frameShape === "requested";
+  return true;
+}
+
+export const VIDEO_MODEL_SORTS = ["catalogue", "price"] as const;
+export type VideoModelSort = (typeof VIDEO_MODEL_SORTS)[number];
+
+export const VIDEO_MODEL_SORT_LABELS: Record<VideoModelSort, string> = {
+  catalogue: "기본 순서",
+  price: "싼 값부터",
+};
+
+/**
+ * 보여 줄 줄들 — 거르고, 세우고, **고른 것은 절대 빼지 않습니다.**
+ *
+ * 🔴 마지막 조건이 핵심입니다. 거르기가 지금 쓰는 모델을 숨기면 라디오 묶음에서 켜진 칸이 사라져, 사람은
+ * 「내가 뭘 쓰고 있는지」를 화면에서 잃습니다. 고른 것은 조건에 안 맞아도 남고, 안 맞는다는 사실은 그 줄에
+ * 이미 적혀 있는 경고가 말합니다.
+ */
+export function visibleVideoModels(
+  options: readonly VideoModelOption[],
+  selected: string,
+  filter: VideoModelFilter,
+  sort: VideoModelSort,
+): VideoModelOption[] {
+  const kept = options.filter((option) => option.id === selected || matchesVideoModelFilter(option, filter));
+  return sort === "price" ? [...kept].sort((a, b) => videoModelSceneUsd(a) - videoModelSceneUsd(b)) : kept;
 }

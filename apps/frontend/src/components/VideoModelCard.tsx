@@ -2,7 +2,19 @@ import { useState } from "react";
 import type { VideoModel, VideoModelSetting } from "@ai-animation-studio/shared";
 
 import { saveVideoModel, toDisplayError } from "../api/providerSettingsApi.js";
-import { FRAME_SHAPE_NOTES, VIDEO_CLIP_AUDIO_NOTE, videoModelLastFrameLine, videoModelPriceLine } from "../utils/videoModelFacts.js";
+import {
+  FRAME_SHAPE_NOTES,
+  VIDEO_CLIP_AUDIO_NOTE,
+  VIDEO_MODEL_FILTERS,
+  VIDEO_MODEL_FILTER_LABELS,
+  VIDEO_MODEL_SORTS,
+  VIDEO_MODEL_SORT_LABELS,
+  videoModelLastFrameLine,
+  videoModelPriceLine,
+  visibleVideoModels,
+  type VideoModelFilter,
+  type VideoModelSort,
+} from "../utils/videoModelFacts.js";
 import { scrollList } from "./ui/surfaces.js";
 
 /* 🔴 Re-exported, not re-declared. The price line moved to `utils/videoModelFacts.ts` when the confirmation
@@ -38,7 +50,12 @@ export { videoModelPriceLine };
 export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetting; onChange: (next: VideoModelSetting) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  /* 기본값은 「기본 순서 · 전부」 — 그 상태의 화면은 이 줄들이 생기기 전과 같습니다. 거르기가 기본으로 켜져
+     있으면 사람은 자기가 못 보는 모델이 있다는 것조차 모릅니다. */
+  const [sort, setSort] = useState<VideoModelSort>("catalogue");
+  const [filter, setFilter] = useState<VideoModelFilter>("all");
   const single = setting.options.length === 1;
+  const shown = visibleVideoModels(setting.options, setting.selected, filter, sort);
 
   async function choose(model: VideoModel): Promise<void> {
     if (busy || model === setting.selected) return;
@@ -71,8 +88,50 @@ export function VideoModelCard({ setting, onChange }: { setting: VideoModelSetti
           happened to emit. That is a rule living in the cascade instead of in code, which is the thing this
           token exists to stop. If these rows ever need more air than the shared list gives, that belongs in
           `surfaces.ts` as a variant every such list gets, not as one call site quietly disagreeing. */}
+      {/* 🔴 스무 줄입니다. 이 카드가 쓰였을 때는 한 줄이었고, 그때는 목록이 목록일 필요가 없었습니다. 지금은
+          지금 쓰는 모델이 뭔지 보려고도 스크롤해야 하고, 「이어지는 릴에 쓸 수 있는 게 뭔가」는 스무 줄을
+          직접 읽어야 답이 나옵니다 — 2026-09-13 에 캡틴D 가 한 일이 그것이고, 그래서 띠가 붙었습니다.
+          거르기는 목록을 줄이는 기능이 아니라 **고르는 이유를 이름으로 부르는** 기능입니다. */}
+      {!single && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="video-model-controls">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-500">순서</span>
+            {VIDEO_MODEL_SORTS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                data-testid={`video-model-sort-${value}`}
+                aria-pressed={sort === value}
+                onClick={() => setSort(value)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs ${sort === value ? "border-violet-400/40 bg-violet-500/[0.12] text-slate-100" : "border-white/10 text-slate-400"}`}
+              >
+                {VIDEO_MODEL_SORT_LABELS[value]}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-slate-500">거르기</span>
+            {VIDEO_MODEL_FILTERS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                data-testid={`video-model-filter-${value}`}
+                aria-pressed={filter === value}
+                onClick={() => setFilter(value)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs ${filter === value ? "border-violet-400/40 bg-violet-500/[0.12] text-slate-100" : "border-white/10 text-slate-400"}`}
+              >
+                {VIDEO_MODEL_FILTER_LABELS[value]}
+              </button>
+            ))}
+          </div>
+          {/* 몇 개가 빠졌는지 말하지 않으면, 걸러진 목록은 그냥 「모델이 아홉 개인 앱」으로 읽힙니다. */}
+          <span data-testid="video-model-count" className="text-xs tabular-nums text-slate-500">
+            {setting.options.length}개 중 {shown.length}개
+          </span>
+        </div>
+      )}
       <ul className={scrollList}>
-        {setting.options.map((option) => {
+        {shown.map((option) => {
           const chosen = option.id === setting.selected;
           return (
             <li key={option.id}>
