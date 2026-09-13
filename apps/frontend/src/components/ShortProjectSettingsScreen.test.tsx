@@ -149,6 +149,55 @@ describe("ShortProjectSettingsScreen", () => {
   });
 
   /**
+   * 🔴 item 5(D1) — 1~30 전부를 늘어놓으면 못 읽으므로 CLIP_DURATION_CHOICES(5·10·15·20·30) 중 지금 고른
+   * 모델이 실제로 받는 것만 보여줍니다. H3 Max(768p)는 5~15초만 받으므로 20·30은 선택지에 없어야 합니다 —
+   * 있으면 골라도 영상 시작이 거부되는 값을 권하는 것입니다.
+   */
+  it("offers only the durations this model actually takes, not the whole catalogue's list", async () => {
+    const h3 = VIDEO_MODEL_OPTIONS.find((option) => option.id === "h3_max_768p")!;
+    const fetchMock = stubFetchByRoute({
+      ...providerSettingsRoute(h3.id),
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const select = (await screen.findByLabelText("클립 길이(초)", { exact: false })) as HTMLSelectElement;
+    const values = Array.from(select.querySelectorAll("option")).map((option) => option.value);
+    expect(values).toEqual(["5", "10", "15"]);
+    expect(values, "H3 Max 768p 의 최대(15초)를 넘는 값은 권하지 않습니다").not.toContain("20");
+    expect(screen.queryByTestId("settings-clip-duration-out-of-range")).toBeNull();
+  });
+
+  /**
+   * 🔴 모델을 바꾼 직후, 저장돼 있던 길이가 새 모델의 범위 밖일 수 있습니다. 사라지면 다른 값이 골라진
+   * 척하게 되므로 선택지에 그대로 남기고(「권장 목록 밖」), 저장 전에 미리 경고합니다 — 저장 자체는 되지만
+   * (설정은 1~30 이면 다 받습니다) 영상 시작은 서버가 거부합니다.
+   */
+  it("keeps an out-of-range saved duration selected and warns, instead of silently swapping it", async () => {
+    const h3 = VIDEO_MODEL_OPTIONS.find((option) => option.id === "h3_max_768p")!;
+    const longClip = { ...settings, clipDurationSeconds: 20, durationSeconds: 120 };
+    const fetchMock = stubFetchByRoute({
+      ...providerSettingsRoute(h3.id),
+      "GET /projects/sample_project/settings": { settings: longClip, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const select = (await screen.findByLabelText("클립 길이(초)", { exact: false })) as HTMLSelectElement;
+    expect(select.value).toBe("20");
+    const warning = await screen.findByTestId("settings-clip-duration-out-of-range");
+    expect(warning.textContent).toContain("5~15초");
+    expect(warning.textContent).toContain("20초");
+  });
+
+  /**
    * 🔴 「장면 이어 그리기」는 그림만 바꾸는 칸이 아닙니다 — 켜져 있으면 클립 N 이 그림 N+1 로 끝나도록 유료
    * 요청이 달라지는데, 그건 그 모델이 끝 그림을 받을 때만입니다. 못 받는 모델에선 켜도 절반만 동작합니다.
    * 켜는 자리에서 그 말을 안 하면 「이어 그리기를 켰는데 컷이 뒤로 돌아간다」가 됩니다.
@@ -860,8 +909,9 @@ describe("ShortProjectSettingsScreen", () => {
   });
 
   it("offers the screen shape as a choice instead of a box to type into", async () => {
-    // The backend decides orientation with `aspect === "16:9"`, so a typed value that is off by a character
-    // silently produces a vertical video — after six clips have been paid for.
+    // The backend reads this through one function, `shortProjectAspectRatio` (project-aspect.ts), so a typed
+    // value that is off by a character — or not one of ASPECT_RATIOS at all — silently produces a vertical
+    // video, after six clips have been paid for.
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
       "GET /projects/sample_project/settings/cast": { cast: [] },
@@ -872,9 +922,32 @@ describe("ShortProjectSettingsScreen", () => {
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     const select = (await screen.findByTestId("settings-aspect")) as HTMLSelectElement;
-    expect([...select.options].map((option) => option.value)).toEqual(["9:16", "16:9"]);
+    // item 6: 1:1 이 세 번째 선택지로 늘었습니다.
+    expect([...select.options].map((option) => option.value)).toEqual(["9:16", "16:9", "1:1"]);
     expect(select.value).toBe("16:9");
     expect(screen.queryByTestId("settings-aspect-unknown")).toBeNull();
+  });
+
+  /** item 6: 정사각(1:1)도 나머지 둘과 똑같이 고르고 저장할 수 있습니다 — 셋째 값이라고 다른 취급을 받지 않습니다. */
+  it("saves 1:1 the same way it saves the other two shapes", async () => {
+    const project = makeProject({});
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "PATCH /projects/sample_project/settings": { project, settings },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    fireEvent.change(await screen.findByTestId("settings-aspect"), { target: { value: "1:1" } });
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")!;
+    const body = JSON.parse(String((call[1] as RequestInit).body)) as { settings: { styleNotes: { aspect: string } } };
+    expect(body.settings.styleNotes.aspect).toBe("1:1");
   });
 
   it("keeps an unrecognised saved ratio visible and says what it will actually produce", async () => {

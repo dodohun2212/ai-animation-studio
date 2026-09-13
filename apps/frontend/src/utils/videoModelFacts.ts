@@ -1,5 +1,5 @@
-import type { VideoFrameShape, VideoModelOption } from "@ai-animation-studio/shared";
-import { VIDEO_MODEL_OPTIONS, videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
+import type { RunwayVideoRatio, VideoFrameShape, VideoModelOption } from "@ai-animation-studio/shared";
+import { VIDEO_MODEL_OPTIONS, videoModelTakesRatio, videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 
 /**
  * What is known about one video model, as sentences — in one place, because two screens say it.
@@ -140,7 +140,7 @@ export function videoModelFacts(option: VideoModelOption): VideoModelFact[] {
  * 아무 말도 하지 않습니다.** 총액까지 멀쩡히 보여 준 뒤 네 장면이 한꺼번에 실패합니다.
  */
 export interface VideoSetupIssue {
-  id: "duration" | "ratio" | "chain";
+  id: "duration" | "ratio" | "chain" | "aspect";
   /** `blocking` 은 「눌러도 전송 자체가 거부된다」입니다 — 경고가 아니라 잠금. */
   severity: "blocking" | "warning";
   text: string;
@@ -150,6 +150,11 @@ export interface VideoSetup {
   /** 장면 하나의 길이(초) — 카탈로그가 아니라 이번 요청이 실제로 들고 있는 값. */
   durationSeconds: number;
   sceneCount: number;
+  /**
+   * 이번 요청이 실제로 들고 있는 비율 — Runway 어휘로. 카탈로그의 `ratios` 는 「이 모델이 만들 수 있는 것」이고,
+   * 여기서 물어야 하는 것은 「지금 이 요청이 이 비율로 나갈 수 있는가」다(item 6, `videoModelTakesRatio`).
+   */
+  ratio: RunwayVideoRatio;
 }
 
 export function videoSetupIssues(option: VideoModelOption, setup: VideoSetup): VideoSetupIssue[] {
@@ -160,6 +165,26 @@ export function videoSetupIssues(option: VideoModelOption, setup: VideoSetup): V
       id: "duration",
       severity: "blocking",
       text: `장면 길이 ${setup.durationSeconds}초는 ${option.label}의 최대 ${option.maxDurationSeconds}초를 넘습니다 — 이대로 누르면 전송이 거부되고 영상이 하나도 안 나옵니다.`,
+    });
+  } else if (setup.durationSeconds < option.minDurationSeconds) {
+    /* B1 이전에는 모든 모델이 같은 최소(5초)를 받아 이 갈래가 있을 일이 없었다 — 카탈로그가 모델마다 다른
+       최소를 갖게 되면서(gen4 2 · Grok 1 · H3 5 …) 짧은 길이 쪽에서도 같은 실패가 생긴다. 최대와 같은
+       자리(서버가 작업을 쓰기 전에 거부)이므로 같은 `id: "duration"` 아래 같은 잠금이다. */
+    issues.push({
+      id: "duration",
+      severity: "blocking",
+      text: `장면 길이 ${setup.durationSeconds}초는 ${option.label}의 최소 ${option.minDurationSeconds}초보다 짧습니다 — 이대로 누르면 전송이 거부되고 영상이 하나도 안 나옵니다.`,
+    });
+  }
+
+  /* item 6: 비율을 실제로 받는 모델(`frameShape: "requested"`)은 자기 `ratios` 에 없는 비율을 거부한다 —
+     Gemini Omni Flash 가 정사각(960:960)을 못 만드는 것이 그 예다. 서버가 작업을 쓰기 전에 거부하므로
+     (`VIDEO_ASPECT_RATIO_UNSUPPORTED`) 최대 길이와 같은 자리의 같은 잠금이다. */
+  if (!videoModelTakesRatio(option, setup.ratio)) {
+    issues.push({
+      id: "aspect",
+      severity: "blocking",
+      text: `${option.label}은(는) 이 비율(${setup.ratio})을 만들지 못합니다 — 이대로 누르면 전송이 거부되고 영상이 하나도 안 나옵니다.`,
     });
   }
 

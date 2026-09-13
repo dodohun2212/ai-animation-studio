@@ -139,7 +139,9 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
   /* 이 요청이 실제로 들고 있는 값으로 대조합니다 — 카탈로그가 아니라. 카탈로그는 「그 모델이 할 수 있는 것」이고,
      여기서 물어야 하는 것은 「지금 이 설정으로 나갈 수 있는가」입니다. */
   const setupOption = previews.length > 0 ? catalogueOption(previews[0]!.model) : undefined;
-  const setup = previews.length > 0 ? { durationSeconds: previews[0]!.durationSeconds, sceneCount: previews.length } : undefined;
+  const setup = previews.length > 0
+    ? { durationSeconds: previews[0]!.durationSeconds, sceneCount: previews.length, ratio: previews[0]!.ratio }
+    : undefined;
   const setupIssues = setupOption && setup ? videoSetupIssues(setupOption, setup) : [];
   /* 🔴 프론트 카탈로그가 모르는 모델이면 대조를 못 합니다. 그때 잠그면 **멀쩡한 요청을 막는** 쪽으로 틀리게 되고,
      그건 이 화면이 피해야 할 방향입니다 — 서버는 그 조합을 알고 있고, 어댑터가 한 번 더 막습니다. */

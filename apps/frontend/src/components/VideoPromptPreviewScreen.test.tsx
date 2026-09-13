@@ -174,20 +174,50 @@ describe("VideoPromptPreviewScreen", () => {
    * 🔴 설정 길이가 모델 최대를 넘으면 어댑터가 유료 호출 **직전에** 거부합니다(`runway-video-adapter.ts`).
    * 돈은 안 나가지만, 그걸 아는 화면이 「작업 워크플로우」뿐이라 승인 버튼이 있는 화면은 총액까지 멀쩡히
    * 보여 준 뒤 네 장면을 한꺼번에 실패시킵니다. 여기서 잠그는 것이 그 실패를 없애는 유일한 자리입니다.
-   */
-  /*
-   * Asked of the function, not the screen, for now: a 15-second preview cannot reach this screen today — the
-   * response guard accepts only RUNWAY_CLIP_DURATIONS (5 · 10) — and every model in the catalogue takes at least
-   * 10 seconds, so no request the app can make trips this lock yet. It becomes reachable with B1 (lengths per
-   * model); the screen-level pair belongs to that round.
+   *
+   * B1 이후로 15초가 실제로 이 화면에 닿을 수 있어 더 이상 함수만 테스트하는 각주가 필요 없습니다 — 여전히
+   * 화면 렌더까지는 안 가고 함수를 직접 부르는 것은, 이 화면에 이 조합을 렌더시키려면 미리보기 API 가
+   * 15초 모델 프리뷰를 내려줘야 하고 그건 이 화면의 책임이 아니라 그걸 부르는 쪽의 책임이기 때문입니다.
    */
   it("locks the approve button when the request cannot be sent at all", () => {
     const gen4 = VIDEO_MODEL_OPTIONS.find((option) => option.id === "gen4_turbo")!;
-    const issues = videoSetupIssues(gen4, { durationSeconds: 15, sceneCount: 2 });
+    const issues = videoSetupIssues(gen4, { durationSeconds: 15, sceneCount: 2, ratio: "720:1280" });
     expect(issues.find((issue) => issue.id === "duration")?.text).toContain("최대 10초");
     expect(hasBlockingIssue(issues), "눌러도 전송이 거부되는 조합").toBe(true);
     // And a length the model takes is not a lock.
-    expect(hasBlockingIssue(videoSetupIssues(gen4, { durationSeconds: 10, sceneCount: 2 }))).toBe(false);
+    expect(hasBlockingIssue(videoSetupIssues(gen4, { durationSeconds: 10, sceneCount: 2, ratio: "720:1280" }))).toBe(false);
+  });
+
+  /**
+   * 🔴 B1 전에는 카탈로그의 모든 모델이 같은 최소(옛 RUNWAY_CLIP_DURATIONS 의 5초)를 받아 이 갈래를 탈 값이
+   * 없었습니다. `minDurationSeconds` 가 모델마다 달라진 뒤(H3 Max 는 5, Grok 은 1) 최대와 대칭인 실패가
+   * 생겼습니다 — 짧아도 서버가 작업을 쓰기 전에 거부합니다.
+   */
+  it("locks the approve button when the request is shorter than the model's minimum, too", () => {
+    const h3 = VIDEO_MODEL_OPTIONS.find((option) => option.id === "h3_max_768p")!;
+    const issues = videoSetupIssues(h3, { durationSeconds: 3, sceneCount: 2, ratio: "720:1280" });
+    expect(issues.find((issue) => issue.id === "duration")?.text).toContain("최소 5초");
+    expect(hasBlockingIssue(issues), "모델의 최소보다 짧은 길이").toBe(true);
+    // A length inside the model's range is not a lock.
+    expect(hasBlockingIssue(videoSetupIssues(h3, { durationSeconds: 5, sceneCount: 2, ratio: "720:1280" }))).toBe(false);
+  });
+
+  /**
+   * 🔴 item 6 — 비율을 실제로 받는 모델은 자기 `ratios` 에 없는 비율을 거부합니다. Gemini Omni Flash 는
+   * Runway OpenAPI 기준으로 정사각(960:960)을 만들지 못하는 유일한 모델입니다 — 1:1 프로젝트를 이 모델로
+   * 보내면 서버가 작업을 쓰기 전에 거부합니다(`VIDEO_ASPECT_RATIO_UNSUPPORTED`).
+   */
+  it("locks the approve button when the model cannot make this ratio at all", () => {
+    const gemini = VIDEO_MODEL_OPTIONS.find((option) => option.id === "gemini_omni_flash")!;
+    const issues = videoSetupIssues(gemini, { durationSeconds: 5, sceneCount: 2, ratio: "960:960" });
+    expect(issues.find((issue) => issue.id === "aspect")?.text).toContain("960:960");
+    expect(hasBlockingIssue(issues), "Gemini 는 정사각을 만들지 못합니다").toBe(true);
+    // A ratio the model does take is not a lock.
+    expect(hasBlockingIssue(videoSetupIssues(gemini, { durationSeconds: 5, sceneCount: 2, ratio: "720:1280" }))).toBe(false);
+    // 비율을 안 받는 모델(follows_first_frame · unconfirmed)은 어떤 비율을 줘도 이 잠금에 걸리지 않습니다 —
+    // 그림을 따르므로 정사각도 됩니다.
+    const wan = VIDEO_MODEL_OPTIONS.find((option) => option.id === "wan3_720p")!;
+    expect(hasBlockingIssue(videoSetupIssues(wan, { durationSeconds: 5, sceneCount: 2, ratio: "960:960" }))).toBe(false);
   });
 
   /**
@@ -205,6 +235,23 @@ describe("VideoPromptPreviewScreen", () => {
     expect(first?.getAttribute("data-testid")).toBe("setup-suggestion-seedance2_mini");
     // 4장면 × 5초, 최소 청구액이 붙는 모델이라 초당 요율만으로는 못 맞추는 값입니다.
     expect(first?.textContent).toContain("$3.20");
+  });
+
+  /**
+   * 🔴 화면 배선까지 봅니다 — 함수만이 아니라. `previews[0].ratio` 가 실제로 `videoSetupIssues` 까지
+   * 닿는지는 함수 테스트만으로는 안 보입니다(그 사이의 한 줄이 `ratio` 를 빼먹어도 함수 테스트는 계속
+   * 초록입니다).
+   */
+  it("renders a locked screen when the preview's own ratio is one the model cannot make", async () => {
+    const previews = makePreviews(2).map((preview) => (
+      { ...preview, model: "gemini_omni_flash" as VideoPromptPreview["model"], ratio: "960:960" as VideoPromptPreview["ratio"] }
+    ));
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { previews, confirmationId: "c1" })));
+
+    const issue = await screen.findByTestId("setup-issue-aspect");
+    expect(issue.textContent).toContain("960:960");
+    expect(screen.getByTestId("setup-issues").textContent).toContain("이대로는 전송되지 않습니다");
+    expect((screen.getByTestId("open-confirm-button") as HTMLButtonElement).disabled, "잠긴 조합").toBe(true);
   });
 
   /** 걸리는 것이 없으면 아무 말도 하지 않습니다 — 늘 떠 있는 경고는 경고가 아닙니다. */

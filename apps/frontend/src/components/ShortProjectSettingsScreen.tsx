@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { SHORT_PROJECT_LEAD_CAST_ROLE, isShortProjectCastLead,
+  CLIP_DURATION_CHOICES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
-  RUNWAY_CLIP_DURATIONS,
+  videoModelTakesDuration,
   videoSceneEstimatedCostUsd,
   type Asset,
   type AssetType,
@@ -97,20 +98,23 @@ function SectionHeading({ children }: { children: ReactNode }) {
   );
 }
 
-/** The two shapes the video step can actually produce, in the spelling its ratio check compares against. */
+/** The three shapes the video step can actually produce, in the spelling its ratio check compares against. */
 const ASPECT_OPTIONS: { value: string; label: string }[] = [
   { value: "9:16", label: "세로형 9:16" },
   { value: "16:9", label: "가로형 16:9" },
+  { value: "1:1", label: "정사각형 1:1" },
 ];
 
 /**
  * Screen shape, as a choice rather than a free-text note.
  *
- * The backend decides orientation with `aspect === "16:9" ? landscape : portrait` (video-preview.service.ts),
- * so anything else — a typo, "1920x1080", Korean, an empty box — silently produces a vertical video. Typing it
- * by hand meant a project could look landscape in settings and bill six vertical clips. A stored value that is
- * neither option is kept and named rather than quietly rewritten: replacing the user's data on render would
- * hide that their old project is about to come out vertical.
+ * The backend reads this through one function, `shortProjectAspectRatio` (project-aspect.ts) — not the
+ * `aspect === "16:9" ? landscape : portrait` this comment used to describe. That two-way ternary is exactly
+ * item 6's bug shape: a third value (1:1) would have fallen into "portrait" through it. The one function now
+ * checks membership in `ASPECT_RATIOS` and falls back to "9:16" for anything else — a typo, "1920x1080",
+ * Korean, an empty box. Typing it by hand meant a project could look landscape in settings and bill six
+ * vertical clips. A stored value that is neither option is kept and named rather than quietly rewritten:
+ * replacing the user's data on render would hide that their old project is about to come out vertical.
  */
 function AspectField({ value, onChange, changeable }: { value: string; onChange: (value: string) => void; changeable: boolean }) {
   const known = ASPECT_OPTIONS.some((option) => option.value === value);
@@ -910,6 +914,8 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
    * 못 읽으면 두 줄이 안 나올 뿐 화면은 그대로입니다 — 설정 저장을 막을 이유가 없습니다.
    */
   const [videoModel, setVideoModel] = useState<VideoModelOption | null>(null);
+  /* item 5(D1): the lengths offered — CLIP_DURATION_CHOICES that this model takes, or all of them before the model is known. */
+  const shownClipDurations: readonly number[] = videoModel ? CLIP_DURATION_CHOICES.filter((seconds) => videoModelTakesDuration(videoModel, seconds)) : CLIP_DURATION_CHOICES;
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1210,9 +1216,21 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                 setField("durationSeconds", state.settings!.sceneCount * clipDurationSeconds);
               }}
             >
-              {RUNWAY_CLIP_DURATIONS.map((duration) => (
+              {/* item 5(D1): 1~30 전부를 늘어놓으면 못 읽으므로 CLIP_DURATION_CHOICES(5·10·15·20·30) 중
+                  지금 고른 모델이 실제로 받는 것만 보여준다. 지금 저장된 값이 그 교집합 밖이면(모델을 막
+                  바꿨거나, 서버가 받은 그 밖의 값이면) 선택지에서 조용히 사라지는 대신 그대로 남아 골라져
+                  있다 — 사라지면 다른 값이 골라진 척하게 된다. 그 경고는 바로 아래 줄에 있다. */}
+              {/* 「보여 준 목록에 없으면」이지 「CLIP_DURATION_CHOICES 에 없으면」이 아니다: H3 Max 에 저장된 20초는
+                  CHOICES 에는 있지만 모델 필터로 빠지므로, 후자로 물으면 선택지에도 추가 칸에도 없어 <select> 가
+                  5초를 골라진 것처럼 보였다(CLI Round 854). */}
+              {shownClipDurations.map((duration) => (
                 <option key={duration} value={duration}>{duration}초</option>
               ))}
+              {!(shownClipDurations as readonly number[]).includes(state.settings.clipDurationSeconds) && (
+                <option key={state.settings.clipDurationSeconds} value={state.settings.clipDurationSeconds}>
+                  {state.settings.clipDurationSeconds}초(권장 목록 밖)
+                </option>
+              )}
             </select>
           </label>
             {/* 🔴 이 칸은 **영상비를 두 배로 바꾸는 칸**인데, 화면에는 초 수만 있었습니다. 5초와 10초 사이에서
@@ -1224,8 +1242,18 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             {videoModel && (
               <span data-testid="settings-clip-duration-cost" className="mt-1 block text-xs tabular-nums text-slate-400">
                 {videoModel.label} 기준 · 장면당{" "}
-                {RUNWAY_CLIP_DURATIONS.map((duration) => `${duration}초 $${videoSceneEstimatedCostUsd(duration, videoModel).toFixed(2)}`).join(" · ")}
+                {CLIP_DURATION_CHOICES.filter((duration) => videoModelTakesDuration(videoModel, duration))
+                  .map((duration) => `${duration}초 $${videoSceneEstimatedCostUsd(duration, videoModel).toFixed(2)}`).join(" · ")}
               </span>
+            )}
+            {/* item 5(D1) 최소 대조: 모델을 바꾼 직후 지금 길이가 새 모델의 범위 밖일 수 있다 — 저장은 되지만
+                (설정은 1~30 이면 다 받는다) 영상을 시작하면 서버가 작업을 쓰기 전에 거부한다
+                (VIDEO_CLIP_DURATION_OUT_OF_RANGE). 그 사실을 저장 전에, 여기서 먼저 말한다. */}
+            {videoModel && !videoModelTakesDuration(videoModel, state.settings.clipDurationSeconds) && (
+              <p data-testid="settings-clip-duration-out-of-range" className="mt-1 text-xs text-amber-300">
+                {videoModel.label}은(는) {videoModel.minDurationSeconds}~{videoModel.maxDurationSeconds}초만 받습니다 —
+                지금 {state.settings.clipDurationSeconds}초로는 영상 시작 시 거부됩니다.
+              </p>
             )}
           </div>
           <Field label="전체 줄거리" value={state.settings.fullStory} onChange={(value) => setField("fullStory", value)} multiline />
