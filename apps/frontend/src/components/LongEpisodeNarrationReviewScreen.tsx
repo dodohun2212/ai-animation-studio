@@ -16,6 +16,7 @@ import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { narrationLooksTooLong, narrationRunsTooLong } from "../utils/narrationLength.js";
+import { narrationScenesToSpeak } from "../utils/narrationBilling.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 
@@ -128,7 +129,14 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
   const scriptEditable = state.status === "ready" && state.episodeStatus === "script_review";
   const withText = narrations.filter((item) => item.narration.trim());
   const missing = narrations.filter((item) => !item.narration.trim());
-  const estimatedCost = withText.length * TTS_ESTIMATED_COST_USD;
+  /**
+   * 살 것을 세는 규칙은 `utils/narrationBilling.ts` 한 곳에 있습니다 — 짧은 프로젝트 화면도 같은 함수를 씁니다.
+   * 백엔드 두 서비스(`local-narration-generation` · `episode-narration`)가 같은 `stillGoodAudio` 를 쓰기
+   * 때문입니다. 왜 「문장이 있는 장면 수」가 아니라 「말해질 장면 수」인지는 그 파일의 주석에 있습니다.
+   */
+  const toSpeak = narrationScenesToSpeak(withText, narrationStale);
+  const reusedCount = withText.length - toSpeak.length;
+  const estimatedCost = toSpeak.length * TTS_ESTIMATED_COST_USD;
   /**
    * Only true once the settings actually say narration is off. The backend rejects TTS with
    * LONG_EPISODE_NARRATION_NOT_ENABLED in that case, so offering the paid button would be offering a
@@ -243,7 +251,7 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                     ${estimatedCost.toFixed(2)}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {withText.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)} · 이 에피소드 한 편 기준 · 키가 연결되어 있을
+                    {toSpeak.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)} · 이 에피소드 한 편 기준 · 키가 연결되어 있을
                     때만 청구됩니다
                   </p>
                 </div>
@@ -279,7 +287,16 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
               </p>
             )}
 
-            {withText.length > 0 && !voiceOff && (
+            {/* 살 게 0 장면이면 「0개 장면 음성을 만들까요?」 를 여는 버튼이 남습니다 — 누를 이유가 없는
+                버튼입니다. 버튼 대신 왜 만들 게 없는지, 그리고 어떻게 하면 다시 만들 수 있는지를 말합니다. */}
+            {withText.length > 0 && toSpeak.length === 0 && !voiceOff && (
+              <p data-testid="episode-narration-all-voiced" className="text-sm text-slate-300">
+                글이 있는 {withText.length}장면에 모두 음성이 있습니다 — 지금 만들 것이 없습니다. 문장을 고치면 그 장면만
+                다시 만들면 됩니다.
+              </p>
+            )}
+
+            {toSpeak.length > 0 && !voiceOff && (
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
@@ -304,7 +321,7 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                 className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
               >
                 <p className="text-sm font-semibold text-amber-300">
-                  에피소드 {episodeNumber}의 {withText.length}개 장면 음성을 만들까요?
+                  에피소드 {episodeNumber}의 {toSpeak.length}개 장면 음성을 만들까요?
                 </p>
                 <p className="text-sm text-slate-300">
                   아직 요청이 가지 않았습니다. OpenAI 키가 연결되어 있으면 확인을 누르는 순간 실제 유료 요청이 전송됩니다.
@@ -313,8 +330,13 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                 {/* The estimate is computable without a ledger, so it is its own line — BudgetLine
                     deliberately renders nothing when there is no budget, and that rule stays intact. */}
                 <p data-testid="episode-narration-generate-cost-estimate" className="text-xs text-slate-300 tabular-nums">
-                  예상 비용: ${estimatedCost.toFixed(2)} ({withText.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)}) · 키가
+                  예상 비용: ${estimatedCost.toFixed(2)} ({toSpeak.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)}) · 키가
                   연결되어 있을 때만 청구됩니다
+                  {/* 수가 장면 수보다 적은 이유를 그 자리에서 말합니다 — 안 그러면 「내레이션이 있는 장면 6」 옆의
+                      「2장면 × …」 이 오류로 보입니다. */}
+                  {reusedCount > 0 && (
+                    <span data-testid="episode-narration-generate-reused"> · 이미 음성이 있는 {reusedCount}장면은 빠졌습니다</span>
+                  )}
                 </p>
                 <BudgetLine
                   budget={state.budget}

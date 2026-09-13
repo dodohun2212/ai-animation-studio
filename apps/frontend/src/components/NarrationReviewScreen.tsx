@@ -17,6 +17,7 @@ import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { narrationLooksTooLong, narrationRunsTooLong } from "../utils/narrationLength.js";
+import { narrationScenesToSpeak } from "../utils/narrationBilling.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
 import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
@@ -109,25 +110,12 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
   const withText = narrations.filter((item) => item.narration.trim());
   const missing = narrations.filter((item) => !item.narration.trim());
   /**
-   * 🔴 실제로 **말해질** 장면만 셉니다 — 값이 붙은 수라서.
-   *
-   * 확인 상자는 「이미 음성이 있는 장면은 다시 만들지 않아 비용도 들지 않습니다」라고 말하면서, 바로 아래
-   * 줄에서 **그 장면들까지 곱하고** 있었습니다. 두 줄이 서로를 부정하면 사람은 둘 다 못 믿습니다.
-   *
-   * 그리고 이 수는 장식이 아닙니다 — `BudgetLine` 에 `estimatedRequestCostUsd` 로 그대로 들어갑니다. 많이
-   * 부르면 **낼 수 있는 돈인데도 예산에 걸려 막힙니다.** 과다 견적이 「안전한 쪽」이 아닌 이유입니다.
-   *
-   * 규칙은 백엔드가 실제로 쓰는 것과 같게 뒀습니다(`local-narration-generation.service.ts`: 목적지가 같고 ·
-   * 아직 맞고 · 파일이 멀쩡할 때만 재사용). 즉 **음성이 `generated` 가 아니거나(없음·자리표시), 글이 바뀌어
-   * 뒤처진 장면**이 말해집니다.
-   *
-   * 🔴 `staleness` 가 안 왔을 때는 **전부 센다**로 되돌아갑니다. 모르면서 적게 부르면 그게 위험한 방향입니다 —
-   * 사람이 예산 안이라고 믿고 눌렀다가 중간에 막힙니다.
+   * 살 것을 세는 규칙은 `utils/narrationBilling.ts` 한 곳에 있습니다 — 긴 에피소드 화면도 같은 함수를 씁니다.
+   * 왜 「문장이 있는 장면 수」가 아니라 「말해질 장면 수」인지는 그 파일의 주석에 적어 뒀습니다(예산에 그대로
+   * 들어가는 수라 과다 견적이 안전한 쪽이 아니라는 이야기).
    */
   const narrationStale = state.status === "ready" ? state.staleness?.narrationStale : undefined;
-  const willSpeak = (item: NarrationReview): boolean =>
-    narrationStale === undefined || item.audio !== "generated" || narrationStale.includes(item.sceneNumber);
-  const toSpeak = withText.filter(willSpeak);
+  const toSpeak = narrationScenesToSpeak(withText, narrationStale);
   const reusedCount = withText.length - toSpeak.length;
   const estimatedCost = toSpeak.length * TTS_ESTIMATED_COST_USD;
   /**
@@ -275,7 +263,16 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
               </p>
             )}
 
-            {withText.length > 0 && !voiceOff && (
+            {/* 살 게 0 장면이면 「0개 장면의 음성을 만들까요?」 를 여는 버튼이 남습니다 — 누를 이유가 없는
+                버튼입니다. 버튼 대신 왜 만들 게 없는지, 그리고 어떻게 하면 다시 만들 수 있는지를 말합니다. */}
+            {withText.length > 0 && toSpeak.length === 0 && !voiceOff && (
+              <p data-testid="narration-all-voiced" className="text-sm text-slate-300">
+                글이 있는 {withText.length}장면에 모두 음성이 있습니다 — 지금 만들 것이 없습니다. 문장을 고치면 그 장면만
+                다시 만들면 됩니다.
+              </p>
+            )}
+
+            {toSpeak.length > 0 && !voiceOff && (
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"

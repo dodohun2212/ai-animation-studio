@@ -155,6 +155,46 @@ describe("NarrationReviewScreen", () => {
     expect(screen.queryByTestId("narration-generate-reused"), "뺀 게 없으면 그 말도 없습니다").toBeNull();
   });
 
+  /**
+   * 살 게 0 장면이면 버튼이 「0개 장면의 음성을 만들까요?」 를 엽니다 — 눌러도 백엔드가 전부 재사용으로 끝내니
+   * 돈은 안 들지만, 누를 이유가 없는 버튼입니다. 왜 만들 게 없는지와 다시 만드는 방법을 대신 말합니다.
+   */
+  it("offers no paid button when every sentence already has audio", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          project,
+          narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "generated" }]),
+          staleness: sceneStaleness({}),
+        },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      }),
+    );
+
+    const voiced = await screen.findByTestId("narration-all-voiced");
+    expect(voiced.textContent).toContain("모두 음성이 있습니다");
+    expect(voiced.textContent, "막다른 골목으로 두지 않습니다").toContain("문장을 고치면");
+    expect(screen.queryByTestId("narration-generate-button"), "0개를 만드는 버튼은 없습니다").toBeNull();
+    expect(screen.getByTestId("narration-estimated-cost").textContent).toBe("$0.00");
+  });
+
+  /** 반대쪽: 하나라도 말해질 게 있으면 버튼이 있고 저 안내는 없습니다. */
+  it("keeps the paid button, and says nothing about being all voiced, while one scene still needs audio", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          project,
+          narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "none" }]),
+          staleness: sceneStaleness({}),
+        },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      }),
+    );
+
+    expect(await screen.findByTestId("narration-generate-button")).toBeTruthy();
+    expect(screen.queryByTestId("narration-all-voiced")).toBeNull();
+  });
+
   it("flags narration too long for the clip length loaded from project settings", async () => {
     // 5s clip x 5 chars/sec = 25 characters before a line is flagged.
     renderScreen(

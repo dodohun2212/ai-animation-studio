@@ -73,6 +73,97 @@ describe("LongEpisodeNarrationReviewScreen", () => {
     expect(fetchMock.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "POST")).toBe(false);
   });
 
+  /**
+   * 🔴 견적은 **말해질** 장면만 셉니다. 상자가 「이미 음성이 있는 장면은 다시 만들지 않아 비용도 들지 않습니다」
+   * 라고 하면서 그 장면까지 곱하면 두 줄이 서로를 부정합니다 — 그리고 이 수는 `BudgetLine` 에 그대로 들어가서,
+   * 많이 부르면 낼 수 있는 돈인데도 예산에 걸려 막힙니다. 짧은 프로젝트 화면과 같은 함수를 씁니다.
+   */
+  it("counts only the scenes that will actually be synthesized", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          episode: episode(),
+          staleness: { narrationStale: [] },
+          narrations: narrations([
+            { narration: "문장", audio: "generated" },   // 이미 있고 뒤처지지도 않음 — 안 말해집니다
+            { narration: "문장", audio: "none" },
+            { narration: "문장", audio: "placeholder" },  // 진짜 목소리가 아닙니다 — 말해집니다
+          ]),
+        },
+        [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
+      }),
+    );
+
+    // 글이 있는 장면은 셋 그대로 — 그건 다른 사실입니다.
+    expect((await screen.findByTestId("episode-narration-count")).textContent).toBe("3 / 3");
+    expect(screen.getByTestId("episode-narration-estimated-cost").textContent, "말해질 두 장면만").toBe("$0.02");
+
+    fireEvent.click(screen.getByTestId("episode-narration-generate-button"));
+    const estimate = await screen.findByTestId("episode-narration-generate-cost-estimate");
+    expect(estimate.textContent).toContain("2장면");
+    expect(estimate.textContent, "수가 왜 적은지 그 자리에서 말합니다").toContain("이미 음성이 있는 1장면은 빠졌습니다");
+    expect(screen.getByTestId("episode-narration-generate-confirm").textContent).toContain("2개 장면 음성을 만들까요");
+  });
+
+  /** 글이 바뀌어 뒤처진 음성은 **다시 만들어집니다** — 있다고 빼면 적게 부르는 쪽이라 더 위험합니다. */
+  it("charges again for audio that has fallen behind its text", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          episode: episode(),
+          staleness: { narrationStale: [2] },
+          narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "generated" }]),
+        },
+        [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
+      }),
+    );
+
+    expect((await screen.findByTestId("episode-narration-estimated-cost")).textContent, "뒤처진 2번만").toBe("$0.01");
+    fireEvent.click(screen.getByTestId("episode-narration-generate-button"));
+    const estimate = await screen.findByTestId("episode-narration-generate-cost-estimate");
+    expect(estimate.textContent).toContain("이미 음성이 있는 1장면은 빠졌습니다");
+  });
+
+  /**
+   * 살 게 0 장면이면 버튼이 「0개 장면 음성을 만들까요?」 를 엽니다 — 눌러도 백엔드가 전부 재사용으로 끝내니
+   * 돈은 안 들지만, 누를 이유가 없는 버튼입니다.
+   */
+  it("offers no paid button when every sentence in the Episode already has audio", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          episode: episode(),
+          staleness: { narrationStale: [] },
+          narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "generated" }]),
+        },
+        [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
+      }),
+    );
+
+    const voiced = await screen.findByTestId("episode-narration-all-voiced");
+    expect(voiced.textContent).toContain("모두 음성이 있습니다");
+    expect(voiced.textContent, "막다른 골목으로 두지 않습니다").toContain("문장을 고치면");
+    expect(screen.queryByTestId("episode-narration-generate-button"), "0개를 만드는 버튼은 없습니다").toBeNull();
+    expect(screen.getByTestId("episode-narration-estimated-cost").textContent).toBe("$0.00");
+  });
+
+  /** 반대쪽: 하나라도 말해질 게 있으면 버튼이 있고 저 안내는 없습니다. */
+  it("keeps the paid button, and says nothing about being all voiced, while one scene still needs audio", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          episode: episode(),
+          staleness: { narrationStale: [] },
+          narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "none" }]),
+        },
+        [SETTINGS]: { settings: settings(), aspectRatioChangeable: true },
+      }),
+    );
+
+    expect(await screen.findByTestId("episode-narration-generate-button")).toBeTruthy();
+    expect(screen.queryByTestId("episode-narration-all-voiced")).toBeNull();
+  });
+
   it("does not send the paid request until the confirmation is explicitly accepted", async () => {
     const fetchMock = stubFetchByRoute({
       [REVIEW]: [
