@@ -320,6 +320,96 @@ describe("AssetLibraryScreen", () => {
     }
   });
 
+  /**
+   * 🔴 「하위 항목의 원본 파일도 함께 삭제」는 손으로 등록하지 않은 항목이 하나라도 있으면 백엔드가 **삭제 전체를
+   * 거절**합니다. 그리고 이 화면은 하위 항목마다 `getAsset` 을 이미 부르고 있어서, 그 답(`canDeleteOwnedFile`)을
+   * **손에 쥐고 있으면서 버렸습니다** — 사람은 되돌릴 수 없는 버튼을 누른 뒤에야 거절로 알게 됐습니다.
+   */
+  function folderWithChildren(childIds: string[]) {
+    return makeAsset({
+      assetId: "FOLDER-DEL", assetType: "character", displayName: "지울 폴더", isFolder: true,
+      imageAvailable: false, contentSha256: "", versions: [], referenceImages: [],
+      childAssetIds: childIds, thumbnailAssetId: childIds[0] ?? "",
+    });
+  }
+
+  it("says before the button that a folder holds files it cannot delete, and locks that choice", async () => {
+    const manual = makeAsset({ assetId: "CHILD-MANUAL", assetType: "character", displayName: "손으로 넣은 것", parentFolderId: "FOLDER-DEL", sortOrder: 0 });
+    const owned = makeAsset({ assetId: "CHILD-OWNED", assetType: "character", displayName: "프로젝트가 만든 것", parentFolderId: "FOLDER-DEL", sortOrder: 1 });
+    const folder = folderWithChildren(["CHILD-MANUAL", "CHILD-OWNED"]);
+    vi.stubGlobal("fetch", withGeneratedImages(stubFetchByRoute({
+      "GET /assets": { assets: [folder, manual, owned] },
+      "GET /assets/FOLDER-DEL": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "GET /assets/CHILD-MANUAL": { asset: manual, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      // 이 한 항목이 삭제 전체를 거절시킵니다 — 서버가 그렇다고 이미 답했습니다.
+      "GET /assets/CHILD-OWNED": { asset: owned, usageProjectIds: [], ownership: "project_owned", canDeleteOwnedFile: false },
+    })));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    fireEvent.click(within(await screen.findByRole("list", { name: "에셋 목록" })).getByText("지울 폴더"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    fireEvent.click(within(detail).getByText("폴더 삭제", { selector: "summary" }));
+
+    const blocked = await within(detail).findByTestId("folder-file-delete-blocked");
+    expect(blocked.textContent, "몇 개가 막는지").toContain("1개");
+    expect(blocked.textContent, "대신 할 수 있는 일도").toContain("색인만 지우는 것은");
+    expect(within(detail).getByLabelText(/하위 항목의 원본 파일도 함께 삭제/)).toBeDisabled();
+    expect(within(detail).queryByTestId("folder-file-delete-unchecked"), "모르는 게 아니라 아는 상태입니다").toBeNull();
+  });
+
+  /** 반대쪽: 전부 손으로 넣은 폴더는 잠기지 않고 아무 말도 붙지 않습니다 — 늘 뜨는 경고는 읽히지 않습니다. */
+  it("leaves the file-delete choice open when every child's file can be deleted", async () => {
+    const first = makeAsset({ assetId: "CHILD-A", assetType: "character", displayName: "첫째", parentFolderId: "FOLDER-DEL", sortOrder: 0 });
+    const folder = folderWithChildren(["CHILD-A"]);
+    vi.stubGlobal("fetch", withGeneratedImages(stubFetchByRoute({
+      "GET /assets": { assets: [folder, first] },
+      "GET /assets/FOLDER-DEL": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "GET /assets/CHILD-A": { asset: first, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+    })));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    fireEvent.click(within(await screen.findByRole("list", { name: "에셋 목록" })).getByText("지울 폴더"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    fireEvent.click(within(detail).getByText("폴더 삭제", { selector: "summary" }));
+
+    await waitFor(() => expect(within(detail).getByLabelText(/하위 항목의 원본 파일도 함께 삭제/)).not.toBeDisabled());
+    expect(within(detail).queryByTestId("folder-file-delete-blocked")).toBeNull();
+    expect(within(detail).queryByTestId("folder-file-delete-unchecked")).toBeNull();
+  });
+
+  /**
+   * 🔴 「막는 게 없다」와 「모른다」는 다릅니다. 하위 항목 하나를 못 읽었으면 읽은 것만 보고 안전하다고 말할 수
+   * 없습니다 — 그렇다고 잠그지도 않습니다(모른다고 못 하게 하면 그게 막다른 골목입니다).
+   */
+  it("does not call an unread folder safe, and does not lock it either", async () => {
+    const first = makeAsset({ assetId: "CHILD-A", assetType: "character", displayName: "첫째", parentFolderId: "FOLDER-DEL", sortOrder: 0 });
+    const second = makeAsset({ assetId: "CHILD-B", assetType: "character", displayName: "둘째", parentFolderId: "FOLDER-DEL", sortOrder: 1 });
+    const folder = folderWithChildren(["CHILD-A", "CHILD-B"]);
+    const base = stubFetchByRoute({
+      "GET /assets": { assets: [folder, first, second] },
+      "GET /assets/FOLDER-DEL": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "GET /assets/CHILD-A": { asset: first, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      // 둘째 항목만 실패시킵니다 — 읽은 첫째는 지울 수 있는 것이라, 읽은 것만 보면 「막는 게 없다」로 보입니다.
+      if (String(input) === "/assets/CHILD-B") throw new Error("network");
+      // `stubFetchByRoute` returns a bare vi.fn; typed as fetch so it can be called through here.
+      return (base as unknown as typeof fetch)(input, init);
+    });
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    fireEvent.click(within(await screen.findByRole("list", { name: "에셋 목록" })).getByText("지울 폴더"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    fireEvent.click(within(detail).getByText("폴더 삭제", { selector: "summary" }));
+
+    const unchecked = await within(detail).findByTestId("folder-file-delete-unchecked");
+    expect(unchecked.textContent).toContain("확인하지 못했습니다");
+    expect(unchecked.textContent, "무슨 일이 벌어지는지도").toContain("삭제 전체가 거절됩니다");
+    expect(within(detail).getByLabelText(/하위 항목의 원본 파일도 함께 삭제/), "모른다고 막지는 않습니다").not.toBeDisabled();
+    expect(within(detail).queryByTestId("folder-file-delete-blocked")).toBeNull();
+  });
+
   it("edits metadata for the selected asset and refreshes the list without losing the detail view", async () => {
     const asset = makeAsset({ assetId: "ASSET-EDIT", displayName: "원래 이름" });
     const updated = { ...asset, displayName: "바뀐 이름" };

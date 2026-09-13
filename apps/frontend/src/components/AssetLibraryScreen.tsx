@@ -132,6 +132,19 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   const [folderChildren, setFolderChildren] = useState<Asset[] | null>(null);
   const [folderChildrenLoading, setFolderChildrenLoading] = useState(false);
   const [folderChildrenError, setFolderChildrenError] = useState<{ code: string; message: string } | null>(null);
+  /**
+   * 🔴 하위 항목 중 **원본 파일을 지울 수 없는** 것들의 id — 서버가 이미 준 답입니다.
+   *
+   * 「하위 항목의 원본 파일도 함께 삭제」는 하나라도 손으로 등록하지 않은 항목이 있으면 백엔드가 **폴더 삭제
+   * 전체를 거절**합니다. 그런데 이 화면은 하위 항목마다 `getAsset` 을 이미 부르고 있고, 그 응답에는 서버가
+   * 계산한 `canDeleteOwnedFile` 이 들어 있었습니다 — 손에 쥔 답을 버리고, 사람이 **되돌릴 수 없는 버튼을 누른
+   * 뒤에** 거절로 배우게 하고 있었습니다. 회차 되돌리기에서 「서버가 거절하기 전에 말한다」로 정리한 것과 같은
+   * 모양입니다.
+   *
+   * `null` 은 「없다」가 아니라 **「아직 모른다」**(안 불러왔거나 일부가 실패)입니다. 모를 때는 잠그지 않고,
+   * 확인하지 못했다고 말합니다 — 못 잰 값을 잰 것처럼 쓰지 않는다는 이 저장소의 규칙 그대로.
+   */
+  const [folderChildrenFileLocked, setFolderChildrenFileLocked] = useState<string[] | null>(null);
   const [folderLinkQuery, setFolderLinkQuery] = useState("");
   const [folderLinkResults, setFolderLinkResults] = useState<Asset[] | null>(null);
   const [folderLinkSearchLoading, setFolderLinkSearchLoading] = useState(false);
@@ -227,19 +240,27 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     const folder = selected?.asset;
     setChildDescriptionDrafts({});
     if (!folder || !folder.isFolder) {
-      setFolderChildren(null); setFolderChildrenError(null); setFolderLinkResults(null); setFolderLinkQuery("");
+      setFolderChildren(null); setFolderChildrenError(null); setFolderChildrenFileLocked(null); setFolderLinkResults(null); setFolderLinkQuery("");
       setFolderLinkSearchError(null); setFolderMutationError(null);
       return;
     }
     const requestId = ++folderChildrenRequest.current;
-    if (folder.childAssetIds.length === 0) { setFolderChildren([]); setFolderChildrenError(null); return; }
+    if (folder.childAssetIds.length === 0) { setFolderChildren([]); setFolderChildrenError(null); setFolderChildrenFileLocked([]); return; }
     setFolderChildrenLoading(true);
     Promise.allSettled(folder.childAssetIds.map((childId) => getAsset(childId))).then((results) => {
       if (requestId !== folderChildrenRequest.current) return;
       const children: Asset[] = [];
+      // 같은 응답에 서버가 계산한 답이 이미 있습니다. 버리지 않고 들고 있다가, 버튼 **앞에서** 말합니다.
+      const fileLocked: string[] = [];
       let missing = false;
-      results.forEach((outcome) => { if (outcome.status === "fulfilled") children.push(outcome.value.asset); else missing = true; });
+      results.forEach((outcome) => {
+        if (outcome.status !== "fulfilled") { missing = true; return; }
+        children.push(outcome.value.asset);
+        if (!outcome.value.canDeleteOwnedFile) fileLocked.push(outcome.value.asset.assetId);
+      });
       setFolderChildren(children);
+      // 하나라도 못 읽었으면 「없다」가 아니라 「모른다」입니다 — 읽은 것만 보고 안전하다고 말하지 않습니다.
+      setFolderChildrenFileLocked(missing ? null : fileLocked);
       setFolderChildrenError(missing ? { code: "CLIENT_PARTIAL_LOAD", message: "일부 하위 이미지 정보를 불러오지 못했습니다." } : null);
     }).finally(() => { if (requestId === folderChildrenRequest.current) setFolderChildrenLoading(false); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -351,6 +372,9 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
     } catch (caught) { setConfirmError(toAssetDisplayError(caught)); }
     finally { ownedFileDeleteBusy.current = false; setOwnedFileDeletePending(false); }
   }
+
+  /** 0 이면 「막는 것이 없다」, `folderChildrenFileLocked === null` 이면 「모른다」 — 모를 때는 0 으로 두고 잠그지 않습니다. */
+  const fileDeleteBlockedCount = folderChildrenFileLocked?.length ?? 0;
 
   async function removeFolder() {
     if (!selected || !selected.asset.isFolder || folderDeleteBusy.current) return;
@@ -1298,7 +1322,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   type="checkbox"
                   className="h-4 w-4 accent-violet-500"
                   checked={folderDeleteManualFiles}
-                  disabled={folderDeletePending}
+                  disabled={folderDeletePending || fileDeleteBlockedCount > 0}
                   onChange={(event) => {
                     const checked = event.target.checked;
                     setFolderDeleteManualFiles(checked);
@@ -1307,6 +1331,21 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 />
                 하위 항목의 원본 파일도 함께 삭제(수동 등록 항목만 가능)
               </label>
+              {/* 서버가 하위 항목마다 이미 답한 것을 버튼 **앞에서** 말합니다. 예전에는 눌러서 거절당한 뒤에야
+                  알았고, 그 버튼은 되돌릴 수 없는 쪽이었습니다. 잠긴 이유와 대신 할 수 있는 일을 같이 둡니다. */}
+              {fileDeleteBlockedCount > 0 && (
+                <p data-testid="folder-file-delete-blocked" className="text-xs text-amber-300">
+                  이 폴더에는 프로젝트가 만든 항목이 {fileDeleteBlockedCount}개 있어서 원본 파일까지는 지울 수 없습니다.
+                  색인만 지우는 것은 위 항목으로 할 수 있습니다.
+                </p>
+              )}
+              {/* 「없다」와 「모른다」는 다릅니다 — 일부를 못 읽었으면 잠그지도, 안전하다고 말하지도 않습니다. */}
+              {folderChildrenFileLocked === null && Boolean(selected.asset.childAssetIds.length) && !folderChildrenLoading && (
+                <p data-testid="folder-file-delete-unchecked" className="text-xs text-slate-400">
+                  하위 항목을 다 읽지 못해 원본 파일을 지울 수 있는지 확인하지 못했습니다. 지울 수 없는 항목이 하나라도
+                  있으면 삭제 전체가 거절됩니다.
+                </p>
+              )}
               <button
                 type="button"
                 className={dangerOutlineButton}
