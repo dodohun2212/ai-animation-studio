@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout } from "@ai-animation-studio/shared";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, WorkflowState } from "@ai-animation-studio/shared";
+import type { AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, VIDEO_MODEL_OPTIONS, WorkflowState } from "@ai-animation-studio/shared";
+import { videoModelKeepsRequestedFrame } from "../utils/videoModelFacts.js";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -24,6 +25,30 @@ type DisplayError = { code: string; message: string };
 type LoadState = { status: "loading" } | { status: "error"; error: DisplayError } | { status: "ready" };
 
 /** What the merge lays over the clips, as the two settings that decide it. */
+/**
+ * 이 릴의 클립들이 어떤 모양으로 나왔는지, 한 줄로.
+ *
+ * 🔴 셋을 가릅니다. **모양이 하나뿐이고 틀 그대로**면 어느 쪽을 골라도 띠가 없고(그러니 고르라고 재촉할 이유가
+ * 없습니다), **모양이 하나인데 틀과 다르면** 「여백」이 곧 띠이며, **섞여 있으면** 일부 클립에만 띠가 생깁니다 —
+ * 마지막은 설정을 바꾼 뒤 일부 장면만 다시 만들면 실제로 일어나는 상태입니다.
+ *
+ * 🔴 카탈로그가 모르는 이름이 하나라도 있으면 아무 말도 하지 않습니다. `videoModelOption` 은 모르는 이름에
+ * 던지므로 쓰지 않고(그 던짐은 값 계산에서 옳습니다), 여기서는 조용히 비켜섭니다.
+ */
+function frameNoteFor(models: readonly VideoModel[]): { text: string; bars: boolean } | null {
+  if (models.length === 0) return null;
+  const options = models.map((id) => VIDEO_MODEL_OPTIONS.find((option) => option.id === id));
+  if (options.some((option) => option === undefined)) return null;
+  const known = options as VideoModelOption[];
+  const names = known.map((option) => option.label).join(" · ");
+  if (known.length > 1) {
+    return { text: `이 릴의 클립은 서로 다른 모델로 만들어졌습니다(${names}) — 일부 클립에만 띠가 생길 수 있습니다.`, bars: true };
+  }
+  return videoModelKeepsRequestedFrame(known[0]!)
+    ? { text: `이 릴의 클립은 ${names}로 만들어졌고 릴 틀에 맞는 모양입니다 — 어느 쪽을 골라도 띠가 없습니다.`, bars: false }
+    : { text: `이 릴의 클립은 ${names}로 만들어졌고 릴 틀과 다른 모양입니다 — 「여백 두기」로 합치면 띠가 남습니다.`, bars: true };
+}
+
 interface MediaMode {
   narrationEnabled: boolean;
   subtitlesEnabled: boolean;
@@ -130,6 +155,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
      따릅니다(「사람에게 실제로 물어본 호출만 보낸다」). 덕분에 지금 있는 병합 짝들이 본문을 통째로 비교해도
      그대로 참이고, 새 칸이 생겼다는 이유만으로 다른 화면의 짝을 고치지 않아도 됩니다. */
   const [frameFit, setFrameFit] = useState<FrameFit>("pad");
+  /* 클립을 **만든** 모델들 — 오늘 설정이 아니라 작업 기록에서(`VideoReview.model`, CLI Round 813). 둘은 다를 수
+     있고, 띠를 만드는 것은 설정이 아니라 이미 만들어진 클립입니다. 여러 개인 것도 실제 상태입니다: 설정을
+     바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 모양이 다른 클립이 섞입니다. */
+  const [clipModels, setClipModels] = useState<VideoModel[]>([]);
   const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
   const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
   const [trackId, setTrackId] = useState("");
@@ -166,7 +195,11 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         const jobId = response.project.currentVideoJobId;
         if (jobId) {
           void getVideoReview(projectId, jobId)
-            .then((review) => { if (!cancelled) setApprovedCount(review.reviews.filter((one) => one.status === "approved").length); })
+            .then((review) => {
+              if (cancelled) return;
+              setApprovedCount(review.reviews.filter((one) => one.status === "approved").length);
+              setClipModels([...new Set(review.reviews.map((one) => one.model).filter((model): model is VideoModel => model !== undefined))]);
+            })
             .catch(() => { /* Unknown, which is what approvedCount already is. */ });
         }
         setPhotoCard(response.project.photoCard === true);
@@ -274,6 +307,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
   const audioSettings: MergeAudioSettings | null = toAudioSettings(audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
+  const clipFrameNote = frameNoteFor(clipModels);
 
   return (
     <section className="mt-8 max-w-2xl space-y-5">
@@ -371,6 +405,15 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
               </span>
             </label>
           ))}
+          {/* 🔴 「지금 고른 모델」이 아니라 **이 클립들을 만든 모델**입니다. 같은 날 저는 확인 화면의 설정을 읽고
+              이 릴이 무엇으로 나갔는지 틀리게 보고했습니다(CLI Round 809 · F5) — 설정과 클립은 다를 수 있고,
+              띠를 만드는 쪽은 클립입니다. 카탈로그가 모르는 이름이 하나라도 섞이면 아무 말도 하지 않습니다:
+              모르는 모델의 모양을 아는 척하는 것이 「모른다」보다 나쁩니다. */}
+          {clipFrameNote && (
+            <p data-testid="merge-frame-fit-clip-models" className={`text-xs ${clipFrameNote.bars ? "text-amber-300/90" : "text-slate-400"}`}>
+              {clipFrameNote.text}
+            </p>
+          )}
         </fieldset>
       )}
 

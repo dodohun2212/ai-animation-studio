@@ -238,6 +238,14 @@ export const videoModelSceneUsd = (option: VideoModelOption, seconds = 5): numbe
  * 두 조건은 이 앱이 실제로 겪은 두 실패에서 나왔습니다: 끝 그림을 못 받는 모델로 이어지는 릴을 만들면 컷이
  * 뒤로 돌아가고(788), 비율을 안 받는 모델로 만들면 완성본에 띠가 붙습니다(2026-09-13 실측).
  */
+/**
+ * 이 모델의 클립이 릴 틀 그대로 나오는가 — `requested` 만 참입니다.
+ *
+ * 🔴 규칙을 한 곳에만 둡니다. 같은 물음을 `videoSetupIssues`(보내기 전)와 병합 화면(합치기 전)이 각각 묻는데,
+ * 둘이 갈리면 한 화면은 「띠가 생깁니다」라고 하고 다른 화면은 아무 말도 안 하게 됩니다 — 같은 릴에 대해.
+ */
+export const videoModelKeepsRequestedFrame = (option: VideoModelOption): boolean => option.frameShape === "requested";
+
 export const VIDEO_MODEL_FILTERS = ["all", "last_frame", "exact_ratio"] as const;
 export type VideoModelFilter = (typeof VIDEO_MODEL_FILTERS)[number];
 

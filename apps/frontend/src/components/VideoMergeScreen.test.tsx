@@ -76,12 +76,17 @@ function renderScreen(
   /** Which scenes the video review reports as confirmed. Defaults to all of them. */
   approved?: number[],
   onOpenInstagramPost?: (projectId: string) => void,
+  /**
+   * Which model made each scene's clip, as the review reports it — by scene number, so a test can put two
+   * different models in one reel. Absent is the local fake execution mode, where no provider made anything.
+   */
+  clipModels?: Record<number, string>,
 ) {
   // The confirmation count comes from the video review route, never from a field on the scene — no response has
   // ever carried one (see the note above the COMPLETED-project test). A test says which scenes are confirmed by
   // number, which is the thing the route actually reports.
   const scenes = (project.scenes ?? sixScenes()) as Scene[];
-  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: (approved ?? scenes.map((one) => one.number)).includes(scene.number) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z" }));
+  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: (approved ?? scenes.map((one) => one.number)).includes(scene.number) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z", ...(clipModels?.[scene.number] ? { model: clipModels[scene.number] } : {}) }));
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === PROJECT_URL && !init) {
@@ -427,6 +432,75 @@ describe("VideoMergeScreen", () => {
 
     await screen.findByTestId("open-merge-confirm-button");
     expect(screen.queryByTestId("merge-frame-fit")).toBeNull();
+  });
+
+  /**
+   * 🔴 CLI 깨기에서 살아남은 것: 「위아래가 조금 잘립니다」를 「좌우」로 바꿔도 초록이었습니다 — `aspectVertical`
+   * 이 거짓인 경우의 짝이 없었기 때문입니다. 세로 릴은 2:3 이 9:16 보다 넓어 **좌우**가 잘리고, 가로 릴은
+   * 3:2 가 16:9 보다 좁아 **위아래**가 잘립니다. 두 문장이 다 검사돼야 한쪽을 고칠 때 다른 쪽이 조용히 틀리지
+   * 않습니다.
+   */
+  it("names the edge that is actually cut, on both reel shapes", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { scenes: sixScenes() });
+    const vertical = await screen.findByTestId("merge-frame-fit");
+    expect(vertical.textContent).toContain("좌우 가장자리");
+    expect(vertical.textContent).not.toContain("위아래 가장자리");
+  });
+
+  it("names the top and bottom on a landscape reel", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { scenes: sixScenes(), aspectRatio: "16:9" });
+    const horizontal = await screen.findByTestId("merge-frame-fit");
+    expect(horizontal.textContent).toContain("위아래 가장자리");
+    expect(horizontal.textContent).not.toContain("좌우 가장자리");
+  });
+
+  /**
+   * 🔴 띠를 만드는 것은 **설정이 아니라 이미 만들어진 클립**입니다. 2026-09-13 에 확인 화면의 설정을 읽고 이
+   * 릴이 무엇으로 나갔는지 틀리게 보고한 일이 있었고(CLI Round 809), 그래서 이 문장은 `VideoReview.model` —
+   * 작업 기록의 모델 — 에서만 나옵니다. 설정을 아무리 바꿔도 이 줄은 안 바뀝니다.
+   */
+  it("names the model that actually made the clips, and whether that leaves bars", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const madeWithH3 = Object.fromEntries(scenes.map((scene) => [scene.number, "h3_max_768p"]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, madeWithH3);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("MiniMax H3 Max (768p)");
+    expect(note.textContent).toContain("띠가 남습니다");
+  });
+
+  it("says there is nothing to fix when the clips already match the reel", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const madeWithSeedance = Object.fromEntries(scenes.map((scene) => [scene.number, "seedance2_720p"]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, madeWithSeedance);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("어느 쪽을 골라도 띠가 없습니다");
+  });
+
+  /** 설정을 바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 모양이 다른 클립이 섞입니다 — 지어낸 경우가 아닙니다. */
+  it("says so when one reel holds clips from two different models", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const mixed = Object.fromEntries(scenes.map((scene) => [scene.number, scene.number === 1 ? "seedance2_720p" : "h3_max_768p"]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, mixed);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("서로 다른 모델");
+    expect(note.textContent).toContain("일부 클립에만");
+  });
+
+  /** 🔴 모르는 이름의 모양을 아는 척하느니 아무 말도 안 합니다. 가짜 실행 모드에는 모델 자체가 없습니다. */
+  it("stays silent when no provider model is recorded", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { scenes: sixScenes() });
+
+    await screen.findByTestId("merge-frame-fit");
+    expect(screen.queryByTestId("merge-frame-fit-clip-models")).toBeNull();
   });
 
   it("sends a photo card's adjusted subtitle layout with the merge", async () => {
