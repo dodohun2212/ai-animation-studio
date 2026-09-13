@@ -16,6 +16,7 @@ import {
   videoReviewContentUrl,
 } from "../api/videoWorkflowApi.js";
 import { Spinner } from "./Spinner.js";
+import { imageBoxAspectClass } from "../utils/sceneFields.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { sceneRemedyAdvice } from "../utils/sceneFailureAdvice.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
@@ -116,6 +117,10 @@ function scenesRetryBuys(estimate: { pendingSceneCount: number } | undefined, se
 export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: Props) {
   const [progressState, setProgressState] = useState<ProgressLoadState>({ status: "loading" });
   const [reviewState, setReviewState] = useState<ReviewLoadState>({ status: "idle" });
+  /* The project's shape, for the picture and clip boxes. Read from the review response, which carries the project,
+     rather than a request of its own: before the first review the boxes stay portrait, the app's fallback — a box
+     shape, never a number (item 6 · Cowork Round 859 · CLI Round 862). */
+  const [aspectRatio, setAspectRatio] = useState<string | undefined>(undefined);
 
   const [stopPending, setStopPending] = useState(false);
   const [stopError, setStopError] = useState<DisplayError | null>(null);
@@ -231,6 +236,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
       .then((response) => {
         if (requestId !== reviewRequest.current) return;
         setReviewState({ status: "ready", reviews: response.reviews, scenes: response.project.scenes, staleness: response.staleness });
+        setAspectRatio(response.project.aspectRatio);
       })
       .catch((caught: unknown) => {
         if (requestId !== reviewRequest.current) return;
@@ -495,7 +501,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                     src={sceneImageContentUrl(projectId, number)}
                     alt=""
                     aria-hidden="true"
-                    className={`aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-cover ${
+                    className={`${imageBoxAspectClass(aspectRatio)} w-full rounded-xl border border-white/10 bg-slate-800 object-cover ${
                       status === "pending" ? "opacity-40" : ""
                     }`}
                   />
@@ -914,7 +920,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                   src={sceneImageContentUrl(projectId, review.sceneNumber)}
                                   alt={`${review.sceneNumber}번 장면 원본 이미지`}
                                   data-testid={`video-review-source-image-${review.sceneNumber}`}
-                                  className="aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-cover"
+                                  className={`${imageBoxAspectClass(aspectRatio)} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
                                 />
                                 <figcaption className="text-xs text-slate-400">원본 이미지</figcaption>
                               </figure>
@@ -923,7 +929,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                               <video
                                 src={videoReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                                 data-testid={`video-review-clip-${review.sceneNumber}`}
-                                className="aspect-[9/16] w-full rounded-xl border border-white/10 bg-slate-800 object-cover"
+                                className={`${imageBoxAspectClass(aspectRatio)} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
                                 controls
                                 muted
                                 preload="metadata"

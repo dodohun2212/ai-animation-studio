@@ -322,7 +322,9 @@ export type VideoModelFilter = (typeof VIDEO_MODEL_FILTERS)[number];
 export const VIDEO_MODEL_FILTER_LABELS: Record<VideoModelFilter, string> = {
   all: "전부",
   last_frame: "컷이 이어지는 것",
-  exact_ratio: "비율이 지켜지는 것",
+  // Was 「비율이 지켜지는 것」: true while every shape had a ratio a model takes by name, not since 4:5, which is asked
+  // for as 3:4 and fitted by the merge (CLI Round 862). What the filter keeps is models told a ratio — so it says that.
+  exact_ratio: "요청한 비율로 만드는 것",
 };
 
 export function matchesVideoModelFilter(option: VideoModelOption, filter: VideoModelFilter): boolean {

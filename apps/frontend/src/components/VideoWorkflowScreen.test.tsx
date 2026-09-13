@@ -532,6 +532,20 @@ describe("VideoWorkflowScreen", () => {
     expect(screen.getByTestId("video-review-prompt-3").textContent).toContain("Scene 3 motion prompt");
   });
 
+  // Item 6 (CLI Round 862): the source still and the clip are drawn in the project's own shape, read from the
+  // review response's project — a square project's pictures in a square box, not cropped into a 9:16 slice.
+  it("draws the source image and the clip in the project's own shape", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    const square = reviewResponse(sixReviews());
+    square.project = { ...square.project, aspectRatio: "1:1" };
+    renderScreen(vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, square)));
+
+    await screen.findByTestId("video-review-1");
+    expect(screen.getByTestId("video-review-source-image-1").className).toContain("aspect-square");
+    expect(screen.getByTestId("video-review-clip-1").className).toContain("aspect-square");
+    expect(screen.getByTestId("video-review-clip-1").className).not.toContain("aspect-[9/16]");
+  });
+
   it("omits the source image for a scene that has none rather than rendering a broken one", async () => {
     const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
     const withoutImage = reviewResponse(sixReviews());
