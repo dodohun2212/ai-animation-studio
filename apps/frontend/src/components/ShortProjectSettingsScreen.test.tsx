@@ -59,6 +59,11 @@ function stubFetchByRoute(givenRoutes: Record<string, unknown>): ReturnType<type
 describe("ShortProjectSettingsScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  /** 5초 한 장면이 가장 싼 모델 — 카탈로그에서 고릅니다(값을 박아 두면 요율이 바뀔 때 짝이 거짓말을 합니다). */
+  const cheapest = () =>
+    VIDEO_MODEL_OPTIONS.reduce((low, option) =>
+      videoSceneEstimatedCostUsd(5, option) < videoSceneEstimatedCostUsd(5, low) ? option : low);
+
   it("reopens saved Wizard settings and saves an edited topic through PATCH", async () => {
     const project = makeProject({ topic: "새 주제" });
     const fetchMock = stubFetchByRoute({
@@ -102,6 +107,13 @@ describe("ShortProjectSettingsScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
+    // 🔴 기대값을 화면과 **같은 함수**로 계산합니다 — 그 함수가 옵션을 무시하게 되면 화면과 기대값이 나란히
+    // 틀려서 이 줄들은 초록으로 남습니다. 그래서 함수 자체가 모델을 본다는 것을 데이터로 먼저 못 박습니다:
+    // 이 한 줄이 「요율을 무시하고 기본 모델로 계산」 변이를 잡는 자리입니다(그 변이가 정확히 13.6배 싸게
+    // 보여 주던 결함입니다).
+    expect(videoSceneEstimatedCostUsd(5, cheapest()), "요율이 다르면 값도 달라야 합니다")
+      .not.toBe(videoSceneEstimatedCostUsd(5, dear));
+
     const line = await screen.findByTestId("settings-clip-duration-cost");
     expect(line.textContent).toContain(dear.label);
     expect(line.textContent).toContain(`5초 $${videoSceneEstimatedCostUsd(5, dear).toFixed(2)}`);
@@ -109,6 +121,31 @@ describe("ShortProjectSettingsScreen", () => {
     // 여섯 장면 × 5초 — 길이 옆에 총액이 붙습니다.
     expect(screen.getByTestId("settings-total-video-cost").textContent)
       .toContain(`$${(videoSceneEstimatedCostUsd(5, dear) * 6).toFixed(2)}`);
+  });
+
+  /**
+   * 반대쪽 모델. 주석은 「두 모델로 그려서 값이 모델을 따라 움직이는지 본다」고 했는데 짝은 **비싼 것 하나만**
+   * 그리고 있었습니다 — 약속한 것을 안 재는 짝이었습니다. 싼 모델에서 **다른 금액**이 나오는지 봅니다.
+   */
+  it("shows a different price for a cheaper model, not one price for every model", async () => {
+    const cheap = cheapest();
+    const dear = VIDEO_MODEL_OPTIONS.find((option) => option.id === "seedance2_5_1080p")!;
+    const fetchMock = stubFetchByRoute({
+      ...providerSettingsRoute(cheap.id),
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const line = await screen.findByTestId("settings-clip-duration-cost");
+    expect(line.textContent).toContain(cheap.label);
+    expect(line.textContent).toContain(`5초 $${videoSceneEstimatedCostUsd(5, cheap).toFixed(2)}`);
+    // 비싼 모델의 금액이 여기 있으면 화면이 고른 모델을 안 읽고 있다는 뜻입니다.
+    expect(line.textContent, "다른 모델의 금액이 아니라")
+      .not.toContain(`5초 $${videoSceneEstimatedCostUsd(5, dear).toFixed(2)}`);
   });
 
   /**
