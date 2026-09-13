@@ -472,6 +472,27 @@ describe("VideoMergeScreen", () => {
     expect(note.textContent).toContain("띠가 남습니다");
   });
 
+  /**
+   * 🔴 「확인 안 됨」은 「틀과 다름」이 아닙니다. `h3_max_480p` 는 안 재 봤고(그래서 `unconfirmed`), 그 릴에
+   * 「띠가 남습니다」라고 말하면 근거 없는 단정입니다 — 경고 쪽으로 틀린 것이라 해는 작지만, 이 저장소가
+   * 세 값을 만든 이유가 그 단정을 안 하기 위해서였습니다. 보내기 전 화면은 이미 「생깁니다 / 생길 수
+   * 있습니다」로 가르고 있어서, 여기서 접으면 **같은 릴에 대해 두 화면의 확신이 달라집니다.**
+   *
+   * 「남을 수 있습니다」가 있다는 것만으로는 부족합니다 — 두 문장을 다 넣어 둔 코드도 통과하니, 단정하는
+   * 쪽이 **없다**는 것까지 같이 봅니다.
+   */
+  it("does not claim bars for a model whose shape was never measured", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const madeWith480 = Object.fromEntries(scenes.map((scene) => [scene.number, "h3_max_480p"]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, madeWith480);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("확인되지 않았습니다");
+    expect(note.textContent).toContain("띠가 남을 수 있습니다");
+    expect(note.textContent, "안 재 본 모델에 대해 단정하지 않습니다").not.toContain("띠가 남습니다");
+  });
+
   it("says there is nothing to fix when the clips already match the reel", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
     const scenes = sixScenes();

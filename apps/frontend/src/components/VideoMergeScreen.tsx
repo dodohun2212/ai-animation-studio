@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
 import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, VIDEO_MODEL_OPTIONS, WorkflowState } from "@ai-animation-studio/shared";
-import { videoModelKeepsRequestedFrame } from "../utils/videoModelFacts.js";
+import { FRAME_FIT_NOTES } from "../utils/videoModelFacts.js";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { getAudioLibrary } from "../api/audioLibraryApi.js";
@@ -28,9 +28,11 @@ type LoadState = { status: "loading" } | { status: "error"; error: DisplayError 
 /**
  * 이 릴의 클립들이 어떤 모양으로 나왔는지, 한 줄로.
  *
- * 🔴 셋을 가릅니다. **모양이 하나뿐이고 틀 그대로**면 어느 쪽을 골라도 띠가 없고(그러니 고르라고 재촉할 이유가
- * 없습니다), **모양이 하나인데 틀과 다르면** 「여백」이 곧 띠이며, **섞여 있으면** 일부 클립에만 띠가 생깁니다 —
- * 마지막은 설정을 바꾼 뒤 일부 장면만 다시 만들면 실제로 일어나는 상태입니다.
+ * 🔴 모델이 하나면 문장은 `FRAME_FIT_NOTES` 에서 옵니다 — **틀 그대로 / 틀과 다름 / 확인 안 됨** 셋을 그
+ * 표가 가릅니다. 여기서 참/거짓으로 접으면 안 재 본 모델에 대해 「띠가 남습니다」라고 단정하게 됩니다.
+ *
+ * 🔴 모델이 **섞여 있으면** 일부 클립에만 띠가 생깁니다 — 설정을 바꾼 뒤 일부 장면만 다시 만들면 실제로
+ * 일어나는 상태이고, 그때는 「생깁니다」도 「안 생깁니다」도 둘 다 거짓입니다.
  *
  * 🔴 카탈로그가 모르는 이름이 하나라도 있으면 아무 말도 하지 않습니다. `videoModelOption` 은 모르는 이름에
  * 던지므로 쓰지 않고(그 던짐은 값 계산에서 옳습니다), 여기서는 조용히 비켜섭니다.
@@ -44,9 +46,8 @@ function frameNoteFor(models: readonly VideoModel[]): { text: string; bars: bool
   if (known.length > 1) {
     return { text: `이 릴의 클립은 서로 다른 모델로 만들어졌습니다(${names}) — 일부 클립에만 띠가 생길 수 있습니다.`, bars: true };
   }
-  return videoModelKeepsRequestedFrame(known[0]!)
-    ? { text: `이 릴의 클립은 ${names}로 만들어졌고 릴 틀에 맞는 모양입니다 — 어느 쪽을 골라도 띠가 없습니다.`, bars: false }
-    : { text: `이 릴의 클립은 ${names}로 만들어졌고 릴 틀과 다른 모양입니다 — 「여백 두기」로 합치면 띠가 남습니다.`, bars: true };
+  const note = FRAME_FIT_NOTES[known[0]!.frameShape];
+  return { text: `이 릴의 클립은 ${names}로 만들어졌고 ${note.text}`, bars: note.bars };
 }
 
 interface MediaMode {

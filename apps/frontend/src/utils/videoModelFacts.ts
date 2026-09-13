@@ -239,12 +239,22 @@ export const videoModelSceneUsd = (option: VideoModelOption, seconds = 5): numbe
  * 뒤로 돌아가고(788), 비율을 안 받는 모델로 만들면 완성본에 띠가 붙습니다(2026-09-13 실측).
  */
 /**
- * 이 모델의 클립이 릴 틀 그대로 나오는가 — `requested` 만 참입니다.
+ * 합치기 직전, 이 모양의 클립이 릴 틀에서 어떻게 되는가 — 세 갈래 전부.
  *
- * 🔴 규칙을 한 곳에만 둡니다. 같은 물음을 `videoSetupIssues`(보내기 전)와 병합 화면(합치기 전)이 각각 묻는데,
- * 둘이 갈리면 한 화면은 「띠가 생깁니다」라고 하고 다른 화면은 아무 말도 안 하게 됩니다 — 같은 릴에 대해.
+ * 🔴 처음엔 `requested` 만 참인 **참/거짓**이었습니다. 그러면 `unconfirmed` 가 `follows_first_frame` 과 같은
+ * 칸에 들어가, 안 재 본 모델(`h3_max_480p`)에 대해 화면이 「띠가 남습니다」라고 **단정**합니다. 경고 쪽으로
+ * 틀린 것이라 해는 작지만, 이 저장소가 세 값을 만든 이유가 바로 「근거 없는 단정을 안 한다」였습니다 —
+ * 그리고 보내기 전 화면(`videoSetupIssues`)은 이미 「생깁니다 / 생길 수 있습니다」로 가르고 있어서, 참/거짓
+ * 하나를 두면 **같은 릴에 대해 두 화면의 확신이 달라집니다.** (CLI Round 816 지적. 제가 두 라운드 전에
+ * `generatesAudio` 를 두고 똑같은 주장을 해 놓고 여기서 참/거짓을 썼습니다.)
+ *
+ * 🔴 `Record` 라 네 번째 모양이 생기면 여기서 컴파일 오류가 납니다 — 조용히 한 갈래가 빠지는 대신에.
  */
-export const videoModelKeepsRequestedFrame = (option: VideoModelOption): boolean => option.frameShape === "requested";
+export const FRAME_FIT_NOTES: Record<VideoFrameShape, { text: string; bars: boolean }> = {
+  requested: { text: "릴 틀에 맞는 모양입니다 — 어느 쪽을 골라도 띠가 없습니다.", bars: false },
+  follows_first_frame: { text: "릴 틀과 다른 모양입니다 — 「여백 두기」로 합치면 띠가 남습니다.", bars: true },
+  unconfirmed: { text: "어떤 모양으로 나오는지 확인되지 않았습니다 — 「여백 두기」로 합치면 띠가 남을 수 있습니다.", bars: true },
+};
 
 export const VIDEO_MODEL_FILTERS = ["all", "last_frame", "exact_ratio"] as const;
 export type VideoModelFilter = (typeof VIDEO_MODEL_FILTERS)[number];
