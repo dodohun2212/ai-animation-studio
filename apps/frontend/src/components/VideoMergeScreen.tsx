@@ -38,18 +38,29 @@ const FRAME_RATIO_TOLERANCE = 0.01;
  * 🔴 섞인 경우를 따로 답합니다 — 설정을 바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 크기가 다른 클립이 실제로
  * 섞이고, 그때는 「띠가 남습니다」도 「안 남습니다」도 둘 다 거짓입니다.
  */
-function measuredFrameNote(clips: readonly VideoClipFacts[], vertical: boolean): { text: string; bars: boolean } | null {
+function measuredFrameNote(
+  clips: readonly VideoClipFacts[],
+  vertical: boolean,
+  sceneCount: number,
+): { text: string; bars: boolean } | null {
   if (clips.length === 0) return null;
   const target = vertical ? 9 / 16 : 16 / 9;
   const matches = clips.map((clip) => Math.abs(clip.width / clip.height - target) < FRAME_RATIO_TOLERANCE);
   const sizes = [...new Set(clips.map((clip) => `${clip.width}×${clip.height}`))].join(" · ");
+  /* 🔴 잰 것만 보고 전체를 말하지 않습니다. 파일 하나가 깨졌거나 ffprobe 가 한 번 실패하면 다섯 개만 재지는데,
+     그 다섯이 다 맞는다고 「어느 쪽을 골라도 띠가 없습니다」라고 하면 **여섯째에 대해 아는 척**하는 것입니다
+     (CLI Round 820). 재지 못한 게 있으면 그 수를 말하고, 「띠 없음」을 약속하지 않습니다. */
+  const unmeasured = Math.max(0, sceneCount - clips.length);
+  const rest = unmeasured > 0 ? ` 나머지 ${unmeasured}개는 재지 못했습니다.` : "";
   if (matches.every((match) => match)) {
-    return { text: `이 릴의 클립은 릴 틀과 같은 모양입니다(${sizes}) — 어느 쪽을 골라도 띠가 없습니다.`, bars: false };
+    return unmeasured === 0
+      ? { text: `이 릴의 클립은 릴 틀과 같은 모양입니다(${sizes}) — 어느 쪽을 골라도 띠가 없습니다.`, bars: false }
+      : { text: `잰 클립 ${clips.length}개는 릴 틀과 같은 모양입니다(${sizes}).${rest} 그 장면에는 띠가 남을 수 있습니다.`, bars: true };
   }
   if (matches.every((match) => !match)) {
-    return { text: `이 릴의 클립은 릴 틀과 다른 모양입니다(${sizes}) — 「여백 두기」로 합치면 띠가 남습니다.`, bars: true };
+    return { text: `이 릴의 클립은 릴 틀과 다른 모양입니다(${sizes}) — 「여백 두기」로 합치면 띠가 남습니다.${rest}`, bars: true };
   }
-  return { text: `이 릴에는 릴 틀과 모양이 다른 클립이 섞여 있습니다(${sizes}) — 일부 클립에만 띠가 남습니다.`, bars: true };
+  return { text: `이 릴에는 릴 틀과 모양이 다른 클립이 섞여 있습니다(${sizes}) — 일부 클립에만 띠가 남습니다.${rest}`, bars: true };
 }
 
 /**
@@ -191,6 +202,8 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
      어떻게 될까」이고 이건 「이 파일이 실제로 어떤가」라, 있으면 이쪽이 이깁니다. 없는 경우가 정상입니다:
      ffprobe 가 없거나, 가짜 실행의 자리표시 파일이거나, 이미 병합을 마친 프로젝트(검토 GET 이 409). */
   const [clipFacts, setClipFacts] = useState<VideoClipFacts[]>([]);
+  /* 잰 클립이 **몇 장면 중 몇 개**인지 — 잰 것만 보고 전체를 말하지 않기 위해서입니다(CLI Round 820). */
+  const [clipSceneCount, setClipSceneCount] = useState(0);
   const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
   const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
   const [trackId, setTrackId] = useState("");
@@ -232,6 +245,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
               setApprovedCount(review.reviews.filter((one) => one.status === "approved").length);
               setClipModels([...new Set(review.reviews.map((one) => one.model).filter((model): model is VideoModel => model !== undefined))]);
               setClipFacts(review.reviews.map((one) => one.clip).filter((clip): clip is VideoClipFacts => clip !== undefined));
+              setClipSceneCount(review.reviews.length);
             })
             .catch(() => { /* Unknown, which is what approvedCount already is. */ });
         }
@@ -342,7 +356,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
   /* 🔴 잰 값이 먼저입니다. 모델 표는 「이 모델이면 이렇게 될 것이다」이고 `clip` 은 「이 파일이 이렇다」라,
      둘이 갈리면 이기는 쪽이 정해져 있습니다 — 그리고 잰 값에는 「확인 안 됨」이 없어서 단정해도 됩니다. */
-  const clipFrameNote = measuredFrameNote(clipFacts, aspectVertical) ?? frameNoteFor(clipModels);
+  const clipFrameNote = measuredFrameNote(clipFacts, aspectVertical, clipSceneCount) ?? frameNoteFor(clipModels);
   const audibleClips = clipFacts.filter((clip) => clip.hasAudio).length;
 
   return (

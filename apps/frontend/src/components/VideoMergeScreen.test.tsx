@@ -562,6 +562,30 @@ describe("VideoMergeScreen", () => {
     expect(note.textContent).not.toContain("띠가 남습니다");
   });
 
+  /**
+   * 🔴 잰 것만 보고 전체를 말하면 안 됩니다. 파일 하나가 깨졌거나 ffprobe 가 한 번 실패하면 여섯 중 다섯만
+   * 재지는데, 그 다섯이 다 맞는다고 「어느 쪽을 골라도 띠가 없습니다」라고 하면 **여섯째에 대해 아는 척**하는
+   * 것입니다. 잰 값이 모델 표를 이기는 이유가 「짐작이 아니라서」인데, 여기서 짐작으로 돌아가면 그 이유가
+   * 무너집니다.
+   *
+   * 안심시키는 방향의 단정이라 해가 특히 큽니다 — 사람은 「여백 두기」를 그대로 두고 띠가 붙은 릴을 받습니다.
+   */
+  it("does not promise a clean frame for clips it could not measure", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    // 여섯 중 다섯만 재졌고, 잰 다섯은 전부 릴 틀과 같은 모양입니다.
+    const facts = Object.fromEntries(
+      scenes.filter((scene) => scene.number !== 6).map((scene) => [scene.number, { width: 1080, height: 1920, hasAudio: false }]),
+    );
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, facts);
+
+    const note = await screen.findByTestId("merge-frame-fit-clip-models");
+    expect(note.textContent).toContain("잰 클립 5개");
+    expect(note.textContent).toContain("나머지 1개는 재지 못했습니다");
+    expect(note.textContent).toContain("띠가 남을 수 있습니다");
+    expect(note.textContent, "모르는 한 장면에 대해 약속하지 않습니다").not.toContain("어느 쪽을 골라도 띠가 없습니다");
+  });
+
   /** 설정을 바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 크기가 다른 클립이 섞입니다. */
   it("says when only some of the measured clips will get bars", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
