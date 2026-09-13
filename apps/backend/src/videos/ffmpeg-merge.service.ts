@@ -1,4 +1,4 @@
-import type { FrameFit } from "@ai-animation-studio/shared";
+import type { FrameFit, VideoClipFacts } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -69,6 +69,24 @@ export const runMediaCommand: MediaCommandRunner = async (arguments_) => new Pro
 });
 
 type ProbeData = { streams?: Array<{ codec_type?: unknown }>; format?: { duration?: unknown } };
+
+/**
+ * The clip's own width, height and whether it has an audio track, read from the file (VideoReview.clip). Null when
+ * it cannot be read — ffprobe missing, or not a real video — because a review must still load without it.
+ */
+export async function probeClipFacts(clip: string, runner: MediaCommandRunner = runMediaCommand): Promise<VideoClipFacts | null> {
+  try {
+    const result = await runner(["ffprobe", "-v", "error", "-show_streams", "-of", "json", clip]);
+    const streams = (JSON.parse(result.stdout) as { streams?: Array<{ codec_type?: unknown; width?: unknown; height?: unknown }> }).streams ?? [];
+    const video = streams.find((stream) => stream.codec_type === "video");
+    const width = Number(video?.width);
+    const height = Number(video?.height);
+    if (!video || !Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return null;
+    return { width, height, hasAudio: streams.some((stream) => stream.codec_type === "audio") };
+  } catch {
+    return null;
+  }
+}
 
 function outputSize(ratio: unknown): [number, number] {
   return ratio === "16:9" || ratio === "1280:720" ? [1920, 1080] : [1080, 1920];

@@ -124,10 +124,15 @@ export class VideosController {
   }
 
   @Get(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/review`)
-  review(@Param("projectId") projectId: string, @Param("jobId") jobId: string): Promise<GetVideoReviewResponse> { return this.workflow.getReview(projectId, jobId); }
+  review(@Param("projectId") projectId: string, @Param("jobId") jobId: string): Promise<GetVideoReviewResponse> {
+    // Each clip as measured on disk (VideoReview.clip) — added by the merge side, which owns FFmpeg.
+    return this.workflow.getReview(projectId, jobId).then((review) => this.mergeService.withClipFacts(review));
+  }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/review/:sceneNumber/approve`)
-  approveReview(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<ApproveVideoReviewResponse> { return this.workflow.approveReview(projectId, jobId, sceneNumber, body); }
+  approveReview(@Param("projectId") projectId: string, @Param("jobId") jobId: string, @Param("sceneNumber") sceneNumber: string, @Body() body: unknown): Promise<ApproveVideoReviewResponse> {
+    return this.workflow.approveReview(projectId, jobId, sceneNumber, body).then((review) => this.mergeService.withClipFacts(review));
+  }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/merge`)
   merge(@Param("projectId") projectId: string, @Body() body: unknown): Promise<MergeVideosResponse> { return this.mergeService.merge(projectId, body); }

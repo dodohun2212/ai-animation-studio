@@ -371,6 +371,34 @@ describe("local FFmpeg video merge", () => {
     expect(calls).toHaveLength(0);
   });
 
+  /*
+   * VideoReview.clip, added on the merge side (which owns FFmpeg) so the workflow service stays free of it. Each
+   * scene's own file is measured; one that cannot be read simply goes without the field.
+   */
+  it("adds each scene's clip as measured on disk to a review, and leaves out what it cannot measure", async () => {
+    const { projectsRoot, projects } = await setup();
+    const probed: string[] = [];
+    const runner: MediaCommandRunner = async (args) => {
+      const file = args.at(-1)!; probed.push(file);
+      if (file.endsWith("scene3.mp4")) throw new MediaToolError("invalid", "not a video");
+      const scene = Number(/scene(\d)\.mp4$/.exec(file)?.[1]);
+      return { stdout: JSON.stringify({ streams: [{ codec_type: "video", width: 768, height: 1152 }, ...(scene === 1 ? [{ codec_type: "audio" }] : [])] }), stderr: "" };
+    };
+    const review = {
+      project: { id: "video_merge" },
+      reviews: [1, 2, 3].map((scene) => ({ sceneNumber: scene as 1 | 2 | 3, status: "approved" as const, updatedAt: "2026-08-23T00:00:00.000Z" })),
+    };
+
+    const measured = await new LocalVideoMergeService(projects, projectsRoot, runner).withClipFacts(review);
+
+    expect(measured.reviews.map((item) => ("clip" in item ? item.clip : undefined))).toEqual([
+      { width: 768, height: 1152, hasAudio: true },
+      { width: 768, height: 1152, hasAudio: false },
+      undefined,
+    ]);
+    expect(probed.map((file) => path.relative(projectsRoot, file))).toEqual([1, 2, 3].map((scene) => path.join("video_merge", "videos", "runway", `scene${scene}.mp4`)));
+  });
+
   /** A project whose scenes carry narration text, so every merge below actually writes a subtitle file. */
   async function withSubtitles(projects: LocalProjectRepository): Promise<void> {
     const project = await projects.findById("video_merge");

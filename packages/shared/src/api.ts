@@ -2232,6 +2232,26 @@ export interface VideoReview {
    * was (recordedVideoModel).
    */
   model?: VideoModel;
+  /**
+   * What the clip on disk actually is — measured with ffprobe when the review is read, not inferred from the model.
+   * Absent when it could not be measured (ffprobe missing, or a local placeholder that is not a real video).
+   *
+   * Two questions, two fields. `VideoModelOption.frameShape` answers before anything is bought — 「what will this
+   * model make」 — and there is nothing to measure then. This answers after — 「what did it make」 — and wins there:
+   * the merge screen's bars sentence reads this when it is present (Cowork Round 817). A measurement that disagrees
+   * with the catalogue's `frameShape` is evidence the catalogue is wrong, the way h3_max_768p's was (`2a087b5`).
+   *
+   * `hasAudio` is whether the file carries an audio track at all, not whether it is loud; the merge's own mapping
+   * decides what is heard (today: nothing from the clip — see VIDEO_CLIP_AUDIO_NOTE).
+   */
+  clip?: VideoClipFacts;
+}
+
+/** A clip's measured shape and whether it carries sound — see VideoReview.clip. */
+export interface VideoClipFacts {
+  width: number;
+  height: number;
+  hasAudio: boolean;
 }
 
 export interface GetVideoReviewResponse {

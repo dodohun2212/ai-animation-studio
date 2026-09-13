@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { FfmpegMergeEngine, MediaToolError, runMediaCommand, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, MediaToolError, probeClipFacts, runMediaCommand, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
 import { escapeForFfmpegFilterPath } from "./subtitle-file.js";
 
 const roots: string[] = [];
@@ -37,6 +37,41 @@ async function setup() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ffmpeg-merge-")); roots.push(root);
   return { root, finalPath: path.join(root, "videos", "final", "instagram_reel.mp4"), fontsDir: path.join(root, "fonts") };
 }
+
+/*
+ * VideoReview.clip — what a clip on disk is, measured. The merge screen's bars sentence reads it when present, so
+ * it has to be right for both halves (shape and sound), and has to step aside rather than fail a review.
+ */
+describe("probeClipFacts", () => {
+  const answering = (streams: unknown[]): MediaCommandRunner => async () => ({ stdout: JSON.stringify({ streams }), stderr: "" });
+
+  it("reads the picture's size and whether there is a sound track", async () => {
+    expect(await probeClipFacts("a.mp4", answering([{ codec_type: "video", width: 768, height: 1152 }, { codec_type: "audio" }])))
+      .toEqual({ width: 768, height: 1152, hasAudio: true });
+    expect(await probeClipFacts("a.mp4", answering([{ codec_type: "video", width: 720, height: 1280 }])))
+      .toEqual({ width: 720, height: 1280, hasAudio: false });
+  });
+
+  it("answers nothing, rather than failing, when the file cannot be read as a video", async () => {
+    expect(await probeClipFacts("a.mp4", answering([{ codec_type: "audio" }]))).toBeNull();
+    expect(await probeClipFacts("a.mp4", async () => ({ stdout: "not json", stderr: "" }))).toBeNull();
+    expect(await probeClipFacts("a.mp4", async () => { throw new MediaToolError("unavailable", "not installed"); })).toBeNull();
+  });
+
+  it("measures a real clip with the real ffprobe", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "clip-facts-")); roots.push(root);
+    const withSound = path.join(root, "with.mp4");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=256x384:d=1", "-f", "lavfi", "-i", "sine=frequency=330:duration=1",
+      "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", withSound]);
+    const silent = path.join(root, "silent.mp4");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=256x384:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", silent]);
+
+    expect(await probeClipFacts(withSound)).toEqual({ width: 256, height: 384, hasAudio: true });
+    expect(await probeClipFacts(silent)).toEqual({ width: 256, height: 384, hasAudio: false });
+  });
+});
 
 describe("FfmpegMergeEngine.merge narration audio mixing", () => {
   /*

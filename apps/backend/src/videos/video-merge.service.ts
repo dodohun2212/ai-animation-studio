@@ -1,3 +1,4 @@
+import type { VideoReview } from "@ai-animation-studio/shared";
 import { FRAME_FITS, isFrameFit, type FrameFit } from "@ai-animation-studio/shared";
 import * as fs from "node:fs/promises";
 import { isUsableClip, wasPaidRun } from "./placeholder-clip.js";
@@ -14,7 +15,7 @@ import { toShortProjectSettings } from "../projects/project-settings.js";
 import type { StoredProject, StoredUsedAudio } from "../projects/project-storage.schema.js";
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
-import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, probeClipFacts, runMediaCommand, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
 import { audioStartOutOfRange, ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
@@ -188,8 +189,27 @@ export class LocalVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
 
   /** `lockTimeoutMs` exists for the same reason withProjectLock takes one: a test can exercise the refusal in milliseconds instead of really waiting out the default. */
+  private readonly runner: MediaCommandRunner;
+
   constructor(private readonly projects: LocalProjectRepository, private readonly projectsRoot: string, runner?: MediaCommandRunner, private readonly audioLibrary?: AudioLibraryService, private readonly lockTimeoutMs?: number) {
     this.engine = new FfmpegMergeEngine(runner);
+    this.runner = runner ?? runMediaCommand;
+  }
+
+  /**
+   * A video review with each scene's clip as measured on disk added (VideoReview.clip) — shape and sound track.
+   *
+   * Here and not in the workflow service that builds the review: that service is kept free of subprocess and FFmpeg
+   * dependencies on purpose (video-preview.no-provider-calls.test.ts), and the merge already owns FFmpeg. The id
+   * comes from the review the workflow already resolved, never from the route. A clip that cannot be measured
+   * (ffprobe missing, a placeholder) is simply left without the field — a review never fails over it.
+   */
+  async withClipFacts<T extends { project: { id: string }; reviews: VideoReview[] }>(response: T): Promise<T> {
+    const reviews = await Promise.all(response.reviews.map(async (review) => {
+      const clip = await probeClipFacts(this.clip(response.project.id, review.sceneNumber), this.runner);
+      return clip ? { ...review, clip } : review;
+    }));
+    return { ...response, reviews };
   }
 
   private projectDirectory(projectId: string): string { return path.join(this.projectsRoot, projectId); }
