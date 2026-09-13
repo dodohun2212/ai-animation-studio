@@ -451,7 +451,11 @@ describe("local FFmpeg video merge", () => {
     scenes.forEach((call, index) => {
       const scene = index + 1;
       if (scene % 2 === 1) expect(call.join(" "), `scene ${scene}`).toContain("[0:a]volume=0.4");
-      else expect(call, `scene ${scene} has no sound to give`).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+      else {
+        // No sound of its own to give, but it opens on the previous clip's, fading away (Cowork Round 881).
+        expect(call.join(" "), `scene ${scene} has no sound of its own`).not.toContain("[0:a]volume");
+        expect(call.join(" "), `scene ${scene} carries scene ${scene - 1}'s`).toContain(`-sseof -0.500 -i ${path.join(projectsRoot, "video_merge", "videos", "runway", `scene${scene - 1}.mp4`)}`);
+      }
     });
     expect(merged.project.usedAudio).toMatchObject({ mode: "silent", clipVolume: 0.4 });
     expect((await projects.findById("video_merge")).used_audio?.clip_volume).toBe(0.4);

@@ -180,10 +180,23 @@ export interface MergeSceneInput {
  */
 const X264_QUALITY = ["-crf", "18", "-preset", "slow"] as const;
 
-/** The clip-sound layer's fade at each scene's start and end (MergeAudioSettings.clipVolume) — short enough not to
- * swallow the scene, long enough that ambience does not click at the cut. Cowork Round 822 notes it may read as a
- * pulse on a steady sound; overlapping crossfades are the next step if it does. */
+/** The clip-sound layer's fade where it starts or stops for good — the reel's first and last clip sound, or a
+ * neighbour without one (MergeAudioSettings.clipVolume). Short enough not to swallow the scene, long enough not to
+ * click. */
 const CLIP_AUDIO_EDGE_FADE_SECONDS = 0.15;
+
+/**
+ * How long one clip's sound crosses into the next at a cut.
+ *
+ * It used to fade out and back in at every cut (the edge fade above, both sides), which put a 0.3-second hole in
+ * the ambience every five seconds; 캡틴D heard it as the sound cutting out with each scene (Cowork Round 881, the
+ * 「뚝」 Round 822 anticipated). A crossfade needs both sounds at once, and a clip has no sound past its own end, so
+ * the next scene opens on the previous clip's last half-second played backwards: it starts on the very sample the
+ * previous scene ended on and fades out while the new clip fades in, equal-power, so a steady ambience keeps its
+ * level. Nothing moves — every scene keeps its own length and its own sound under its own picture, and the join
+ * still copies.
+ */
+const CLIP_AUDIO_CROSSFADE_SECONDS = 0.5;
 
 function kenBurns(width: number, height: number, seconds: number): string {
   const frames = Math.max(1, Math.round(seconds * 30));
@@ -269,18 +282,38 @@ export class FfmpegMergeEngine {
       // image demuxer loops at its own 25, and every later step is counting in a rate nothing else uses.
       const input = stillSeconds === undefined ? ["-i", scene.clip] : ["-loop", "1", "-framerate", "30", "-t", String(stillSeconds), "-i", scene.clip];
       const sceneFilter = stillSeconds === undefined ? filter : `${kenBurns(width, height, stillSeconds)},${filter}`;
+      const sounding = (candidate: MergeSceneInput | undefined): number | undefined =>
+        candidate && candidate.stillDurationSeconds === undefined && candidate.clipAudioVolume !== undefined && candidate.clipAudioVolume > 0
+          ? candidate.clipAudioVolume : undefined;
+      const own = sounding(scene);
+      // The previous clip's sound crosses into this scene; this clip's crosses into the next one, so it does not
+      // fade out at its own end unless nothing follows it.
+      const previous = index > 0 ? scenes[index - 1] : undefined;
+      const inherited = sounding(previous);
+      const handsOver = own !== undefined && index + 1 < scenes.length && scenes[index + 1]!.stillDurationSeconds === undefined;
+      const crossfade = Math.min(CLIP_AUDIO_CROSSFADE_SECONDS, clipDurationSeconds / 2).toFixed(3);
       try {
-        if (scene.clipAudioVolume !== undefined && scene.clipAudioVolume > 0 && stillSeconds === undefined) {
-          // The clip's own sound, faded in and out at the scene's edges so the ambience does not snap at the cuts,
-          // mixed under the narration (or alone) without amix's own level normalisation — the same principle as
-          // the bgm mix. Resampled to the anullsrc format so every normalised scene joins the same way.
-          const fadeOutStart = Math.max(0, clipDurationSeconds - CLIP_AUDIO_EDGE_FADE_SECONDS).toFixed(3);
-          const clipLayer = `[0:a]volume=${scene.clipAudioVolume},afade=t=in:st=0:d=${CLIP_AUDIO_EDGE_FADE_SECONDS},afade=t=out:st=${fadeOutStart}:d=${CLIP_AUDIO_EDGE_FADE_SECONDS}`;
+        if (own !== undefined || inherited !== undefined) {
+          // Mixed under the narration (or alone) without amix's own level normalisation — the same principle as
+          // the bgm mix — and resampled to the anullsrc format so every normalised scene joins the same way.
           const format = "aformat=sample_rates=48000:channel_layouts=stereo";
-          const graph = scene.narrationAudioPath
-            ? `[1:a]apad[narr];${clipLayer}[clip];[narr][clip]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,${format}[aout]`
-            : `${clipLayer},apad,${format}[aout]`;
-          await this.command(["ffmpeg", "-y", ...input, ...(scene.narrationAudioPath ? ["-i", scene.narrationAudioPath] : []), "-filter_complex", graph, "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
+          const narrationInput = scene.narrationAudioPath ? ["-i", scene.narrationAudioPath] : [];
+          const tailIndex = 1 + (scene.narrationAudioPath ? 1 : 0);
+          // `-sseof` reads only the previous clip's last stretch, so `areverse` holds half a second, not a clip.
+          const tailInput = inherited !== undefined ? ["-sseof", `-${crossfade}`, "-i", previous!.clip] : [];
+          const layers: string[] = [];
+          if (scene.narrationAudioPath) layers.push("[1:a]apad[narr]");
+          if (own !== undefined) {
+            const fadeIn = inherited !== undefined ? `afade=t=in:st=0:d=${crossfade}:curve=qsin` : `afade=t=in:st=0:d=${CLIP_AUDIO_EDGE_FADE_SECONDS}`;
+            const fadeOut = handsOver ? "" : `,afade=t=out:st=${Math.max(0, clipDurationSeconds - CLIP_AUDIO_EDGE_FADE_SECONDS).toFixed(3)}:d=${CLIP_AUDIO_EDGE_FADE_SECONDS}`;
+            layers.push(`[0:a]volume=${own},${fadeIn}${fadeOut}[clip]`);
+          }
+          if (inherited !== undefined) layers.push(`[${tailIndex}:a]areverse,volume=${inherited},afade=t=out:st=0:d=${crossfade}:curve=qsin[tail]`);
+          const labels = layers.map((layer) => layer.slice(layer.lastIndexOf("[")));
+          const graph = labels.length === 1
+            ? `${layers[0]!.slice(0, -labels[0]!.length)},apad,${format}[aout]`
+            : `${layers.join(";")};${labels.join("")}amix=inputs=${labels.length}:duration=longest:dropout_transition=0:normalize=0,apad,${format}[aout]`;
+          await this.command(["ffmpeg", "-y", ...input, ...narrationInput, ...tailInput, "-filter_complex", graph, "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
         } else if (scene.narrationAudioPath) {
           await this.command(["ffmpeg", "-y", ...input, "-i", scene.narrationAudioPath, "-filter_complex", "[1:a]apad[aout]", "-map", "0:v:0", "-map", "[aout]", "-vf", sceneFilter, "-c:v", "libx264", ...X264_QUALITY, "-c:a", "aac", "-shortest", target]);
         } else {

@@ -85,21 +85,68 @@ describe("FfmpegMergeEngine.merge clip sound", () => {
     const { finalPath, fontsDir } = await setup();
     await new FfmpegMergeEngine(runner(calls), fontsDir).merge([{ clip: "scene1.mp4", narrationAudioPath: "n1.mp3", clipAudioVolume: 0.3 }], 5, finalPath, "9:16");
     const call = calls.find((args) => args.includes("-filter_complex"))!;
-    expect(graphOf(call)).toBe("[1:a]apad[narr];[0:a]volume=0.3,afade=t=in:st=0:d=0.15,afade=t=out:st=4.850:d=0.15[clip];[narr][clip]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    expect(graphOf(call)).toBe("[1:a]apad[narr];[0:a]volume=0.3,afade=t=in:st=0:d=0.15,afade=t=out:st=4.850:d=0.15[clip];[narr][clip]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
     expect(call).toContain("n1.mp3");
     expect(call).not.toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
   });
 
-  it("uses the clip's sound alone, in place of the silence, when there is no narration", async () => {
+  it("carries a clip's sound into the next scene instead of fading it out at the cut, even into a scene without its own", async () => {
     const calls: string[][] = [];
     const { finalPath, fontsDir } = await setup();
     await new FfmpegMergeEngine(runner(calls), fontsDir).merge([{ clip: "scene1.mp4", clipAudioVolume: 1 }, { clip: "scene2.mp4" }], 5, finalPath, "9:16");
     const [first, second] = calls.filter((args) => args.includes("-vf"));
-    expect(graphOf(first!)).toBe("[0:a]volume=1,afade=t=in:st=0:d=0.15,afade=t=out:st=4.850:d=0.15,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    // No fade-out at scene 1's end: scene 2 opens on it.
+    expect(graphOf(first!)).toBe("[0:a]volume=1,afade=t=in:st=0:d=0.15,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
     expect(first).not.toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
-    // The scene without a clip level is merged exactly as before.
-    expect(second).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    // Scene 2 has no sound of its own, so it holds only scene 1's tail, played back from the cut and fading away.
+    expect(second!.slice(second!.indexOf("-sseof"), second!.indexOf("-sseof") + 4)).toEqual(["-sseof", "-0.500", "-i", "scene1.mp4"]);
+    expect(graphOf(second!)).toBe("[1:a]areverse,volume=1,afade=t=out:st=0:d=0.500:curve=qsin,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    expect(second).not.toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
   });
+
+  /*
+   * Cowork Round 881: the sound cut out at every scene — each clip faded out and the next faded in, a 0.3-second
+   * hole every five seconds. Now a sounding clip's sound crosses into the next scene, equal-power, and only the
+   * reel's last clip fades out.
+   */
+  it("crosses each clip's sound into the next at equal power, with the narration still under it", async () => {
+    const calls: string[][] = [];
+    const { finalPath, fontsDir } = await setup();
+    await new FfmpegMergeEngine(runner(calls), fontsDir).merge(
+      [{ clip: "scene1.mp4", clipAudioVolume: 0.5 }, { clip: "scene2.mp4", clipAudioVolume: 0.5, narrationAudioPath: "n2.mp3" }, { clip: "scene3.mp4", clipAudioVolume: 0.5 }],
+      5, finalPath, "9:16");
+    const [, second, third] = calls.filter((args) => args.includes("-vf"));
+    expect(second!.filter((arg, index) => second![index - 1] === "-i")).toEqual(["scene2.mp4", "n2.mp3", "scene1.mp4"]);
+    expect(graphOf(second!)).toBe("[1:a]apad[narr];[0:a]volume=0.5,afade=t=in:st=0:d=0.500:curve=qsin[clip];[2:a]areverse,volume=0.5,afade=t=out:st=0:d=0.500:curve=qsin[tail];[narr][clip][tail]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    // The last clip is the only one that fades out, since nothing follows to carry it.
+    expect(graphOf(third!)).toBe("[0:a]volume=0.5,afade=t=in:st=0:d=0.500:curve=qsin,afade=t=out:st=4.850:d=0.15[clip];[1:a]areverse,volume=0.5,afade=t=out:st=0:d=0.500:curve=qsin[tail];[clip][tail]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+  });
+
+  it("keeps the sound steady across a cut between two clips that sound alike", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "clip-seam-real-")); roots.push(root);
+    // Two clips of the same steady noise, as two scenes of one place sound: the cut is at 2 seconds.
+    const clips: string[] = [];
+    for (const [index, seed] of [11, 29].entries()) {
+      const clip = path.join(root, `scene${index + 1}.mp4`);
+      await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x568:d=2", "-f", "lavfi", "-i", `anoisesrc=color=pink:seed=${seed}:amplitude=0.3:duration=2:sample_rate=48000`,
+        "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", clip]);
+      clips.push(clip);
+    }
+    const finalPath = path.join(root, "final", "instagram_reel.mp4");
+    await fs.mkdir(path.dirname(finalPath), { recursive: true });
+    await new FfmpegMergeEngine().merge(clips.map((clip) => ({ clip, clipAudioVolume: 1 })), 2, finalPath, "9:16");
+
+    const levelOf = async (start: number, seconds: number): Promise<number> => {
+      const { stderr } = await runMediaCommand(["ffmpeg", "-ss", start.toFixed(3), "-t", seconds.toFixed(3), "-i", finalPath, "-af", "volumedetect", "-vn", "-f", "null", "-"]);
+      return Number(/mean_volume:\s*(-?[0-9.]+) dB/.exec(stderr)?.[1] ?? NaN);
+    };
+    const steady = await levelOf(0.8, 0.4);
+    const atTheCut = await levelOf(1.9, 0.2);
+    expect(steady, "the clip's sound is in the reel").toBeGreaterThan(-40);
+    expect(atTheCut, "and does not drop out where the scenes meet").toBeGreaterThan(steady - 3);
+  }, 120000);
 
   it("puts audible clip sound into a real file, next to a silent scene, and joins them", async ({ skip }) => {
     const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
