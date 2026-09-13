@@ -155,12 +155,24 @@ function resolveFrameFit(project: StoredProject, request: unknown): FrameFit {
   return request.frameFit;
 }
 
+/**
+ * Whether this render turns the finished video a quarter clockwise (MergeVideosRequest.rotateClockwise). Omitted
+ * is no; nothing is stored. Only a 16:9 video may turn: turned, it is exactly a 9:16 Reel, with nothing cut and no
+ * bars. Any other shape would turn into something that is not a Reel frame, so asking is refused, not ignored.
+ */
+function resolveRotateClockwise(project: StoredProject, request: unknown): boolean {
+  if (!isObject(request) || request.rotateClockwise === undefined) return false;
+  if (typeof request.rotateClockwise !== "boolean") throw videoMergeInvalidRequest("rotateClockwise must be true or false.");
+  if (request.rotateClockwise && shortProjectAspectRatio(project) !== "16:9") throw videoMergeInvalidRequest("rotateClockwise applies only to a 16:9 video.");
+  return request.rotateClockwise;
+}
+
 function resolveAudioSettings(project: StoredProject, request: unknown): ResolvedAudioSettings {
   const narrationAvailable = narrationAvailableFor(project);
   const defaultMode: AudioMode = narrationAvailable && toShortProjectSettings(project).narrationEnabled ? "narration" : "silent";
   const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0, clipVolume: 0 };
   if (request === undefined) return fallback;
-  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout" && key !== "sceneSubtitleLayout" && key !== "frameFit")) throw videoMergeInvalidRequest();
+  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout" && key !== "sceneSubtitleLayout" && key !== "frameFit" && key !== "rotateClockwise")) throw videoMergeInvalidRequest();
   if (request.audio === undefined) return fallback;
   const audio = request.audio;
   if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds", "clipVolume"].includes(key))) throw videoMergeInvalidRequest();
@@ -360,6 +372,7 @@ export class LocalVideoMergeService {
     const subtitleLayout = resolveSubtitleLayout(project, request);
     const sceneSubtitleLayout = resolveSceneSubtitleLayout(project, request);
     const frameFit = resolveFrameFit(project, request);
+    const rotateClockwise = resolveRotateClockwise(project, request);
     // Resolved before any state changes or rendering work starts — an unknown/unavailable track should fail
     // fast, the same as approvedClips() failing fast on invalid clips below, not mid-render.
     let bgmPath: string | undefined;
@@ -396,7 +409,7 @@ export class LocalVideoMergeService {
     // Held across the render and the save that follows it. The Instagram publish takes this same key while it
     // reads the file, so a post can never be built from a cut this merge is in the middle of replacing — the
     // one action in this app that cannot be undone must not race the one that rewrites what it sends.
-    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, () => this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes, frameFit), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, () => this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes, frameFit, rotateClockwise), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch(async (error: unknown) => {
         if (!(error instanceof ProjectLockTimeoutError)) throw error;
         // Nothing was rendered, so the project must not be left saying it is rendering.
@@ -418,6 +431,7 @@ export class LocalVideoMergeService {
     /** The scene each merge input stands for, so a failure inside FFmpeg can be named by scene number. */
     renderedScenes: readonly SceneNumber[],
     frameFit: FrameFit,
+    rotateClockwise: boolean,
   ): Promise<MergeVideosResponse> {
     const project = rendering;
     try {
@@ -427,7 +441,7 @@ export class LocalVideoMergeService {
       // The project's own setting, read from where it is actually stored (project-aspect.ts). This passed
       // `style_profile.aspect` until that field turned out to be written by nothing, so every merge padded to a
       // portrait canvas — including landscape footage, which came out pillarboxed.
-      await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, shortProjectAspectRatio(rendering), { frameFit });
+      await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, shortProjectAspectRatio(rendering), { frameFit, rotateClockwise });
       if (usesBgm(audio.mode) && bgmPath) {
         await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath, audio.startSeconds);
       }

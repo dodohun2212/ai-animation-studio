@@ -300,6 +300,37 @@ describe("EpisodeVideoMergeService", () => {
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
   });
 
+  /** The short project's rotateClockwise, on an Episode (Cowork Round 866 — 캡틴D asked for both). */
+  it("turns a 16:9 Episode's scenes a quarter clockwise when asked, and refuses to turn any other shape", async () => {
+    const withAspect = async (projectsRoot: string, aspect: string) => {
+      const file = path.join(projectsRoot, "long", "long_story", "project.json");
+      const stored = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
+      await fs.writeFile(file, JSON.stringify({ ...stored, aspect_ratio: aspect }, null, 2), "utf8");
+    };
+    const filtersOf = (calls: string[][]) => calls.filter((args) => args[0] === "ffmpeg" && args.includes("-vf")).map((args) => args[args.indexOf("-vf") + 1]!);
+
+    const { projectsRoot: landscape } = await setup();
+    await withAspect(landscape, "16:9");
+    const turned: string[][] = [];
+    await new EpisodeVideoMergeService(landscape, runner({}, turned)).merge("long", 1, { rotateClockwise: true });
+    expect(filtersOf(turned)).toHaveLength(6);
+    expect(filtersOf(turned).every((filter) => filter.endsWith(",transpose=clock"))).toBe(true);
+
+    const { projectsRoot: unasked } = await setup();
+    await withAspect(unasked, "16:9");
+    const plain: string[][] = [];
+    await new EpisodeVideoMergeService(unasked, runner({}, plain)).merge("long", 1, {});
+    expect(filtersOf(plain).some((filter) => filter.includes("transpose"))).toBe(false);
+
+    const { projectsRoot: portrait } = await setup();
+    const refused: string[][] = [];
+    await expect(new EpisodeVideoMergeService(portrait, runner({}, refused)).merge("long", 1, { rotateClockwise: true }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(new EpisodeVideoMergeService(portrait, runner({}, refused)).merge("long", 1, { rotateClockwise: 1 }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect(refused.filter((args) => args[0] === "ffmpeg")).toHaveLength(0);
+  });
+
   it("accepts a subtitle layout when retrying a failed Episode merge", async () => {
     const { projectsRoot } = await setup();
     await expect(new EpisodeVideoMergeService(projectsRoot, runner({ noOutput: true }))

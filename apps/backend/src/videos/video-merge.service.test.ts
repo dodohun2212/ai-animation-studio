@@ -358,6 +358,33 @@ describe("local FFmpeg video merge", () => {
     }
   });
 
+  /** MergeVideosRequest.rotateClockwise (Cowork Round 866): a 16:9 project's every scene turns; omitted turns none. */
+  it("turns a landscape project's scenes a quarter clockwise when asked, and none when it does not ask", async () => {
+    for (const [request, turns] of [[{ rotateClockwise: true }, true], [{ rotateClockwise: false }, false], [{}, false]] as const) {
+      const { projectsRoot, projects } = await setup();
+      const project = await projects.findById("video_merge");
+      await projects.save({ ...project, lore_context: { ...project.lore_context, style_notes: { aspect: "16:9" } } });
+      const calls: string[][] = [];
+      await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", request);
+      const filters = calls.filter((args) => args.includes("-vf")).map((args) => args[args.indexOf("-vf") + 1]!);
+      expect(filters, JSON.stringify(request)).toHaveLength(6);
+      for (const filter of filters) expect(filter.includes("transpose=clock"), JSON.stringify(request)).toBe(turns);
+    }
+  });
+
+  it("refuses to turn anything but a 16:9 video, and a rotateClockwise that is not a yes or no, before rendering anything", async () => {
+    const { projectsRoot, projects } = await setup();
+    const calls: string[][] = [];
+    const merge = (request: unknown) => new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", request);
+    for (const aspect of ["9:16", "1:1", "4:5"]) {
+      const project = await projects.findById("video_merge");
+      await projects.save({ ...project, lore_context: { ...project.lore_context, style_notes: { aspect } } });
+      await expect(merge({ rotateClockwise: true }), aspect).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+    await expect(merge({ rotateClockwise: "yes" })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect(calls).toHaveLength(0);
+  });
+
   it("refuses a frameFit it does not know, and any frameFit on a photo card, before rendering anything", async () => {
     const { projectsRoot, projects } = await setup();
     const calls: string[][] = [];

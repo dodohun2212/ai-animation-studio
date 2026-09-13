@@ -151,6 +151,26 @@ describe("FfmpegMergeEngine.merge narration audio mixing", () => {
     }
   });
 
+  /*
+   * 캡틴D's landscape reel turned a quarter clockwise, so a 16:9 video fills a 9:16 Reel with nothing cut and no
+   * bars (Cowork Round 866). The turn comes after the subtitles, so the text turns with the picture.
+   */
+  it("turns every scene a quarter clockwise after its subtitles when asked, and not otherwise", async () => {
+    for (const rotateClockwise of [true, false]) {
+      const calls: string[][] = [];
+      const { finalPath, fontsDir } = await setup();
+      await new FfmpegMergeEngine(runner(calls), fontsDir).merge(
+        [{ clip: "scene1.mp4", subtitleText: "문장" }, { clip: "still.png", stillDurationSeconds: 5 }], 5, finalPath, "16:9", { rotateClockwise });
+      const filters = calls.filter((args) => args.includes("-vf")).map((call) => call[call.indexOf("-vf") + 1]!);
+      expect(filters).toHaveLength(2);
+      for (const filter of filters) {
+        if (rotateClockwise) expect(filter.endsWith(",transpose=clock"), filter).toBe(true);
+        else expect(filter).not.toContain("transpose");
+      }
+      if (rotateClockwise) expect(filters[0]!.indexOf("subtitles=")).toBeLessThan(filters[0]!.indexOf("transpose="));
+    }
+  });
+
   it("uses anullsrc silence when a scene has no narration file, unchanged from before narration existed", async () => {
     const calls: string[][] = [];
     const { finalPath, fontsDir } = await setup();
@@ -663,6 +683,41 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     expect(await sizeOf("960:960")).toBe("1080x1080");
     expect(await sizeOf("4:5")).toBe("1080x1350");
     expect(await sizeOf("832:1104")).toBe("1080x1350");
+  }, 120000);
+
+  /**
+   * The quarter turn, measured on the file: its size, and which way it went.
+   *
+   * A landscape clip whose top half is red and bottom half blue. Turned clockwise, its top lands on the right — so
+   * the right of the finished portrait frame is red and the left blue. Turned the other way, the two swap, and
+   * the size alone could not tell them apart.
+   */
+  it("turns a landscape reel clockwise into a portrait file", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "rotate-real-")); roots.push(root);
+    const clip = path.join(root, "scene1.mp4");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=red:s=320x180:d=1",
+      "-vf", "drawbox=x=0:y=90:w=320:h=90:color=blue:t=fill", "-c:v", "libx264", "-pix_fmt", "yuv420p", clip]);
+    const finalPath = path.join(root, "final", "instagram_reel.mp4");
+    await fs.mkdir(path.dirname(finalPath), { recursive: true });
+    await new FfmpegMergeEngine().merge([{ clip }], 1, finalPath, "16:9", { rotateClockwise: true });
+
+    const { stdout } = await runMediaCommand(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", finalPath]);
+    expect(stdout.trim().replace(/,+$/, "")).toBe("1080x1920");
+
+    const pixelAt = async (x: number): Promise<[number, number, number]> => {
+      const raw = path.join(root, `pixel-${x}.raw`);
+      await runMediaCommand(["ffmpeg", "-y", "-ss", "0.5", "-i", finalPath, "-frames:v", "1",
+        "-vf", `crop=8:8:${x}:956,scale=1:1`, "-f", "rawvideo", "-pix_fmt", "rgb24", raw]);
+      const bytes = await fs.readFile(raw);
+      return [bytes[0]!, bytes[1]!, bytes[2]!];
+    };
+    const [leftRed, , leftBlue] = await pixelAt(200);
+    const [rightRed, , rightBlue] = await pixelAt(872);
+    expect(rightRed, "the clip's top is on the right").toBeGreaterThan(rightBlue);
+    expect(leftBlue, "and its bottom on the left").toBeGreaterThan(leftRed);
   }, 120000);
 
 

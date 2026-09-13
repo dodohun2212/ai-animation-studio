@@ -989,6 +989,8 @@ export interface RecoverLongEpisodeVideosResponse extends LongEpisodeVideoProgre
 export interface MergeLongEpisodeVideosRequest {
   audio?: MergeAudioSettings;
   sceneSubtitleLayout?: { scale?: number; center?: number };
+  /** Same meaning and rule as {@link MergeVideosRequest.rotateClockwise}; the shape is the long project's. */
+  rotateClockwise?: boolean;
 }
 
 export interface MergeLongEpisodeVideosResponse {
@@ -2380,6 +2382,18 @@ export interface MergeVideosRequest {
    * which is drawn to the frame already — a control there would change nothing about the video.
    */
   frameFit?: FrameFit;
+  /**
+   * Turn the finished video a quarter clockwise — a 16:9 video becomes exactly a 9:16 Reel, with nothing cut and
+   * no bars, and the viewer turns their phone to watch it (캡틴D, Cowork Round 866: clockwise, short and Episode).
+   * Its top lands on the right, so the phone is turned anticlockwise to read it; the subtitles are burned in
+   * before the turn and read upright that way.
+   *
+   * Not a FRAME_FITS value: those fit a clip into the reel's frame, and this changes which way the frame faces —
+   * the two combine (a turned reel still fits its clips as `frameFit` says). Refused, not ignored, on any shape but
+   * 16:9, where a turn would not make a Reel frame. Omitted is no turn. Not stored, like `frameFit`: the file is
+   * what carries it, and every screen that shows the finished video sizes itself from the file.
+   */
+  rotateClockwise?: boolean;
 }
 
 /** The local FFmpeg render result never exposes an absolute filesystem path. */

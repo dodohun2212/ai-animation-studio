@@ -233,7 +233,7 @@ export class FfmpegMergeEngine {
    * or empty fonts directory degrades to whatever libass's system font matching finds (readable, but not
    * guaranteed to match the intended look) rather than failing the merge.
    */
-  async merge(scenes: readonly MergeSceneInput[], clipDurationSeconds: number, finalPath: string, ratio: unknown, options: { frameFit?: FrameFit } = {}): Promise<void> {
+  async merge(scenes: readonly MergeSceneInput[], clipDurationSeconds: number, finalPath: string, ratio: unknown, options: { frameFit?: FrameFit; rotateClockwise?: boolean } = {}): Promise<void> {
     const [width, height] = outputSize(ratio);
     const directory = path.dirname(finalPath);
     const normalizedDirectory = path.join(directory, "normalized");
@@ -257,6 +257,10 @@ export class FfmpegMergeEngine {
         await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height, layout, { scene: scene.sceneSubtitleLayout, card: scene.subtitleLayout }), "utf8");
         filter += `,subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(this.fontsDir)}'`;
       }
+      // Last, after the subtitles, so the whole finished frame turns together and the text reads upright to
+      // someone who turns their phone to watch it. Done here rather than on the joined file so the picture is
+      // encoded once; every scene turns, so the join still copies.
+      if (options.rotateClockwise) filter += ",transpose=clock";
       // A still is looped for its own held duration and given the slow zoom before the shared filter runs; a
       // clip is opened as it always was. Everything after this — subtitles, audio mapping, encoder, concat — is
       // the same chain for both, which is the point of doing this as an input shape rather than a second merge.

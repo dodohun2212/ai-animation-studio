@@ -287,7 +287,7 @@ export class EpisodeVideoMergeService {
     const fallbackMode = narrationAvailable && await this.narrationEnabled(id) ? "narration" as const : "silent" as const;
     const fallback = { mode: fallbackMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0 };
     if (request === undefined) return fallback;
-    if (!object(request) || Object.keys(request).some((key) => key !== "audio" && key !== "sceneSubtitleLayout")) throw longInvalidRequest();
+    if (!object(request) || Object.keys(request).some((key) => key !== "audio" && key !== "sceneSubtitleLayout" && key !== "rotateClockwise")) throw longInvalidRequest();
     if (request.audio === undefined) return fallback;
     const audio = request.audio;
     if (!object(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds"].includes(key))) throw longInvalidRequest();
@@ -326,6 +326,14 @@ export class EpisodeVideoMergeService {
     return merged;
   }
 
+  /** The short project's rule, unchanged (video-merge.service.ts `resolveRotateClockwise`): only a 16:9 video may turn. */
+  private async resolveRotateClockwise(id: string, number: number, request: unknown): Promise<boolean> {
+    if (!object(request) || request.rotateClockwise === undefined) return false;
+    if (typeof request.rotateClockwise !== "boolean") throw longInvalidRequest("rotateClockwise must be true or false.");
+    if (request.rotateClockwise && await this.ratio(id, number) !== "16:9") throw longInvalidRequest("rotateClockwise applies only to a 16:9 video.");
+    return request.rotateClockwise;
+  }
+
   /**
    * Whether this Episode has narration a merge could actually use.
    *
@@ -361,6 +369,7 @@ export class EpisodeVideoMergeService {
     const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const clips = await this.approvedClips(id, number, episode);
     const audio = await this.resolveAudio(id, number, episode, request);
     const sceneSubtitleLayout = this.resolveSceneSubtitleLayout(episode, request);
+    const rotateClockwise = await this.resolveRotateClockwise(id, number, request);
     // Resolved before any rendering starts, like the short project's merge: an unknown track should fail here
     // rather than after a render nobody can undo.
     let bgmPath: string | undefined;
@@ -384,7 +393,7 @@ export class EpisodeVideoMergeService {
     // from a cut this render is replacing. Refused rather than queued if something else holds it — nothing has
     // been rendered at that point, and a button that waits behind a minutes-long upload reads as a hang.
     return withProjectLock(path.join(longStoryRoot(this.projectsRoot, id), episodeDirectoryName(number)), FINAL_VIDEO_LOCK_KEY,
-      () => this.render(id, number, episode, rendering, clips, audio, sceneSubtitleLayout, bgmPath, bgmTrack), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+      () => this.render(id, number, episode, rendering, clips, audio, sceneSubtitleLayout, bgmPath, bgmTrack, rotateClockwise), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch(async (error: unknown) => {
         if (!(error instanceof ProjectLockTimeoutError)) throw error;
         await this.saveEpisode(id, number, episode).catch(() => undefined);
@@ -402,6 +411,7 @@ export class EpisodeVideoMergeService {
     sceneSubtitleLayout: SceneSubtitleLayout,
     bgmPath: string | undefined,
     bgmTrack: { attributionRequired: boolean; attributionText?: string } | undefined,
+    rotateClockwise: boolean,
   ): Promise<MergeLongEpisodeVideosResponse> {
     try {
       const output = this.final(id, number); await fs.mkdir(path.dirname(output), { recursive: true });
@@ -411,7 +421,7 @@ export class EpisodeVideoMergeService {
       await this.archiveFinal(id, number);
 
       const mergeScenes = await this.mergeScenes(id, number, episode, clips, sceneNumbersFor(this.sceneCount(episode)), sceneSubtitleLayout);
-      await this.engine.merge(mergeScenes, this.clipDurationSeconds(episode), output, await this.ratio(id, number));
+      await this.engine.merge(mergeScenes, this.clipDurationSeconds(episode), output, await this.ratio(id, number), { rotateClockwise });
       if (bgmPath) await this.engine.mixBackgroundMusic(output, bgmPath, audio.volume, audio.fadeSeconds, output, audio.startSeconds);
       // Copied as a value at merge time, never looked up later: the credit line has to survive the track being
       // edited or deleted, because what was published cannot be unpublished (D-003).
