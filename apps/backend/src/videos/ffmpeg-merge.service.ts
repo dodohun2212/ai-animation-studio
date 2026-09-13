@@ -1,4 +1,5 @@
-import { ASPECT_RATIOS, isAspectRatio, MERGE_FRAME_FOR_ASPECT, RUNWAY_RATIO_FOR_ASPECT, type FrameFit, type VideoClipFacts } from "@ai-animation-studio/shared";
+import { ASPECT_RATIOS, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, isAspectRatio, MERGE_FRAME_FOR_ASPECT, RUNWAY_RATIO_FOR_ASPECT, type FrameFit, type VideoClipFacts } from "@ai-animation-studio/shared";
+import { CARD_BAND_SAMPLE, cardSubtitleColors, type CardSubtitleColors } from "./card-palette.js";
 import * as crypto from "node:crypto";
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -217,6 +218,25 @@ export class FfmpegMergeEngine {
     }
   }
 
+  /**
+   * A card's subtitle colours, from the picture under the text (card-palette.ts). The still is framed the way the
+   * merge frames it, the band around the text's centre is cut out and shrunk to a small grid, and that grid is what
+   * the colours are chosen from. Any failure answers `undefined` and the card keeps the plain white text — a
+   * styling step must never be the reason a card did not render.
+   */
+  private async cardColors(still: string, width: number, height: number, layout: PhotoCardSubtitleLayout | undefined, directory: string, index: number): Promise<CardSubtitleColors | undefined> {
+    const bandHeight = Math.round(height * 0.3);
+    const bandY = Math.min(height - bandHeight, Math.max(0, Math.round((layout ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT).center * height - bandHeight / 2)));
+    const margin = Math.round(width * 0.08);
+    const sample = path.join(directory, `scene${index + 1}.band.rgb`);
+    try {
+      await this.command(["ffmpeg", "-y", "-i", still, "-frames:v", "1",
+        "-vf", `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},crop=${width - 2 * margin}:${bandHeight}:${margin}:${bandY},scale=${CARD_BAND_SAMPLE.width}:${CARD_BAND_SAMPLE.height}:flags=area`,
+        "-f", "rawvideo", "-pix_fmt", "rgb24", sample]);
+      return cardSubtitleColors(new Uint8Array(await fs.readFile(sample)));
+    } catch { return undefined; }
+  }
+
   async probe(clip: string): Promise<void> {
     let result: MediaCommandResult;
     try { result = await this.command(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", clip]); }
@@ -267,7 +287,8 @@ export class FfmpegMergeEngine {
         // frame rather than a caption under the action — it gets its own layout. Nothing new has to be threaded
         // through for that: the field that says "this is a still" is already here.
         const layout = scene.stillDurationSeconds === undefined ? "scene" : "photo-card";
-        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height, layout, { scene: scene.sceneSubtitleLayout, card: scene.subtitleLayout }), "utf8");
+        const cardColors = layout === "photo-card" ? await this.cardColors(scene.clip, width, height, scene.subtitleLayout, normalizedDirectory, index) : undefined;
+        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height, layout, { scene: scene.sceneSubtitleLayout, card: scene.subtitleLayout }, cardColors), "utf8");
         filter += `,subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(this.fontsDir)}'`;
       }
       // Last, after the subtitles, so the whole finished frame turns together and the text reads upright to

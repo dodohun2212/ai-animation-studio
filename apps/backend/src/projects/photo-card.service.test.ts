@@ -101,7 +101,8 @@ describe("PhotoCardService", () => {
 
     expect(merged.finalVideoPath).toBeTruthy();
     expect(calls.some((args) => args[0] === "ffprobe")).toBe(false);
-    const normalize = calls.find((args) => args[0] === "ffmpeg" && args.includes("-vf"))!;
+    // The scene encode, not the colour sample taken from the same picture before it (card-palette.ts).
+    const normalize = calls.find((args) => args[0] === "ffmpeg" && args.includes("-vf") && !args.includes("rawvideo"))!;
     expect(normalize).toContain("-loop");
     expect(normalize[normalize.indexOf("-vf") + 1]).toContain("zoompan");
     expect(used).toBeTruthy();

@@ -1,3 +1,4 @@
+import { assColour, type CardSubtitleColors } from "./card-palette.js";
 import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_SHADOW, SCENE_SUBTITLE_OUTLINE, SCENE_SUBTITLE_SHADOW, photoCardSubtitleGeometry, sceneSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 /**
@@ -51,8 +52,10 @@ export function sceneSubtitleAss(
   height: number,
   layout: SubtitleLayout = "scene",
   layouts: SubtitleLayouts = {},
+  /** A photo card's colours, chosen from its picture (card-palette.ts). Absent keeps the plain white text. */
+  cardColors?: CardSubtitleColors,
 ): string {
-  if (layout === "photo-card") return photoCardSubtitleAss(text, durationSeconds, width, height, layouts.card ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT);
+  if (layout === "photo-card") return photoCardSubtitleAss(text, durationSeconds, width, height, layouts.card ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, cardColors);
   // Every number comes from the shared geometry, which the screen offering the slider previews from too.
   const { size, y, centerX, margin } = sceneSubtitleGeometry(width, height, layouts.scene ?? DEFAULT_SCENE_SUBTITLE_LAYOUT);
   return [
@@ -131,15 +134,18 @@ export interface SubtitleLayouts {
  * picked at 1920). `n5\pos` places each line by its own centre, so the block's position does not depend on
  * how many lines wrapped.
  */
-function photoCardSubtitleAss(text: string, durationSeconds: number, width: number, height: number, card: PhotoCardSubtitleLayout): string {
+function photoCardSubtitleAss(text: string, durationSeconds: number, width: number, height: number, card: PhotoCardSubtitleLayout, colors?: CardSubtitleColors): string {
   const { heading, body } = splitPhotoCardSubtitle(text);
   // Every number comes from the shared geometry, which the preview screen draws from too — a second copy of
   // this arithmetic is a preview that can disagree with the video without anything saying so.
   const { bodySize, headSize, headingY, bodyY, centerX, margin } = photoCardSubtitleGeometry(width, height, card, body.length, heading !== undefined);
+  // White on a black outline and a half-black shadow, unless the picture chose otherwise (card-palette.ts).
+  const outline = colors ? assColour(colors.outline) : "&H00000000";
+  const shadow = colors ? assColour(colors.outline, 0x80) : "&H80000000";
   // Both styles ask for bold today; the parameter stays because the ASS field is per style, and the pair that
   // reads these rows checks the field rather than a family name (subtitle-file.photo-card.test.ts).
-  const style = (name: string, font: string, size: number, bold: 0 | -1) =>
-    `Style: ${name},${font},${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,${bold},0,0,0,100,100,0,0,1,${PHOTO_CARD_SUBTITLE_OUTLINE},${PHOTO_CARD_SUBTITLE_SHADOW},5,${margin},${margin},0,1`;
+  const style = (name: string, font: string, size: number, bold: 0 | -1, primary: string) =>
+    `Style: ${name},${font},${size},${primary},&H000000FF,${outline},${shadow},${bold},0,0,0,100,100,0,0,1,${PHOTO_CARD_SUBTITLE_OUTLINE},${PHOTO_CARD_SUBTITLE_SHADOW},5,${margin},${margin},0,1`;
   const cue = (styleName: string, y: number, content: string) =>
     `Dialogue: 0,${timestamp(0)},${timestamp(durationSeconds)},${styleName},,0,0,0,,{\\an5\\pos(${centerX},${y})}${escapeDialogueText(content)}`;
   return [
@@ -152,8 +158,8 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    style("Quote", QUOTE_FONT_FAMILY, headSize, -1),
-    style("Body", FONT_FAMILY, bodySize, -1),
+    style("Quote", QUOTE_FONT_FAMILY, headSize, -1, colors ? assColour(colors.heading) : "&H00FFFFFF"),
+    style("Body", FONT_FAMILY, bodySize, -1, colors ? assColour(colors.body) : "&H00FFFFFF"),
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

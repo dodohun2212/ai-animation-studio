@@ -767,6 +767,33 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     expect(leftBlue, "and its bottom on the left").toBeGreaterThan(leftRed);
   }, 120000);
 
+  /**
+   * card-palette.ts, end to end: the text colour is chosen from the real picture, through the real sample. A dark
+   * picture gets pale text and a bright one dark text — the fixed white every card had would fail the second.
+   */
+  it("colours a card's text from its picture: pale on a dark one, dark on a bright one", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "card-colour-real-")); roots.push(root);
+
+    const bodyColourOn = async (name: string, colour: string): Promise<{ r: number; g: number; b: number }> => {
+      const still = path.join(root, `${name}.png`);
+      await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", `color=c=${colour}:s=1024x1536`, "-frames:v", "1", still]);
+      const finalPath = path.join(root, name, "instagram_reel.mp4");
+      await fs.mkdir(path.dirname(finalPath), { recursive: true });
+      const ass = new Map<string, string>();
+      const capturing: MediaCommandRunner = async (args) => { await captureAss(args.at(-1)!, ass); return runMediaCommand(args); };
+      await new FfmpegMergeEngine(capturing).merge([{ clip: still, stillDurationSeconds: 1, subtitleText: "첫 줄\n둘째 줄" }], 1, finalPath, "9:16");
+      const body = /Style: Body,[^,]+,\d+,&H00([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2}),/.exec(ass.get("scene1.ass") ?? "");
+      expect(body, `${name}: a Body style with an opaque colour`).not.toBeNull();
+      return { r: parseInt(body![3]!, 16), g: parseInt(body![2]!, 16), b: parseInt(body![1]!, 16) };
+    };
+    const luminance = ({ r, g, b }: { r: number; g: number; b: number }) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+
+    expect(luminance(await bodyColourOn("navy", "#142864")), "pale text on navy").toBeGreaterThan(0.8);
+    expect(luminance(await bodyColourOn("lemon", "#FAD73C")), "dark text on lemon").toBeLessThan(0.2);
+  }, 120000);
+
   /** RotateFinalVideoResponse: a finished landscape file turned in place — same size and direction, sound kept. */
   it("turns a finished landscape file clockwise in place and keeps its sound", async ({ skip }) => {
     const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
