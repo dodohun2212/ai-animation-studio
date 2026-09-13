@@ -60,7 +60,9 @@ const SAFE_ERRORS: Record<string, string> = {
   PROJECT_DATA_INVALID: "프로젝트 데이터가 손상되었습니다.",
   PROJECT_STORAGE_ERROR: "저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
   PROJECT_ARCHIVE_NOT_ALLOWED: "생성 또는 렌더링이 진행 중인 프로젝트는 보관할 수 없습니다.",
-  PROJECT_ARCHIVE_COLLISION: "이미 복구 가능한 보관 항목이 있습니다. 먼저 정리해 주세요.",
+  // 캡틴D가 같은 이름으로 다시 만든 프로젝트를 보관하려다가 이 코드로 막혔는데, 어디로 가야 하는지 말해주지
+  // 않는 문구라 왜 막히는지 알 방법이 없었다(Cowork Round 878). 실제 정리 화면 이름까지 적는다.
+  PROJECT_ARCHIVE_COLLISION: "보관함에 같은 이름의 프로젝트가 이미 있습니다 — 「보관한 프로젝트」 화면에서 옛 것을 지우거나, 이 프로젝트 이름을 바꿔 주세요.",
   PROJECT_RESTORE_COLLISION: "같은 위치에 이미 활성 프로젝트가 있어 복구할 수 없습니다.",
   // Says what changed and what the way out is, not just "안 됩니다". The scene count lives in two places once a
   // Story exists — the settings, and the Story's own scenes — and every later step (이미지, 이미지 검토,

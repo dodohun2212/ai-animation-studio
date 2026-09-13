@@ -131,7 +131,9 @@ const SAFE_ERRORS: Record<string, string> = {
   LONG_OUTLINE_STALE: "스토리 개요 프롬프트가 그 사이에 변경되었습니다. 미리보기를 다시 불러와 주세요.",
   LONG_OUTLINE_NOT_ALLOWED: "스토리 개요 승인은 아직 생성되지 않은 프로젝트에서만 가능합니다.",
   LONG_PROJECT_ARCHIVE_NOT_ALLOWED: "생성이나 병합이 진행 중인 장기 프로젝트는 보관할 수 없습니다. 작업이 끝난 뒤에 다시 시도해 주세요.",
-  LONG_PROJECT_ARCHIVE_COLLISION: "이 장기 프로젝트의 보관본이 이미 있습니다.",
+  // Cowork Round 878/882와 같은 이유로 어디로 가야 하는지까지 적는다 — 단편 프로젝트의 같은 코드가 겪었던
+  // 것과 같은 문제라, 장기 쪽도 같이 고친다.
+  LONG_PROJECT_ARCHIVE_COLLISION: "보관함에 같은 이름의 장기 프로젝트가 이미 있습니다 — 「보관한 프로젝트」 화면에서 옛 것을 지우거나, 이 프로젝트 이름을 바꿔 주세요.",
   LONG_PROJECT_RESTORE_COLLISION: "원래 위치에 같은 장기 프로젝트가 이미 있습니다. 먼저 그 프로젝트를 정리해 주세요.",
   LONG_EPISODE_NOT_FOUND: "에피소드를 찾을 수 없습니다.",
   LONG_EPISODE_TIMELINE_NOT_ALLOWED: "타임라인 편집은 아직 대본 작업을 시작하지 않은 에피소드에서만 가능하고, 보관은 마지막 에피소드만 됩니다.",

@@ -261,7 +261,16 @@ export function LongProjectDetail({
               confirmationText={state.project.title}
               projectKind="long"
               onCancel={() => setArchiveOpen(false)}
-              onConfirm={async (confirmation) => { await archiveLongProject(projectId, { confirmation }); onArchived(); }}
+              onConfirm={async (confirmation) => {
+                // See ProjectDetail.tsx's matching comment: the shared dialog needs each caller to map its
+                // own module's error codes before rethrowing (toLongProjectDisplayError here, not toDisplayError).
+                try {
+                  await archiveLongProject(projectId, { confirmation });
+                } catch (caught) {
+                  throw toLongProjectDisplayError(caught);
+                }
+                onArchived();
+              }}
             />
           )}
           {/*

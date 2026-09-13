@@ -276,6 +276,31 @@ describe("ProjectDetail", () => {
   });
 
   /**
+   * 캡틴D hit exactly this archiving 명언_유지경성 a second time under the same name (Cowork Round 878): the
+   * dialog used to show the same generic "다시 시도해 주세요" for every failure, so there was no way to tell a
+   * name collision apart from a network hiccup. The dialog now shows whatever `toDisplayError` mapped the
+   * code to, and that message names the actual fix (Cowork Round 882).
+   */
+  it("says a same-named archive already exists, instead of a generic retry message", async () => {
+    const project = makeProject({ id: "sample_project", topic: "Exact project topic" });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/archive")) return jsonResponse(409, { code: "PROJECT_ARCHIVE_COLLISION", message: "internal english detail" });
+      if (url.endsWith("/settings")) return jsonResponse(500, { code: "PROJECT_NOT_FOUND", message: "" });
+      return jsonResponse(200, { project });
+    }));
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
+    await screen.findByText(project.id);
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 보관하기" }));
+    fireEvent.change(screen.getByLabelText("위 내용 그대로 입력"), { target: { value: project.topic } });
+    fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveAttribute("data-error-code", "PROJECT_ARCHIVE_COLLISION");
+    expect(alert.textContent).toContain("보관한 프로젝트");
+    expect(alert.textContent).not.toContain("internal english detail");
+  });
+
+  /**
    * 캡틴D pressed 장면 편집 on 명언_전인미답 and got "명언 카드에는 없는 단계입니다".
    *
    * A card does carry a scene row with narration text — `photo-card.service.ts` writes one — so the data-shaped

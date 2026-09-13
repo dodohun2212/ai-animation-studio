@@ -240,7 +240,14 @@ export function ProjectDetail({
               projectKind="short"
               onCancel={() => setArchiveOpen(false)}
               onConfirm={async (confirmation) => {
-                await archiveProject(projectId, { confirmation });
+                // Mapped here, not inside the dialog: this module's toDisplayError knows the short-project
+                // error codes (e.g. PROJECT_ARCHIVE_COLLISION), and the dialog is shared with the long-project
+                // screen, which maps its own codes differently. See ArchiveProjectDialog's catch block.
+                try {
+                  await archiveProject(projectId, { confirmation });
+                } catch (caught) {
+                  throw toDisplayError(caught);
+                }
                 onArchived();
               }}
             />

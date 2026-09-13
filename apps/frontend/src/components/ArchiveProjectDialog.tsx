@@ -27,10 +27,19 @@ export function ArchiveProjectDialog({ confirmationText, projectKind, onCancel, 
       // stored. Send the stored value, or a topic with a newline would pass here and fail there.
       await onConfirm(confirmationText);
     } catch (caught: unknown) {
+      // Short and long projects fail through two different API modules with two different error-mapping
+      // functions (toDisplayError / toLongProjectDisplayError) — this dialog cannot know which one applies,
+      // so it does not map at all. Each `onConfirm` below is expected to catch its own module's error and
+      // rethrow the already-mapped `{code, message}` shape; this only falls back to a generic line when
+      // what it caught does not look like that (Cowork Round 878/882 — a hand-rolled generic message here
+      // used to hide the real, more useful one, like "보관함에 같은 이름이 이미 있습니다").
       const display = caught as { code?: unknown; message?: unknown };
+      const message = typeof display.message === "string" && display.message.trim().length > 0
+        ? display.message
+        : "프로젝트를 보관하지 못했습니다. 다시 시도해 주세요.";
       setError({
         code: typeof display.code === "string" ? display.code : "CLIENT_UNKNOWN_ERROR",
-        message: "프로젝트를 보관하지 못했습니다. 다시 시도해 주세요.",
+        message,
       });
       setPending(false);
     }
