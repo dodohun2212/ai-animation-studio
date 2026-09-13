@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Scene } from "@ai-animation-studio/shared";
+import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject, sceneStaleness } from "../api/testUtils.js";
 import { SceneEditScreen } from "./SceneEditScreen.js";
@@ -251,5 +252,57 @@ describe("SceneEditScreen", () => {
     const error = await screen.findByTestId("scene-edit-save-error");
     expect(error.textContent).not.toContain("unsupported fields");
     expect(error.textContent).toContain("다시 확인해 주세요");
+  });
+
+  it("warns that a stale image cannot be fixed from the review screen once the project has moved past image review", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ReviewingVideos, scenes: [scene(1)] });
+    renderScreen(
+      stubFetchByRoute({
+        [`GET ${PROJECT_URL}`]: { project },
+        [`PATCH ${PATCH_URL}`]: { project, staleness: sceneStaleness({ imageStale: [1], videoStale: [1] }) },
+      }),
+    );
+
+    await screen.findByDisplayValue("행동 1");
+    fireEvent.change(screen.getByLabelText("읽어줄 문장"), { target: { value: "고친 문장" } });
+    fireEvent.click(screen.getByTestId("scene-edit-save"));
+
+    await screen.findByTestId("scene-edit-saved");
+    expect(screen.queryByTestId("scene-edit-stale-video-unreachable")).toBeNull();
+    const imageWarning = await screen.findByTestId("scene-edit-stale-image-unreachable");
+    expect(imageWarning.textContent).toContain("다시 만들 수 없습니다");
+  });
+
+  it("shows no warning for a stale image while the project is still in an image-review state", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview, scenes: [scene(1)] });
+    renderScreen(
+      stubFetchByRoute({
+        [`GET ${PROJECT_URL}`]: { project },
+        [`PATCH ${PATCH_URL}`]: { project, staleness: sceneStaleness({ imageStale: [1] }) },
+      }),
+    );
+
+    await screen.findByDisplayValue("행동 1");
+    fireEvent.change(screen.getByLabelText("읽어줄 문장"), { target: { value: "고친 문장" } });
+    fireEvent.click(screen.getByTestId("scene-edit-save"));
+
+    await screen.findByTestId("scene-edit-stale-image");
+    expect(screen.queryByTestId("scene-edit-stale-image-unreachable")).toBeNull();
+  });
+
+  it("warns that a stale video cannot be fixed once the project is fully rendered", async () => {
+    const project = makeProject({ workflowState: WorkflowState.Completed, scenes: [scene(1)] });
+    renderScreen(
+      stubFetchByRoute({
+        [`GET ${PROJECT_URL}`]: { project },
+        [`PATCH ${PATCH_URL}`]: { project, staleness: sceneStaleness({ videoStale: [1] }) },
+      }),
+    );
+
+    await screen.findByDisplayValue("행동 1");
+    fireEvent.change(screen.getByLabelText("읽어줄 문장"), { target: { value: "고친 문장" } });
+    fireEvent.click(screen.getByTestId("scene-edit-save"));
+
+    await waitFor(() => expect(screen.getByTestId("scene-edit-stale-video-unreachable")).toBeTruthy());
   });
 });

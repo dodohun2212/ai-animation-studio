@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Project, Scene, SceneNumber, SceneStaleness } from "@ai-animation-studio/shared";
+import { WorkflowState } from "@ai-animation-studio/shared";
 
 import { getProject, toDisplayError } from "../api/projectsApi.js";
 import { toSceneEditDisplayError, updateScene } from "../api/sceneEditApi.js";
@@ -23,6 +24,38 @@ type LoadState =
 
 const fieldClassName =
   "mt-1 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50";
+
+/**
+ * Where a scene's stale image can actually be re-made — `image-review.service.ts` and `episode-images.service.ts`
+ * both reject a regeneration outside these two states (verified in the backend source, not assumed from this
+ * screen's own comment, which used to name a review screen unconditionally — Cowork Round 863/867).
+ */
+const IMAGE_FIX_STATES = new Set<WorkflowState>([WorkflowState.ImagesReview, WorkflowState.WaitingForVideoConfirmation]);
+
+/**
+ * Where a stale video can be regenerated — `local-video-workflow.service.ts:630-633`'s `regenerate()` accepts
+ * ReviewingVideos / VideosReady / VideosApproved outright (CLI Round 869, measuring exactly this). It also
+ * accepts GeneratingVideos, but only for scenes the job has already marked failed — a scene stale from a scene
+ * edit is not that, so GeneratingVideos is deliberately left out here rather than over-claimed. Interrupted is
+ * not in the backend's allow-list either. Past this set (Rendering, Completed, Failed, Cancelled) the backend
+ * rejects it (VIDEO_WORKFLOW_NOT_ALLOWED) regardless of what this screen says.
+ */
+const VIDEO_FIX_STATES = new Set<WorkflowState>([
+  WorkflowState.VideosReady,
+  WorkflowState.ReviewingVideos,
+  WorkflowState.VideosApproved,
+]);
+
+/** No workflow_state check exists anywhere in narration/*.ts — confirmed by CLI reading `narration-review.
+ *  service.ts:114-126` (Round 869): it looks only at `narrationEnabled` and whether the scene has narration
+ *  text, never at workflow_state. A stale narration is reachable from its review screen no matter what state
+ *  the rest of the project is in. */
+function canFixFromReviewScreen(kind: "image" | "video" | "narration", workflowState: WorkflowState): boolean {
+  if (kind === "image") return IMAGE_FIX_STATES.has(workflowState);
+  if (kind === "video") return VIDEO_FIX_STATES.has(workflowState);
+  return true;
+}
+
 function valueOf(scene: Scene | undefined, key: string): string {
   if (!scene) return "";
   const value = (scene as unknown as Record<string, unknown>)[key];
@@ -163,11 +196,21 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
                   {staleness.imageStale.length > 0 && (
                     <li data-testid="scene-edit-stale-image">
                       · 이미지를 다시 만들어야 하는 장면: {staleness.imageStale.join(", ")}번
+                      {!canFixFromReviewScreen("image", state.project.workflowState) && (
+                        <span data-testid="scene-edit-stale-image-unreachable" className="block text-amber-300">
+                          지금 프로젝트 상태에서는 이미지 검토 화면에서 다시 만들 수 없습니다.
+                        </span>
+                      )}
                     </li>
                   )}
                   {staleness.videoStale.length > 0 && (
                     <li data-testid="scene-edit-stale-video">
                       · 영상을 다시 만들어야 하는 장면: {staleness.videoStale.join(", ")}번
+                      {!canFixFromReviewScreen("video", state.project.workflowState) && (
+                        <span data-testid="scene-edit-stale-video-unreachable" className="block text-amber-300">
+                          지금 프로젝트 상태에서는 영상 검토 화면에서 다시 만들 수 없습니다.
+                        </span>
+                      )}
                     </li>
                   )}
                   {staleness.narrationStale.length > 0 && (
@@ -177,8 +220,15 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
                   )}
                 </ul>
               )}
+              {/*
+               * 🔴 이전 문구는 모든 상태에서 "각 검토 화면에서 다시 만들면 됩니다"라고 단정했지만, 이미지
+               * 재생성은 IMAGES_REVIEW·WAITING_FOR_VIDEO_CONFIRMATION 두 상태에서만, 영상 재생성은 그보다
+               * 넓은 몇몇 상태에서만 백엔드가 허용한다(각각 image-review.service.ts, episode-images.service.ts,
+               * local-video-workflow.service.ts에서 확인). 지금 상태를 벗어나면 위에 상태별 경고가 대신
+               * 뜨므로, 여기서는 되돌릴 수 없는 것만 남는다고 단정하지 않는다.
+               */}
               <p className="text-xs text-slate-400">
-                각 검토 화면에서 해당 장면만 다시 만들면 됩니다. 이미 만들어 둔 것은 그대로 남아 있습니다.
+                지금 다시 만들 수 있는 항목은 각 검토 화면에서 해당 장면만 다시 만들면 됩니다. 이미 만들어 둔 것은 그대로 남아 있습니다.
               </p>
             </section>
           )}
