@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clipDurationSecondsPerScene, RUNWAY_CLIP_DURATIONS, videoSceneEstimatedCostUsd } from "./index.js";
+import { CLIP_DURATION_CHOICES, CLIP_DURATION_LIMITS, clipDurationSecondsPerScene, isClipDurationSeconds, RUNWAY_CLIP_DURATIONS, VIDEO_MODEL_OPTIONS, videoModelTakesDuration, videoSceneEstimatedCostUsd } from "./index.js";
 
 /**
  * How long one scene's clip is, for an Episode that only stores its total — and therefore what it costs.
@@ -29,5 +29,36 @@ describe("one scene's clip length, derived from an Episode's total", () => {
     // The reason this lives in the contract rather than in either service: the length is the price.
     expect(videoSceneEstimatedCostUsd(clipDurationSecondsPerScene(60, 6))).toBe(0.5);
     expect(videoSceneEstimatedCostUsd(clipDurationSecondsPerScene(30, 6))).toBe(0.25);
+  });
+});
+
+/*
+ * A short project's scene length (B1): a whole number of seconds within CLIP_DURATION_LIMITS, which is exactly the
+ * union of the catalogue models' own ranges — so no model's range pokes outside what a setting may hold, and the
+ * limits are not wider than any model can use.
+ */
+describe("scene lengths the models make", () => {
+  it("gives every model a whole-second range inside the limits, and the limits are exactly their union", () => {
+    for (const option of VIDEO_MODEL_OPTIONS) {
+      expect(Number.isInteger(option.minDurationSeconds) && Number.isInteger(option.maxDurationSeconds), option.id).toBe(true);
+      expect(option.minDurationSeconds, option.id).toBeGreaterThanOrEqual(CLIP_DURATION_LIMITS.min);
+      expect(option.maxDurationSeconds, option.id).toBeLessThanOrEqual(CLIP_DURATION_LIMITS.max);
+      expect(option.minDurationSeconds, option.id).toBeLessThanOrEqual(option.maxDurationSeconds);
+    }
+    expect(Math.min(...VIDEO_MODEL_OPTIONS.map((option) => option.minDurationSeconds))).toBe(CLIP_DURATION_LIMITS.min);
+    expect(Math.max(...VIDEO_MODEL_OPTIONS.map((option) => option.maxDurationSeconds))).toBe(CLIP_DURATION_LIMITS.max);
+  });
+
+  it("accepts whole seconds inside the limits only", () => {
+    for (const value of [1, 5, 7, 15, 30]) expect(isClipDurationSeconds(value), String(value)).toBe(true);
+    for (const value of [0, 7.5, 31, "5", null]) expect(isClipDurationSeconds(value), String(value)).toBe(false);
+    for (const value of CLIP_DURATION_CHOICES) expect(isClipDurationSeconds(value), String(value)).toBe(true);
+  });
+
+  it("asks each model for its own range, at both ends", () => {
+    const h3 = VIDEO_MODEL_OPTIONS.find((option) => option.id === "h3_max_768p")!;
+    expect([4, 5, 15, 16].map((seconds) => videoModelTakesDuration(h3, seconds))).toEqual([false, true, true, false]);
+    const gen4 = VIDEO_MODEL_OPTIONS.find((option) => option.id === "gen4_turbo")!;
+    expect([1, 2, 10, 11].map((seconds) => videoModelTakesDuration(gen4, seconds))).toEqual([false, true, true, false]);
   });
 });

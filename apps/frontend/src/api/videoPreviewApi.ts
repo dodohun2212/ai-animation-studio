@@ -2,12 +2,11 @@ import {
   API_ROUTES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
-  RUNWAY_CLIP_DURATIONS,
+  isClipDurationSeconds,
   RUNWAY_VIDEO_RATIOS,
   VIDEO_MODELS,
   type BudgetPreview,
   type GetVideoPromptPreviewResponse,
-  type RunwayClipDurationSeconds,
   type SceneNumber,
   type VideoModel,
   type VideoPromptPreview,
@@ -79,7 +78,7 @@ function isVideoPromptPreview(value: unknown): value is VideoPromptPreview {
     // 수 없습니다 about a server that was working. Exactly the failure the `model` comment above describes, left
     // in the line below it. `RUNWAY_CLIP_DURATIONS` is the contract's own list of what a clip may be, so a third
     // length added there can never make a good response unreadable here again.
-    RUNWAY_CLIP_DURATIONS.includes(value.durationSeconds as RunwayClipDurationSeconds) &&
+    isClipDurationSeconds(value.durationSeconds) &&
     typeof value.estimatedCostUsd === "number" &&
     value.estimatedCostUsd >= 0
   );

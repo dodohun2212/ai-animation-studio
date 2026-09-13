@@ -80,7 +80,9 @@ describe("short project settings", () => {
 
   it("rejects missing required fields, invalid clip duration/scene count, and unknown fields", () => {
     expect(() => parseShortProjectSettings({ ...settingsRequest, projectName: "" })).toThrow();
-    expect(() => parseShortProjectSettings({ ...settingsRequest, clipDurationSeconds: 7 })).toThrow();
+    // A whole number of seconds within CLIP_DURATION_LIMITS (1-30); the model's own range is asked at the video start.
+    for (const clipDurationSeconds of [0, 7.5, 31]) expect(() => parseShortProjectSettings({ ...settingsRequest, clipDurationSeconds }), String(clipDurationSeconds)).toThrow();
+    for (const clipDurationSeconds of [1, 7, 15, 30]) expect(parseShortProjectSettings({ ...settingsRequest, clipDurationSeconds }).clipDurationSeconds, String(clipDurationSeconds)).toBe(clipDurationSeconds);
     expect(() => parseShortProjectSettings({ ...settingsRequest, sceneCount: 1 })).toThrow();
     expect(() => parseShortProjectSettings({ ...settingsRequest, sceneCount: 13 })).toThrow();
     expect(() => parseShortProjectSettings({ ...settingsRequest, sceneCount: 4.5 })).toThrow();

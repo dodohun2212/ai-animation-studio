@@ -185,6 +185,13 @@ export interface VideoModelOption {
   label: string;
   pricePerSecondUsd: number;
   ratios: readonly string[];
+  /**
+   * The shortest clip this model makes, in whole seconds — Runway's OpenAPI ranges (read 2026-09-12, see the
+   * catalogue comment): gen4 2, H3 Max 5, WAN 2, HappyHorse 3, Seedance 4, Gemini 3, Grok 1. With
+   * maxDurationSeconds this is the model's own range; a scene length outside it is refused before any job is made
+   * (VIDEO_CLIP_DURATION_OUT_OF_RANGE) and again by the adapter before the paid call.
+   */
+  minDurationSeconds: number;
   maxDurationSeconds: number;
   /**
    * Whether the model can be told where a clip must *end*, by being handed its last frame — what decides how a
@@ -271,26 +278,26 @@ export type VideoFrameShape = (typeof VIDEO_FRAME_SHAPES)[number];
  * (videos/ffmpeg-merge.service.ts), so a clip that keeps the picture's shape arrives with bars, not broken.
  */
 export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
-  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
-  { id: "gen4_5", label: "Runway Gen-4.5", pricePerSecondUsd: 0.12, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
-  { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "unconfirmed" },
-  { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "follows_first_frame" },
-  { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
-  { id: "wan3_720p", label: "WAN 3.0 (720p)", pricePerSecondUsd: 0.1, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
-  { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
-  { id: "happyhorse_720p", label: "HappyHorse 1.0 (720p)", pricePerSecondUsd: 0.15, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
-  { id: "happyhorse_1080p", label: "HappyHorse 1.0 (1080p)", pricePerSecondUsd: 0.3, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
-  { id: "seedance2_720p", label: "Seedance 2.0 (720p)", pricePerSecondUsd: 0.36, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
-  { id: "seedance2_1080p", label: "Seedance 2.0 (1080p)", pricePerSecondUsd: 0.4, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
-  { id: "seedance2_fast", label: "Seedance 2.0 Fast (720p)", pricePerSecondUsd: 0.29, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
-  { id: "seedance2_mini", label: "Seedance 2.0 Mini (720p)", pricePerSecondUsd: 0.16, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.64 },
-  { id: "seedance2_5_480p", label: "Seedance 2.5 (480p)", pricePerSecondUsd: 0.2, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
-  { id: "seedance2_5_720p", label: "Seedance 2.5 (720p)", pricePerSecondUsd: 0.3, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
-  { id: "gemini_omni_flash", label: "Gemini Omni Flash", pricePerSecondUsd: 0.1, perGenerationUsd: 0.01, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
-  { id: "grok_imagine_480p", label: "Grok Imagine 1.5 (480p)", pricePerSecondUsd: 0.1, perGenerationUsd: 0.01, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
-  { id: "grok_imagine_720p", label: "Grok Imagine 1.5 (720p)", pricePerSecondUsd: 0.16, perGenerationUsd: 0.01, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
-  { id: "grok_imagine_1080p", label: "Grok Imagine 1.5 (1080p)", pricePerSecondUsd: 0.29, perGenerationUsd: 0.01, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
-  { id: "seedance2_5_1080p", label: "Seedance 2.5 (1080p)", pricePerSecondUsd: 0.68, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], minDurationSeconds: 2, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
+  { id: "gen4_5", label: "Runway Gen-4.5", pricePerSecondUsd: 0.12, ratios: ["720:1280", "1280:720"], minDurationSeconds: 2, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
+  { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], minDurationSeconds: 5, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "unconfirmed" },
+  { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], minDurationSeconds: 5, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "follows_first_frame" },
+  { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], minDurationSeconds: 2, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
+  { id: "wan3_720p", label: "WAN 3.0 (720p)", pricePerSecondUsd: 0.1, ratios: [], minDurationSeconds: 2, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
+  { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], minDurationSeconds: 2, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
+  { id: "happyhorse_720p", label: "HappyHorse 1.0 (720p)", pricePerSecondUsd: 0.15, ratios: [], minDurationSeconds: 3, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "happyhorse_1080p", label: "HappyHorse 1.0 (1080p)", pricePerSecondUsd: 0.3, ratios: [], minDurationSeconds: 3, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "seedance2_720p", label: "Seedance 2.0 (720p)", pricePerSecondUsd: 0.36, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_1080p", label: "Seedance 2.0 (1080p)", pricePerSecondUsd: 0.4, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_fast", label: "Seedance 2.0 Fast (720p)", pricePerSecondUsd: 0.29, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested" },
+  { id: "seedance2_mini", label: "Seedance 2.0 Mini (720p)", pricePerSecondUsd: 0.16, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.64 },
+  { id: "seedance2_5_480p", label: "Seedance 2.5 (480p)", pricePerSecondUsd: 0.2, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "seedance2_5_720p", label: "Seedance 2.5 (720p)", pricePerSecondUsd: 0.3, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
+  { id: "gemini_omni_flash", label: "Gemini Omni Flash", pricePerSecondUsd: 0.1, perGenerationUsd: 0.01, ratios: ["720:1280", "1280:720"], minDurationSeconds: 3, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
+  { id: "grok_imagine_480p", label: "Grok Imagine 1.5 (480p)", pricePerSecondUsd: 0.1, perGenerationUsd: 0.01, ratios: [], minDurationSeconds: 1, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "grok_imagine_720p", label: "Grok Imagine 1.5 (720p)", pricePerSecondUsd: 0.16, perGenerationUsd: 0.01, ratios: [], minDurationSeconds: 1, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "grok_imagine_1080p", label: "Grok Imagine 1.5 (1080p)", pricePerSecondUsd: 0.29, perGenerationUsd: 0.01, ratios: [], minDurationSeconds: 1, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "follows_first_frame" },
+  { id: "seedance2_5_1080p", label: "Seedance 2.5 (1080p)", pricePerSecondUsd: 0.68, ratios: ["720:1280", "1280:720"], minDurationSeconds: 4, maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "requested", minimumChargeUsd: 0.8 },
 ];
 
 /** The one used when nobody has chosen — today's behaviour, unchanged. */
@@ -325,6 +332,24 @@ export type RunwayVideoRatio = (typeof RUNWAY_VIDEO_RATIOS)[number];
 
 export const RUNWAY_CLIP_DURATIONS = [5, 10] as const;
 export type RunwayClipDurationSeconds = (typeof RUNWAY_CLIP_DURATIONS)[number];
+
+/**
+ * What a short project's scene length may be: a whole number of seconds in this range, whatever the model — the
+ * union of every catalogue model's [minDurationSeconds, maxDurationSeconds]. A settings save is checked against
+ * this; whether the chosen model takes it is asked where money is about to move (the confirmation screen, the
+ * video start, the adapter), because settings outlive a model choice (Cowork Round 806 · CLI Round 849).
+ *
+ * `RUNWAY_CLIP_DURATIONS` ([5, 10]) was the one model's own range, frozen into a global when there was one model;
+ * it still governs Long Episodes and photo cards until those move (B1-b).
+ */
+export const CLIP_DURATION_LIMITS = { min: 1, max: 30 } as const;
+export const isClipDurationSeconds = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= CLIP_DURATION_LIMITS.min && value <= CLIP_DURATION_LIMITS.max;
+/** The lengths a settings screen offers, filtered to the chosen model's range. Others are accepted, not offered. */
+export const CLIP_DURATION_CHOICES = [5, 10, 15, 20, 30] as const;
+/** Whether this model makes a clip this long — the one question behind every refusal above. */
+export const videoModelTakesDuration = (option: VideoModelOption, seconds: number): boolean =>
+  Number.isInteger(seconds) && seconds >= option.minDurationSeconds && seconds <= option.maxDurationSeconds;
 
 /**
  * How long one scene's clip is, for an Episode that only stores its total.

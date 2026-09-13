@@ -2,7 +2,7 @@ import {
   API_ROUTES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
-  RUNWAY_CLIP_DURATIONS,
+  isClipDurationSeconds,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
   type CreateProjectRequest,
@@ -193,7 +193,7 @@ function isShortProjectSettings(value: unknown): value is ShortProjectSettings {
     !Number.isInteger(value.sceneCount) ||
     value.sceneCount < MIN_SCENE_COUNT ||
     value.sceneCount > MAX_SCENE_COUNT ||
-    !(RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value.clipDurationSeconds as number) ||
+    !isClipDurationSeconds(value.clipDurationSeconds) ||
     !Number.isInteger(value.durationSeconds) ||
     (value.durationSeconds as number) <= 0 ||
     typeof value.narrationEnabled !== "boolean" ||

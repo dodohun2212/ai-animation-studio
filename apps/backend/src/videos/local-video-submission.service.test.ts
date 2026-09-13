@@ -10,6 +10,8 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { RunwayBudget } from "../providers/runway-budget.js";
 import { LocalVideoPreviewService } from "./video-preview.service.js";
 import { LocalVideoSubmissionService } from "./local-video-submission.service.js";
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const roots: string[] = [];
@@ -43,6 +45,40 @@ async function request(previews: LocalVideoPreviewService, requestId = "request_
     prompts: preview.previews.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt: `${prompt}\nUser edit ${sceneNumber}` })),
   };
 }
+
+/*
+ * F2: the scene length against the job's model, asked before any job record is written. The adapter refuses the
+ * same thing before each paid call, but a job of six failures would already be on disk.
+ */
+describe("the model's own scene-length range", () => {
+  async function withClipLength(seconds: number, model?: "h3_max_768p") {
+    const base = await setup();
+    const project = await base.projects.findById("video_submit");
+    project.lore_context = { ...project.lore_context, clip_duration_seconds: seconds };
+    await base.projects.save(project);
+    if (!model) return base;
+    const root = path.dirname(base.projects.projectDirectory("video_submit")).replace(/[\\/]projects$/, "");
+    const providerSettings = new ProviderSettingsService(new ProviderSettingsRepository(root));
+    await providerSettings.saveVideoModel({ model });
+    const previews = new LocalVideoPreviewService(base.projects, path.join(root, "projects"), new RunwayBudget(root), providerSettings);
+    return { ...base, previews, service: new LocalVideoSubmissionService(base.projects, previews, 10) };
+  }
+
+  it("refuses, before any job is written, a scene length the model does not make", async () => {
+    const { projects, previews, service } = await withClipLength(15);
+    await expect(service.start("video_submit", await request(previews))).rejects.toMatchObject({
+      response: { code: "VIDEO_CLIP_DURATION_OUT_OF_RANGE", details: { model: "gen4_turbo", durationSeconds: 15, minDurationSeconds: 2, maxDurationSeconds: 10 } },
+    });
+    const stored = await projects.findById("video_submit");
+    expect(stored.video_generation_records).toEqual([]);
+    expect(stored.workflow_state).toBe(WorkflowState.WaitingForVideoConfirmation);
+  });
+
+  it("takes the same length on a model that makes it", async () => {
+    const { previews, service } = await withClipLength(15, "h3_max_768p");
+    await expect(service.start("video_submit", await request(previews))).resolves.toMatchObject({ jobId: expect.any(String) });
+  });
+});
 
 describe("local video submission approval gate", () => {
   it("persists six exact prompt/input-hash checkpoints without any provider call and survives a new instance", async () => {

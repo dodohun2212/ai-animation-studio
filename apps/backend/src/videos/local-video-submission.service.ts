@@ -1,3 +1,4 @@
+import { VIDEO_MODEL_OPTIONS, videoModelTakesDuration } from "@ai-animation-studio/shared";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 
@@ -24,7 +25,7 @@ import { LocalVideoPreviewService, utf16Length } from "./video-preview.service.j
 import {
   invalidVideoSubmission,
   videoBudgetExceeded,
-  videoCallLimitExceeded,
+  videoCallLimitExceeded, videoClipDurationOutOfRange,
   videoConfirmationStale,
   videoRequestIdConflict,
   videoSubmissionNotAllowed,
@@ -191,6 +192,14 @@ export class LocalVideoSubmissionService {
     const preview = await this.previews.preview(project.project_id, undefined);
     if (!preview.confirmationId || request.confirmationId !== preview.confirmationId) throw videoConfirmationStale();
     if (scenes.length < MIN_SCENE_COUNT || scenes.length > MAX_SCENE_COUNT) throw videoCallLimitExceeded();
+    // The model's own length range, asked before any job record exists (F2). The adapter refuses the same thing
+    // scene by scene before each paid call, but by then a job of six failures has been written for nothing.
+    for (const item of preview.previews) {
+      const option = VIDEO_MODEL_OPTIONS.find((candidate) => candidate.id === item.model);
+      if (option && !videoModelTakesDuration(option, item.durationSeconds)) {
+        throw videoClipDurationOutOfRange({ model: option.id, durationSeconds: item.durationSeconds, minDurationSeconds: option.minDurationSeconds, maxDurationSeconds: option.maxDurationSeconds });
+      }
+    }
     // Summed off the preview rather than recomputed: this is the number the person was shown and pressed the
     // button under, so taking it from anywhere else is how a confirmation and a charge come to disagree. It is
     // also already per-scene and duration-aware — a 10-second project buys twice the video, and used to be

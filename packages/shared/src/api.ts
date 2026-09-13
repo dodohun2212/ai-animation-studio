@@ -1477,7 +1477,11 @@ export interface ShortProjectSettings {
   durationSeconds: number;
   /** No longer fixed at 6 — see MIN_SCENE_COUNT/MAX_SCENE_COUNT in domain.ts. */
   sceneCount: number;
-  /** One of RUNWAY_CLIP_DURATIONS (domain.ts) — Runway is the only supported video Provider today, so this is not yet keyed by provider. */
+  /**
+   * A whole number of seconds within CLIP_DURATION_LIMITS (domain.ts) — not tied to a model here, because the
+   * setting outlives the model choice. Whether the chosen model makes a clip this long is checked on the video
+   * confirmation screen and refused at the video start (VIDEO_CLIP_DURATION_OUT_OF_RANGE).
+   */
   clipDurationSeconds: number;
   additionalNotes: string;
   styleNotes: ShortProjectStyleNotes;

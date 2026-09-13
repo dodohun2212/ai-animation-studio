@@ -103,11 +103,19 @@ describe("videoPreviewApi", () => {
   });
 
   it("still rejects a clip length the contract does not allow", async () => {
-    const previews = makePreviews(2);
-    (previews[0] as unknown as { durationSeconds: number }).durationSeconds = 7;
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { previews })));
+    // CLIP_DURATION_LIMITS (1-30 whole seconds): 31 and 7.5 are outside it.
+    for (const durationSeconds of [31, 7.5]) {
+      const previews = makePreviews(2);
+      (previews[0] as unknown as { durationSeconds: number }).durationSeconds = durationSeconds;
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { previews })));
+      await expect(getVideoPromptPreview("sample_project"), String(durationSeconds)).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+    }
+  });
 
-    await expect(getVideoPromptPreview("sample_project")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  it("accepts a clip length beyond the old 5 and 10, which models now make", async () => {
+    const previews = makePreviews(2).map((preview) => ({ ...preview, durationSeconds: 15 }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { previews })));
+    await expect(getVideoPromptPreview("sample_project")).resolves.toMatchObject({ previews: [{ durationSeconds: 15 }, { durationSeconds: 15 }] });
   });
 
   it("maps a non-JSON error body to the safe malformed-response error", async () => {

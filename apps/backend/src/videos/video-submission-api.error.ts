@@ -7,11 +7,12 @@ type VideoSubmissionErrorCode =
   | "VIDEO_CONFIRMATION_STALE"
   | "VIDEO_REQUEST_ID_CONFLICT"
   | "VIDEO_BUDGET_EXCEEDED"
-  | "VIDEO_CALL_LIMIT_EXCEEDED";
+  | "VIDEO_CALL_LIMIT_EXCEEDED"
+  | "VIDEO_CLIP_DURATION_OUT_OF_RANGE";
 
 class VideoSubmissionApiException extends HttpException {
-  constructor(code: VideoSubmissionErrorCode, message: string, status: HttpStatus) {
-    const body: ApiError = { code, message };
+  constructor(code: VideoSubmissionErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
+    const body: ApiError = { code, message, ...(details ? { details } : {}) };
     super(body, status);
   }
 }
@@ -28,3 +29,10 @@ export const videoBudgetExceeded = () =>
   new VideoSubmissionApiException("VIDEO_BUDGET_EXCEEDED", "The local Runway budget does not cover this confirmed request.", HttpStatus.CONFLICT);
 export const videoCallLimitExceeded = () =>
   new VideoSubmissionApiException("VIDEO_CALL_LIMIT_EXCEEDED", "The confirmed request exceeds the allowed provider call count.", HttpStatus.CONFLICT);
+
+/**
+ * The scene length is outside the range the job's model makes (VideoModelOption.minDurationSeconds/maxDurationSeconds).
+ * Refused before any job record is written — the adapter would refuse every scene anyway, leaving a job of failures.
+ */
+export const videoClipDurationOutOfRange = (details: { model: string; durationSeconds: number; minDurationSeconds: number; maxDurationSeconds: number }) =>
+  new VideoSubmissionApiException("VIDEO_CLIP_DURATION_OUT_OF_RANGE", `The ${details.model} model makes clips of ${details.minDurationSeconds}-${details.maxDurationSeconds} seconds, not ${details.durationSeconds}.`, HttpStatus.CONFLICT, details);

@@ -1,4 +1,4 @@
-import { DEFAULT_SCENE_COUNT, MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, SETTINGS_PRESET_IDS, type SettingsPreset, type SettingsPresetId, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
+import { CLIP_DURATION_LIMITS, DEFAULT_SCENE_COUNT, isClipDurationSeconds, MAX_SCENE_COUNT, MIN_SCENE_COUNT, SETTINGS_PRESET_IDS, type SettingsPreset, type SettingsPresetId, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
 
 import { invalidRequest } from "./project-api.error.js";
 import { photoCardFor } from "./project.mapper.js";
@@ -29,7 +29,7 @@ function minimumSceneCountFor(stored: StoredProject): number {
 }
 
 function isValidClipDuration(value: unknown): value is number {
-  return typeof value === "number" && (RUNWAY_CLIP_DURATIONS as readonly number[]).includes(value);
+  return isClipDurationSeconds(value);
 }
 
 const STYLE_KEYS = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"] as const;
@@ -145,7 +145,7 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
     throw invalidRequest(`settings.sceneCount must be an integer between ${minimumSceneCount} and ${MAX_SCENE_COUNT}.`, { field: "settings.sceneCount" });
   }
   if (!isValidClipDuration(settings.clipDurationSeconds)) {
-    throw invalidRequest(`settings.clipDurationSeconds must be one of: ${RUNWAY_CLIP_DURATIONS.join(", ")}.`, { field: "settings.clipDurationSeconds" });
+    throw invalidRequest(`settings.clipDurationSeconds must be a whole number of seconds from ${CLIP_DURATION_LIMITS.min} to ${CLIP_DURATION_LIMITS.max}.`, { field: "settings.clipDurationSeconds" });
   }
   if (typeof settings.narrationEnabled !== "boolean") {
     throw invalidRequest("settings.narrationEnabled must be a boolean.", { field: "settings.narrationEnabled" });

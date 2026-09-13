@@ -245,6 +245,17 @@ ${SEEDANCE_TEXT_CONSTRAINT}`,
     expect(JSON.parse(String((accepted.mock.calls[0] as [string, RequestInit])[1].body))).toMatchObject({ duration: 15 });
   });
 
+  it("refuses a clip shorter than the model makes, by that model's own minimum", async () => {
+    const refused = vi.fn();
+    // H3 Max makes 5-15 s; 4 is below its floor although other models take it.
+    await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "h3_max_768p", durationSeconds: 4, fetchImpl: refused, sleep: noSleep }))
+      .rejects.toMatchObject({ category: "invalid_request" });
+    expect(refused).not.toHaveBeenCalled();
+    const accepted = vi.fn().mockResolvedValue(jsonResponse(200, { id: "task-1" }));
+    await createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "wan3_480p", durationSeconds: 4, fetchImpl: accepted, sleep: noSleep });
+    expect(JSON.parse(String((accepted.mock.calls[0] as [string, RequestInit])[1].body))).toMatchObject({ duration: 4 });
+  });
+
   it("refuses a frame shape outside this app's vocabulary, or a model it cannot name, without calling fetch", async () => {
     const fetchMock = vi.fn();
     await expect(createRunwayImageToVideoTask("secret", IMAGE_BYTES, "image/png", "prompt", { model: "gen4_turbo", ratio: "9:16", fetchImpl: fetchMock, sleep: noSleep }))

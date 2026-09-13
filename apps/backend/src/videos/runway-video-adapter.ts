@@ -164,8 +164,8 @@ export function requestBodyFor(model: VideoModel, parts: { promptImage: string; 
   // Refused, not dropped: a last frame reaching a model that takes none means the job was confirmed as something
   // this request cannot be, and sending it quietly without one would buy a different clip than the one confirmed.
   if (parts.lastFrameImage !== undefined && !option.acceptsLastFrame) throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 끝 프레임을 받지 않습니다.`);
-  if (!Number.isInteger(parts.duration) || parts.duration < 1 || parts.duration > option.maxDurationSeconds) {
-    throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 장면을 최대 ${option.maxDurationSeconds}초까지만 만듭니다.`);
+  if (!Number.isInteger(parts.duration) || parts.duration < option.minDurationSeconds || parts.duration > option.maxDurationSeconds) {
+    throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 한 장면을 ${option.minDurationSeconds}~${option.maxDurationSeconds}초로만 만듭니다.`);
   }
   if (!(RUNWAY_VIDEO_RATIOS as readonly string[]).includes(parts.ratio)) throw new RunwayAdapterError("invalid_request", "영상 비율이 올바르지 않습니다.");
   return REQUEST_BODY[model]({ ...parts, ratio: parts.ratio as RunwayVideoRatio });

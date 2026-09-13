@@ -45,7 +45,7 @@ describe("pricing a model the contract has not heard of", () => {
    * is worse than the flat constant this replaced, because it looks like it moved.
    */
   it("prices an option from the option, not from whatever the contract happens to list first", () => {
-    const hypothetical = { id: "gen4_turbo" as const, label: "Later", pricePerSecondUsd: 0.12, ratios: ["720:1280"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" as const };
+    const hypothetical = { id: "gen4_turbo" as const, label: "Later", pricePerSecondUsd: 0.12, ratios: ["720:1280"], minDurationSeconds: 2, maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" as const };
 
     expect(videoSceneEstimatedCostUsd(5, hypothetical), "its own rate").toBe(0.6);
     expect(videoSceneEstimatedCostUsd(10, hypothetical)).toBe(1.2);
@@ -57,7 +57,7 @@ describe("pricing a model the contract has not heard of", () => {
    * in today's catalogue has a per-generation charge, and none has both, so these use hypothetical options — the
    * order has to be fixed before the first model that needs it, not discovered by it.
    */
-  const base = { id: "gen4_turbo" as const, label: "Hypothetical", ratios: ["720:1280"], maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "requested" as const };
+  const base = { id: "gen4_turbo" as const, label: "Hypothetical", ratios: ["720:1280"], minDurationSeconds: 2, maxDurationSeconds: 15, acceptsLastFrame: false, frameShape: "requested" as const };
 
   it("adds a per-generation charge once, never multiplied by the length", () => {
     const perGeneration = { ...base, pricePerSecondUsd: 0.1, perGenerationUsd: 0.01 };
