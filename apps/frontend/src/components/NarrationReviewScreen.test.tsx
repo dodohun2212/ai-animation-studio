@@ -80,6 +80,81 @@ describe("NarrationReviewScreen", () => {
     expect(screen.getByTestId("narration-missing").textContent).toContain("1개 장면");
   });
 
+  /**
+   * 🔴 확인 상자가 스스로를 부정하고 있었습니다. 「이미 음성이 있는 장면은 다시 만들지 않아 비용도 들지
+   * 않습니다」라고 적어 놓고, 바로 아래 줄에서 **그 장면들까지 곱해** 값을 냈습니다. 두 줄이 서로를 부정하면
+   * 사람은 둘 다 못 믿습니다.
+   *
+   * 그리고 이 수는 장식이 아닙니다 — `BudgetLine` 에 그대로 들어갑니다. 많이 부르면 **낼 수 있는 돈인데도
+   * 예산에 걸려 막힙니다.** 과다 견적이 「안전한 쪽」이 아닌 이유입니다.
+   *
+   * 규칙은 백엔드가 실제로 쓰는 것과 같습니다(`local-narration-generation.service.ts` — 목적지가 같고, 아직
+   * 맞고, 파일이 멀쩡할 때만 재사용).
+   */
+  it("prices only the scenes that will actually be spoken", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          project,
+          narrations: narrations([
+            { narration: "문장", audio: "generated" },   // 이미 있고 뒤처지지도 않음 — 안 말해집니다
+            { narration: "문장", audio: "none" },
+            { narration: "문장", audio: "placeholder" },  // 진짜 목소리가 아닙니다 — 말해집니다
+          ]),
+          staleness: sceneStaleness({}),
+        },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      }),
+    );
+
+    // 글이 있는 장면은 셋 그대로 — 그건 다른 사실입니다.
+    expect((await screen.findByTestId("narration-count")).textContent).toBe("3 / 3");
+    expect(screen.getByTestId("narration-estimated-cost").textContent, "말해질 두 장면만").toBe("$0.02");
+
+    fireEvent.click(screen.getByTestId("narration-generate-button"));
+    const estimate = await screen.findByTestId("narration-generate-cost-estimate");
+    expect(estimate.textContent).toContain("2장면");
+    expect(estimate.textContent, "수가 왜 적은지 그 자리에서 말합니다").toContain("이미 음성이 있는 1장면은 빠졌습니다");
+    expect(screen.getByTestId("narration-generate-confirm").textContent).toContain("2개 장면의 음성을 만들까요");
+  });
+
+  /** 글이 바뀌어 뒤처진 음성은 **다시 만들어집니다** — 있다고 빼면 그건 적게 부르는 쪽이라 더 위험합니다. */
+  it("charges again for audio that has fallen behind its text", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          project,
+          narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "generated" }]),
+          staleness: sceneStaleness({ narrationStale: [2] }),
+        },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      }),
+    );
+
+    expect((await screen.findByTestId("narration-estimated-cost")).textContent, "뒤처진 2번만").toBe("$0.01");
+  });
+
+  /**
+   * 🔴 `staleness` 가 안 오면 **전부 셉니다.** 모르면서 적게 부르면 사람이 예산 안이라고 믿고 눌렀다가 중간에
+   * 막힙니다 — 모를 때 기우는 방향이 정해져 있어야 합니다.
+   */
+  it("counts every scene when it cannot tell which audio is stale", async () => {
+    renderScreen(
+      stubFetchByRoute({
+        [REVIEW]: {
+          project,
+          narrations: narrations([{ narration: "문장", audio: "generated" }, { narration: "문장", audio: "generated" }]),
+        },
+        [SETTINGS]: { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      }),
+    );
+
+    expect((await screen.findByTestId("narration-estimated-cost")).textContent, "모르면 많이 부릅니다").toBe("$0.02");
+    fireEvent.click(screen.getByTestId("narration-generate-button"));
+    await screen.findByTestId("narration-generate-cost-estimate");
+    expect(screen.queryByTestId("narration-generate-reused"), "뺀 게 없으면 그 말도 없습니다").toBeNull();
+  });
+
   it("flags narration too long for the clip length loaded from project settings", async () => {
     // 5s clip x 5 chars/sec = 25 characters before a line is flagged.
     renderScreen(

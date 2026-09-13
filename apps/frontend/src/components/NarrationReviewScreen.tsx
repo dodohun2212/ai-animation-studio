@@ -108,7 +108,28 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
   const narrations = state.status === "ready" ? state.narrations : [];
   const withText = narrations.filter((item) => item.narration.trim());
   const missing = narrations.filter((item) => !item.narration.trim());
-  const estimatedCost = withText.length * TTS_ESTIMATED_COST_USD;
+  /**
+   * 🔴 실제로 **말해질** 장면만 셉니다 — 값이 붙은 수라서.
+   *
+   * 확인 상자는 「이미 음성이 있는 장면은 다시 만들지 않아 비용도 들지 않습니다」라고 말하면서, 바로 아래
+   * 줄에서 **그 장면들까지 곱하고** 있었습니다. 두 줄이 서로를 부정하면 사람은 둘 다 못 믿습니다.
+   *
+   * 그리고 이 수는 장식이 아닙니다 — `BudgetLine` 에 `estimatedRequestCostUsd` 로 그대로 들어갑니다. 많이
+   * 부르면 **낼 수 있는 돈인데도 예산에 걸려 막힙니다.** 과다 견적이 「안전한 쪽」이 아닌 이유입니다.
+   *
+   * 규칙은 백엔드가 실제로 쓰는 것과 같게 뒀습니다(`local-narration-generation.service.ts`: 목적지가 같고 ·
+   * 아직 맞고 · 파일이 멀쩡할 때만 재사용). 즉 **음성이 `generated` 가 아니거나(없음·자리표시), 글이 바뀌어
+   * 뒤처진 장면**이 말해집니다.
+   *
+   * 🔴 `staleness` 가 안 왔을 때는 **전부 센다**로 되돌아갑니다. 모르면서 적게 부르면 그게 위험한 방향입니다 —
+   * 사람이 예산 안이라고 믿고 눌렀다가 중간에 막힙니다.
+   */
+  const narrationStale = state.status === "ready" ? state.staleness?.narrationStale : undefined;
+  const willSpeak = (item: NarrationReview): boolean =>
+    narrationStale === undefined || item.audio !== "generated" || narrationStale.includes(item.sceneNumber);
+  const toSpeak = withText.filter(willSpeak);
+  const reusedCount = withText.length - toSpeak.length;
+  const estimatedCost = toSpeak.length * TTS_ESTIMATED_COST_USD;
   /**
    * Only true once the settings actually say narration is off. The backend rejects TTS with
    * NARRATION_NOT_ENABLED in that case, so offering the paid button would be offering a guaranteed failure —
@@ -221,7 +242,7 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
                     ${estimatedCost.toFixed(2)}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {withText.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)} · 키가 연결되어 있을 때만 청구됩니다
+                    {toSpeak.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)} · 키가 연결되어 있을 때만 청구됩니다
                   </p>
                 </div>
               )}
@@ -278,7 +299,7 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
                 data-testid="narration-generate-confirm"
                 className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
               >
-                <p className="text-sm font-semibold text-amber-300">{withText.length}개 장면의 음성을 만들까요?</p>
+                <p className="text-sm font-semibold text-amber-300">{toSpeak.length}개 장면의 음성을 만들까요?</p>
                 <p className="text-sm text-slate-300">
                   아직 요청이 가지 않았습니다. OpenAI 키가 연결되어 있으면 확인을 누르는 순간 실제 유료 요청이 전송됩니다.
                   이미 음성이 있는 장면은 다시 만들지 않아 비용도 들지 않습니다.
@@ -287,8 +308,13 @@ export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {
                     deliberately renders nothing when there is no budget, and that rule stays intact.
                     Same split as ImageGenerationScreen's confirmation panel. */}
                 <p data-testid="narration-generate-cost-estimate" className="text-xs text-slate-300 tabular-nums">
-                  예상 비용: ${estimatedCost.toFixed(2)} ({withText.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)}) · 키가
+                  예상 비용: ${estimatedCost.toFixed(2)} ({toSpeak.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)}) · 키가
                   연결되어 있을 때만 청구됩니다
+                  {/* 수가 장면 수보다 적은 이유를 그 자리에서 말합니다 — 안 그러면 「내레이션이 있는 장면 6」 옆의
+                      「2장면 × …」 이 오류로 보입니다. */}
+                  {reusedCount > 0 && (
+                    <span data-testid="narration-generate-reused"> · 이미 음성이 있는 {reusedCount}장면은 빠졌습니다</span>
+                  )}
                 </p>
                 <BudgetLine
                   budget={state.budget}
