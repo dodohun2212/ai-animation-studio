@@ -128,7 +128,7 @@ describe("LongProjectsService", () => {
     // Item 6: the square is a setting like the other two, and a shape the app does not make is refused.
     await subject.updateSettings("long_test", { settings: { ...input.settings, aspectRatio: "1:1" } });
     expect((await subject.getSettings("long_test")).settings.aspectRatio).toBe("1:1");
-    await expect(subject.updateSettings("long_test", { settings: { ...input.settings, aspectRatio: "4:5" as never } }))
+    await expect(subject.updateSettings("long_test", { settings: { ...input.settings, aspectRatio: "3:2" as never } }))
       .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     const flipped = { ...input.settings, aspectRatio: "16:9" as const };
     await subject.updateSettings("long_test", { settings: flipped });

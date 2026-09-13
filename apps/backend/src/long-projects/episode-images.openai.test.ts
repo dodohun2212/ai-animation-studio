@@ -456,7 +456,7 @@ describe("real OpenAI Episode image generation", () => {
   });
 
   // Item 6 added the square: the same table as the short project (IMAGE_SIZE_FOR_ASPECT), read from the Episode's own setting.
-  it.each([["16:9", "1536x1024"], ["1:1", "1024x1024"]] as const)("derives the requested image size from the Long Project's own aspectRatio setting instead of always hardcoding portrait (%s)", async (aspectRatio, size) => {
+  it.each([["16:9", "1536x1024"], ["1:1", "1024x1024"], ["4:5", "1024x1280"]] as const)("derives the requested image size from the Long Project's own aspectRatio setting instead of always hardcoding portrait (%s)", async (aspectRatio, size) => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-images-openai-"));
     const projectsRoot = path.join(root, "projects");
     const projects = new LongProjectsService(projectsRoot);

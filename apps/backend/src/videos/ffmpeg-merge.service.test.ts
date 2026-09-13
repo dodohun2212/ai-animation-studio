@@ -661,6 +661,8 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     // Item 6: square either way a caller names it — the short side passes Runway's ratio, the long side the shape.
     expect(await sizeOf("1:1")).toBe("1080x1080");
     expect(await sizeOf("960:960")).toBe("1080x1080");
+    expect(await sizeOf("4:5")).toBe("1080x1350");
+    expect(await sizeOf("832:1104")).toBe("1080x1350");
   }, 120000);
 
 

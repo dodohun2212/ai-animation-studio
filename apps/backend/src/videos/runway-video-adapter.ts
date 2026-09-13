@@ -102,11 +102,11 @@ const REQUEST_BODY: Record<VideoModel, (parts: RequestParts) => ImageToVideoCrea
   seedance2_1080p: (parts) => ({ model: "seedance2", ...seedanceParts(parts, SEEDANCE_1080P) }) satisfies ImageToVideoCreateParams.Seedance2,
   seedance2_fast: (parts) => ({ model: "seedance2_fast", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2Fast,
   seedance2_mini: (parts) => ({ model: "seedance2_mini", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2Mini,
-  seedance2_5_480p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "480:854", "1280:720": "854:480", "960:960": "640:640" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
+  seedance2_5_480p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, { "720:1280": "480:854", "1280:720": "854:480", "960:960": "640:640", "832:1104": "560:752" }) }) satisfies ImageToVideoCreateParams.Seedance2_5,
   seedance2_5_720p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, SEEDANCE_720P) }) satisfies ImageToVideoCreateParams.Seedance2_5,
   seedance2_5_1080p: (parts) => ({ model: "seedance2_5", ...seedanceParts(parts, SEEDANCE_1080P) }) satisfies ImageToVideoCreateParams.Seedance2_5,
   // "An image to use as the first frame ... Gemini Omni Flash only supports a first frame" — a bare string is it.
-  // It has no square: requestBodyFor has already refused a ratio outside this option's `ratios`, so the narrowing
+  // It has no square and no 3:4: requestBodyFor has already refused a ratio outside this option's `ratios`, so the narrowing
   // below states what was checked rather than assuming it.
   gemini_omni_flash: ({ promptImage, promptText, ratio, duration }) =>
     ({ model: "gemini_omni_flash", promptImage, promptText, ratio: ratio as "720:1280" | "1280:720", duration }) satisfies ImageToVideoCreateParams.GeminiOmniFlash,
@@ -120,11 +120,11 @@ function grokBody({ promptImage, promptText, duration }: RequestParts, resolutio
   return { model: "grok_imagine_1_5", promptImage: [{ position: "first", uri: promptImage }], promptText, duration, resolution } satisfies ImageToVideoCreateParams.GrokImagine1_5;
 }
 
-const SEEDANCE_720P = { "720:1280": "720:1280", "1280:720": "1280:720", "960:960": "960:960" } as const;
-const SEEDANCE_1080P = { "720:1280": "1080:1920", "1280:720": "1920:1080", "960:960": "1440:1440" } as const;
+const SEEDANCE_720P = { "720:1280": "720:1280", "1280:720": "1280:720", "960:960": "960:960", "832:1104": "834:1112" } as const;
+const SEEDANCE_1080P = { "720:1280": "1080:1920", "1280:720": "1920:1080", "960:960": "1440:1440", "832:1104": "1248:1664" } as const;
 
 /**
- * Seedance's resolution is inside its ratio string, so each entry maps this app's three frames to its own strings.
+ * Seedance's resolution is inside its ratio string, so each entry maps this app's four frames to its own strings.
  * Like WAN, a bare image string is a reference image there, so the picture goes as the first keyframe; and its
  * audio defaults to ON, which the merge would throw away, so it is switched off.
  */
