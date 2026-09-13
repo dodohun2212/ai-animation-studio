@@ -3,12 +3,14 @@ import { SHORT_PROJECT_LEAD_CAST_ROLE, isShortProjectCastLead,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
   RUNWAY_CLIP_DURATIONS,
+  videoSceneEstimatedCostUsd,
   type Asset,
   type AssetType,
   type ShortProjectCastMember,
   type ShortProjectContinuityOption,
   type ShortProjectSceneReferenceAsset,
   type ShortProjectSettings,
+  type VideoModelOption,
 } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
@@ -16,6 +18,7 @@ import {
   getProjectAssetReferences, getProjectCast, getProjectContinuity, getProjectSettings, listProjectContinuityOptions, setProjectContinuity, toDisplayError,
   updateProjectAssetReferences, updateProjectCast, updateProjectSettings,
 } from "../api/projectsApi.js";
+import { getProviderSettings } from "../api/providerSettingsApi.js";
 import { createStoryPromptDraftPreview, toStoryDisplayError } from "../api/storyPromptApi.js";
 import { Spinner } from "./Spinner.js";
 import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
@@ -897,6 +900,16 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
    * box that quietly holds unsaved edits would turn a stated rule into a trap, and the edits it would drop are
    * the ones that decide what the paid script is generated from.
    */
+  /**
+   * 지금 고른 영상 모델 — 이 화면의 두 선택이 그 모델에 달려 있어서 읽습니다.
+   *
+   * 🔴 여기서는 **설정을 읽는 게 맞습니다.** 병합 화면은 클립이 이미 있으니 기록된 모델을 읽어야 하지만
+   * (`VideoReview.model`), 이 화면의 선택은 **아직 만들지 않은 영상**에 대한 것이라 오늘의 설정이 곧 그
+   * 영상을 만들 모델입니다. 같은 값을 어디서 읽느냐가 화면마다 다르고, 그 구분이 이 앱에서 한 번 틀렸습니다.
+   *
+   * 못 읽으면 두 줄이 안 나올 뿐 화면은 그대로입니다 — 설정 저장을 막을 이유가 없습니다.
+   */
+  const [videoModel, setVideoModel] = useState<VideoModelOption | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -904,6 +917,17 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
     return () => {
       if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getProviderSettings()
+      .then((response) => {
+        if (cancelled) return;
+        setVideoModel(response.videoModel.options.find((option) => option.id === response.videoModel.selected) ?? null);
+      })
+      .catch(() => { /* 값 두 줄이 안 나올 뿐입니다 — 설정 저장과는 상관없습니다. */ });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -1172,6 +1196,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               이야기를 이미 만들어서 장면 수는 바꿀 수 없습니다. 바꾸려면 이야기를 다시 만들어야 합니다.
             </p>
           )}
+          {/* The price line sits beside the label, not in it: inside, it became part of the field's accessible
+              name — 「클립 길이(초) … 기준 · 장면당 5초 $0.40 …」 — for a screen reader and for getByLabelText alike. */}
+          <div>
           <label className="block text-sm text-slate-300">
             클립 길이(초)
             <select
@@ -1188,6 +1215,19 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               ))}
             </select>
           </label>
+            {/* 🔴 이 칸은 **영상비를 두 배로 바꾸는 칸**인데, 화면에는 초 수만 있었습니다. 5초와 10초 사이에서
+                고르는 사람은 길이를 고르는 게 아니라 금액을 고르고 있고, 그 금액은 모델마다 다릅니다(카탈로그
+                요율이 $0.05~$0.68/초로 벌어져 있습니다). 고르기 전에 두 값을 나란히 놓습니다.
+
+                🔴 `videoSceneEstimatedCostUsd` 에 옵션 객체를 넘깁니다 — id 를 넘기면 모르는 이름일 때 기본
+                모델 요율로 조용히 떨어져 최대 13.6배 낮은 값을 보여 줍니다(Cowork Round 771). */}
+            {videoModel && (
+              <span data-testid="settings-clip-duration-cost" className="mt-1 block text-xs tabular-nums text-slate-400">
+                {videoModel.label} 기준 · 장면당{" "}
+                {RUNWAY_CLIP_DURATIONS.map((duration) => `${duration}초 $${videoSceneEstimatedCostUsd(duration, videoModel).toFixed(2)}`).join(" · ")}
+              </span>
+            )}
+          </div>
           <Field label="전체 줄거리" value={state.settings.fullStory} onChange={(value) => setField("fullStory", value)} multiline />
           <Field label="세계관" value={state.settings.lore} onChange={(value) => setField("lore", value)} multiline />
           <Field label="시각 스타일" value={state.settings.styleNotes.visualStyle ?? ""} onChange={(value) => setField("styleNotes", { ...state.settings!.styleNotes, visualStyle: value })} />
@@ -1258,11 +1298,29 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               <span>
                 앞 장면 이어서 그리기
                 <span className="mt-1 block text-xs text-slate-400">장면마다 참고 이미지가 한 장 늘어납니다. <span className="text-slate-300">비용 없음.</span></span>
+                {/* 🔴 이 칸은 그림만 바꾸는 게 아닙니다. 켜져 있으면 클립 N 이 그림 N+1 **로 끝나도록** 유료
+                    요청이 달라지는데(끝 프레임), 그건 그 모델이 끝 그림을 받을 때만입니다. 못 받는 모델에서는
+                    켜도 절반만 동작합니다 — 그림은 이어지고 클립은 안 이어집니다. 켜는 자리에서 그 말을 안
+                    하면, 「이어 그리기를 켰는데 컷이 뒤로 돌아간다」가 됩니다(2026-09-11 에 실제로 그랬습니다). */}
+                {videoModel && !videoModel.acceptsLastFrame && (
+                  <span data-testid="settings-continuity-model-note" className="mt-1 block text-xs text-amber-300/90">
+                    지금 고른 영상 모델({videoModel.label})은 끝 그림을 받지 못합니다 — 켜도 그림만 이어지고, 클립 사이는 이어지지 않습니다.
+                  </span>
+                )}
               </span>
             </label>
           </div>
           <p className="text-sm text-slate-400 md:col-span-2">
             예상 총 영상 길이: {state.settings.sceneCount * state.settings.clipDurationSeconds}초 ({state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초)
+            {/* 길이 옆에 값. 이 줄이 이미 장면 수 × 길이를 곱하고 있었는데, 사람이 알아야 하는 세 번째 곱이
+                빠져 있었습니다 — 요율입니다. 여기 숫자는 예상치이고, 실제로 나가기 전에 확인 화면이 한 번 더
+                말합니다(그 화면은 미리보기가 들고 온 값을 씁니다). */}
+            {videoModel && (
+              <span data-testid="settings-total-video-cost" className="tabular-nums">
+                {" · 영상비 약 $"}
+                {(videoSceneEstimatedCostUsd(state.settings.clipDurationSeconds, videoModel) * state.settings.sceneCount).toFixed(2)}
+              </span>
+            )}
           </p>
           {state.error && (
             <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={state.error.code}>

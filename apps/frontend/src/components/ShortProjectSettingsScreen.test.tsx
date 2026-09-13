@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { VIDEO_MODEL_OPTIONS, WorkflowState, videoSceneEstimatedCostUsd, type VideoModel } from "@ai-animation-studio/shared";
 
 import { castMember, jsonResponse, makeAsset, makeAssetFolder, makeProject } from "../api/testUtils.js";
 import { ShortProjectSettingsScreen } from "./ShortProjectSettingsScreen.js";
@@ -21,7 +21,28 @@ function isFailing(value: unknown): value is { __status: number; body: unknown }
   return typeof value === "object" && value !== null && "__status" in value;
 }
 
-function stubFetchByRoute(routes: Record<string, unknown>): ReturnType<typeof vi.fn> {
+/**
+ * 이 화면이 늘 읽는 것 — 지금 고른 영상 모델. 두 선택(클립 길이 · 장면 이어 그리기)이 그 모델에 달려 있어서
+ * 화면이 한 번 읽습니다.
+ *
+ * 🔴 여기 기본값으로 둡니다. 이 파일의 규칙은 「짝이 선언하지 않은 길을 화면이 부르면 오류」인데, 그 규칙이
+ * 뜻을 가지려면 **늘 부르는 길**은 기본으로 답해 줘야 합니다 — 안 그러면 서른 개 짝이 전부 조용히 실패 경로를
+ * 지나가고, 규칙은 아무것도 안 지키게 됩니다. 특정 모델을 보고 싶은 짝은 같은 열쇠로 덮어쓰면 됩니다.
+ */
+function providerSettingsWith(model: VideoModel) {
+  // Both providers, both budgets: `isGetProviderSettingsResponse` refuses a response missing either, and a refused
+  // read here is swallowed by the screen — empty lists made every pair take the silent failure path (CLI Round 819).
+  return {
+    providers: (["openai", "runway"] as const).map((provider) => ({ provider, configured: true, connected: true, maskedValue: "key********abcd" })),
+    monthlyBudgets: (["openai", "runway"] as const).map((provider) => ({ provider, monthlyLimitUsd: 20, isDefault: false, spentUsd: 0, remainingUsd: 20 })),
+    videoModel: { selected: model, isDefault: false, options: VIDEO_MODEL_OPTIONS },
+  };
+}
+const providerSettingsRoute = (model: VideoModel) => ({ "GET /settings/providers": providerSettingsWith(model) });
+const DEFAULT_PROVIDER_SETTINGS_ROUTE = providerSettingsRoute(VIDEO_MODEL_OPTIONS[0]!.id);
+
+function stubFetchByRoute(givenRoutes: Record<string, unknown>): ReturnType<typeof vi.fn> {
+  const routes: Record<string, unknown> = { ...DEFAULT_PROVIDER_SETTINGS_ROUTE, ...givenRoutes };
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -60,6 +81,63 @@ describe("ShortProjectSettingsScreen", () => {
     expect(patchBody).toMatchObject({ settings: { topic: "새 주제", sceneCount: 6, clipDurationSeconds: 5 } });
     // durationSeconds is derived server-side and must never be sent by the client.
     expect(patchBody.settings).not.toHaveProperty("durationSeconds");
+  });
+
+  /**
+   * 🔴 이 칸은 길이를 고르는 칸이 아니라 **금액을 고르는 칸**입니다. 5초 ↔ 10초는 영상비를 정확히 두 배로
+   * 바꾸고, 그 값은 모델마다 다릅니다(카탈로그 요율이 $0.05~$0.68/초). 화면에는 초 수만 있었습니다.
+   *
+   * 🔴 옵션 객체로 값을 냅니다. id 로 계산하면 모르는 이름일 때 기본 모델 요율로 조용히 떨어져 최대 13.6배
+   * 낮은 값을 보여 줍니다 — 그러니 두 모델로 그려서 값이 **모델을 따라 움직이는지** 봅니다.
+   */
+  it("prices the clip-length choice, from the model actually selected", async () => {
+    const dear = VIDEO_MODEL_OPTIONS.find((option) => option.id === "seedance2_5_1080p")!;
+    const fetchMock = stubFetchByRoute({
+      ...providerSettingsRoute(dear.id),
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    const line = await screen.findByTestId("settings-clip-duration-cost");
+    expect(line.textContent).toContain(dear.label);
+    expect(line.textContent).toContain(`5초 $${videoSceneEstimatedCostUsd(5, dear).toFixed(2)}`);
+    expect(line.textContent).toContain(`10초 $${videoSceneEstimatedCostUsd(10, dear).toFixed(2)}`);
+    // 여섯 장면 × 5초 — 길이 옆에 총액이 붙습니다.
+    expect(screen.getByTestId("settings-total-video-cost").textContent)
+      .toContain(`$${(videoSceneEstimatedCostUsd(5, dear) * 6).toFixed(2)}`);
+  });
+
+  /**
+   * 🔴 「장면 이어 그리기」는 그림만 바꾸는 칸이 아닙니다 — 켜져 있으면 클립 N 이 그림 N+1 로 끝나도록 유료
+   * 요청이 달라지는데, 그건 그 모델이 끝 그림을 받을 때만입니다. 못 받는 모델에선 켜도 절반만 동작합니다.
+   * 켜는 자리에서 그 말을 안 하면 「이어 그리기를 켰는데 컷이 뒤로 돌아간다」가 됩니다.
+   *
+   * 받는 모델에서는 이 줄이 **없어야** 합니다 — 늘 떠 있는 경고는 경고가 아닙니다.
+   */
+  it("warns only when the chosen model cannot take a last frame", async () => {
+    const routes = {
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    };
+    const cannot = VIDEO_MODEL_OPTIONS.find((option) => !option.acceptsLastFrame)!;
+    vi.stubGlobal("fetch", stubFetchByRoute({ ...providerSettingsRoute(cannot.id), ...routes }));
+    const first = render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+    const note = await screen.findByTestId("settings-continuity-model-note");
+    expect(note.textContent).toContain(cannot.label);
+    expect(note.textContent).toContain("클립 사이는 이어지지 않습니다");
+    first.unmount();
+
+    const can = VIDEO_MODEL_OPTIONS.find((option) => option.acceptsLastFrame)!;
+    vi.stubGlobal("fetch", stubFetchByRoute({ ...providerSettingsRoute(can.id), ...routes }));
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+    await screen.findByDisplayValue("별의 지도");
+    expect(screen.queryByTestId("settings-continuity-model-note"), can.label).toBeNull();
   });
 
   it("edits scene count and clip duration, shows the computed total, and saves both without durationSeconds", async () => {
