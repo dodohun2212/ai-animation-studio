@@ -209,7 +209,8 @@ export interface VideoModelOption {
   /**
    * Whose shape the clip comes out in, which decides whether a vertical reel gets bars (our pictures are 2:3):
    * - `requested` — the request names the frame (a `ratio`), confirmed from Runway's OpenAPI document.
-   * - `follows_first_frame` — the maker's own documentation says the output keeps the first frame's shape.
+   * - `follows_first_frame` — the maker's own documentation says the output keeps the first frame's shape, or a
+   *   real paid clip of that exact entry was measured doing so (the entry's catalogue comment names which).
    * - `unconfirmed` — nothing published says. Its own value on purpose: writing either of the other two for it
    *   would claim a source we do not have, and `requested` would be wrong in the reassuring direction.
    */
@@ -247,7 +248,10 @@ export type VideoFrameShape = (typeof VIDEO_FRAME_SHAPES)[number];
  *   image-to-video start frame") — `perGenerationUsd: 0.01`, since this app sends exactly one image.
  *
  * `ratios: []` is the honest answer for H3 Max, WAN 3.0 and HappyHorse, not missing data: none is told a frame
- * shape. WAN's and HappyHorse's follow the first frame by their own documentation; H3's is NOT confirmed. Our pictures are 2:3 (or 3:2),
+ * shape. WAN's and HappyHorse's follow the first frame by their own documentation. H3 Max 768p follows it by
+ * measurement: 캡틴D's 꽃말_버즘나무 reel (2026-09-13, CLI Round 804) sent four 1024×1536 first frames and got four
+ * 768×1152 clips back, and the merged reel carried the bars. H3 Max 480p stays `unconfirmed` — the same model, but no
+ * 480p clip has been measured, and a resolution parameter is exactly where an output shape could differ. Our pictures are 2:3 (or 3:2),
  * and the merge fits every clip into the project's 9:16 (or 16:9) frame by padding
  * (videos/ffmpeg-merge.service.ts), so a clip that keeps the picture's shape arrives with bars, not broken.
  */
@@ -255,7 +259,7 @@ export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
   { id: "gen4_turbo", label: "Runway Gen-4 Turbo", pricePerSecondUsd: 0.05, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
   { id: "gen4_5", label: "Runway Gen-4.5", pricePerSecondUsd: 0.12, ratios: ["720:1280", "1280:720"], maxDurationSeconds: 10, acceptsLastFrame: false, frameShape: "requested" },
   { id: "h3_max_480p", label: "MiniMax H3 Max (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "unconfirmed" },
-  { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "unconfirmed" },
+  { id: "h3_max_768p", label: "MiniMax H3 Max (768p)", pricePerSecondUsd: 0.08, ratios: [], maxDurationSeconds: 15, acceptsLastFrame: true, frameShape: "follows_first_frame" },
   { id: "wan3_480p", label: "WAN 3.0 (480p)", pricePerSecondUsd: 0.05, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
   { id: "wan3_720p", label: "WAN 3.0 (720p)", pricePerSecondUsd: 0.1, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
   { id: "wan3_1080p", label: "WAN 3.0 (1080p)", pricePerSecondUsd: 0.2, ratios: [], maxDurationSeconds: 30, acceptsLastFrame: true, frameShape: "follows_first_frame" },
