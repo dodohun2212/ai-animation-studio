@@ -767,6 +767,29 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     expect(leftBlue, "and its bottom on the left").toBeGreaterThan(leftRed);
   }, 120000);
 
+  /** RotateFinalVideoResponse: a finished landscape file turned in place — same size and direction, sound kept. */
+  it("turns a finished landscape file clockwise in place and keeps its sound", async ({ skip }) => {
+    const available = await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false);
+    if (!available) skip();
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "rotate-final-real-")); roots.push(root);
+    const file = path.join(root, "instagram_reel.mp4");
+    await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=red:s=1920x1080:d=1", "-f", "lavfi", "-i", "sine=frequency=330:duration=1:sample_rate=48000",
+      "-vf", "drawbox=x=0:y=540:w=1920:h=540:color=blue:t=fill", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", file]);
+
+    await new FfmpegMergeEngine().rotateClockwise(file);
+
+    expect(await probeClipFacts(file)).toEqual({ width: 1080, height: 1920, hasAudio: true });
+    const pixelAt = async (x: number): Promise<[number, number, number]> => {
+      const raw = path.join(root, `pixel-${x}.raw`);
+      await runMediaCommand(["ffmpeg", "-y", "-ss", "0.5", "-i", file, "-frames:v", "1", "-vf", `crop=8:8:${x}:956,scale=1:1`, "-f", "rawvideo", "-pix_fmt", "rgb24", raw]);
+      const bytes = await fs.readFile(raw);
+      return [bytes[0]!, bytes[1]!, bytes[2]!];
+    };
+    const [rightRed, , rightBlue] = await pixelAt(872);
+    expect(rightRed, "the top is on the right").toBeGreaterThan(rightBlue);
+    await expect(fs.readdir(root)).resolves.not.toContainEqual(expect.stringContaining(".tmp"));
+  }, 120000);
+
 
   /**
    * The scenes come out in the order they went in, measured on the file.

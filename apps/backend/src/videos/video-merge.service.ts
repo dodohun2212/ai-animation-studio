@@ -16,7 +16,7 @@ import type { StoredProject, StoredUsedAudio } from "../projects/project-storage
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, probeClipFacts, runMediaCommand, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
-import { audioStartOutOfRange, ffmpegUnavailable, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { audioStartOutOfRange, ffmpegUnavailable, videoFinalAlreadyPublished, videoFinalAlreadyRotated, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
@@ -359,6 +359,35 @@ export class LocalVideoMergeService {
     const temporary = path.join(history, `.instagram_reel_v${String(next).padStart(3, "0")}.mp4.tmp`);
     await fs.writeFile(temporary, bytes);
     await fs.rename(temporary, path.join(history, `instagram_reel_v${String(next).padStart(3, "0")}.mp4`));
+  }
+
+  /**
+   * RotateFinalVideoResponse: the finished final, turned a quarter clockwise in place, the previous cut kept as a
+   * version. Nothing about the project changes but `updated_at` — the state stays Completed and a failure leaves the
+   * old file where it was, so there is nothing to mark failed.
+   */
+  async rotateFinal(projectId: string): Promise<MergeVideosResponse> {
+    const project = await this.projects.findById(projectId.trim());
+    if (project.workflow_state !== WorkflowState.Completed || !project.final_video_path) throw videoMergeContentUnavailable();
+    if (project.instagram_post) throw videoFinalAlreadyPublished();
+    if (shortProjectAspectRatio(project) !== "16:9") throw videoMergeInvalidRequest("Only a 16:9 video can be turned into a 9:16 Reel.");
+    const finalPath = this.final(project.project_id);
+    // Under the key the merge, the restore and the publish take: none of them may read or replace this file halfway.
+    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, async (): Promise<MergeVideosResponse> => {
+      const facts = await probeClipFacts(finalPath, this.runner);
+      if (!facts) throw videoMergeContentUnavailable();
+      if (facts.height >= facts.width) throw videoFinalAlreadyRotated();
+      await this.archiveExistingFinal(project.project_id);
+      try { await this.engine.rotateClockwise(finalPath); }
+      catch (error) {
+        if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
+        throw videoMergeFailed();
+      }
+      const turned = { ...project, updated_at: new Date().toISOString() };
+      try { await this.projects.save(turned); } catch { throw videoMergeStorageError(); }
+      return { project: toApiProject(turned), finalVideoPath: FINAL_VIDEO_RELATIVE_PATH };
+    }, this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+      .catch((error: unknown) => { throw error instanceof ProjectLockTimeoutError ? videoMergeBusy() : error; });
   }
 
   private async saveFailure(project: StoredProject): Promise<void> {

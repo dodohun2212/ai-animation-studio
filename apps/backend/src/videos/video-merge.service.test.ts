@@ -900,3 +900,80 @@ describe("local FFmpeg video merge", () => {
     await expect(new LocalVideoMergeService(projects, projectsRoot, runner({})).merge("video_merge")).resolves.toBeTruthy();
   });
 });
+
+/*
+ * RotateFinalVideoResponse (Cowork Round 879): a finished 16:9 project's final turned a quarter clockwise in place —
+ * the merge's own turn, for a video merged without it. 캡틴D wanted 꽃말_보리수나무 turned after it was done, and an
+ * ordinary project cannot be merged twice.
+ */
+describe("turning a finished final video", () => {
+  /** ffprobe answers the final's size; everything else writes its output, and `failRotate` refuses the turn. */
+  function sized(width: number, height: number, calls: string[][], options: { failRotate?: boolean } = {}): MediaCommandRunner {
+    return async (arguments_) => {
+      const args = [...arguments_]; calls.push(args);
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "video", width, height }, { codec_type: "audio" }], format: { duration: "30.0" } }), stderr: "" };
+      if (options.failRotate && args.includes("transpose=clock")) throw new MediaToolError("failed", "boom");
+      await fs.writeFile(args.at(-1)!, Buffer.from(args.includes("transpose=clock") ? "turned" : "rendered"));
+      return { stdout: "", stderr: "" };
+    };
+  }
+
+  async function finished(aspect: string) {
+    const { projectsRoot, projects } = await setup();
+    const project = await projects.findById("video_merge");
+    await projects.save({ ...project, lore_context: { ...project.lore_context, style_notes: { aspect } } });
+    await new LocalVideoMergeService(projects, projectsRoot, runner({})).merge("video_merge");
+    const finalPath = path.join(projectsRoot, "video_merge", "videos", "final", "instagram_reel.mp4");
+    return { projectsRoot, projects, finalPath };
+  }
+
+  it("turns a landscape final in place, keeps the previous cut as a version, and leaves the project finished", async () => {
+    const { projectsRoot, projects, finalPath } = await finished("16:9");
+    const before = await projects.findById("video_merge");
+    const calls: string[][] = [];
+
+    const result = await new LocalVideoMergeService(projects, projectsRoot, sized(1920, 1080, calls)).rotateFinal("video_merge");
+
+    const turn = calls.find((args) => args.includes("transpose=clock"))!;
+    expect(turn[turn.indexOf("-i") + 1]).toBe(finalPath);
+    expect(turn[turn.indexOf("-c:a") + 1], "the sound is copied, not mixed again").toBe("copy");
+    await expect(fs.readFile(finalPath, "utf8")).resolves.toBe("turned");
+    await expect(fs.readFile(path.join(path.dirname(finalPath), "history", "instagram_reel_v001.mp4"), "utf8")).resolves.toBe("rendered");
+    const after = await projects.findById("video_merge");
+    expect(after.workflow_state).toBe(WorkflowState.Completed);
+    expect(after.updated_at > before.updated_at, "the final's address busts on updatedAt").toBe(true);
+    expect(result).toMatchObject({ finalVideoPath: "videos/final/instagram_reel.mp4", project: { updatedAt: after.updated_at } });
+  });
+
+  it("refuses, before touching the file, a project that is not finished, not 16:9, already posted or already portrait", async () => {
+    const calls: string[][] = [];
+    const unfinished = await setup();
+    await expect(new LocalVideoMergeService(unfinished.projects, unfinished.projectsRoot, sized(1920, 1080, calls)).rotateFinal("video_merge"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CONTENT_UNAVAILABLE" } });
+
+    const portraitProject = await finished("9:16");
+    await expect(new LocalVideoMergeService(portraitProject.projects, portraitProject.projectsRoot, sized(1080, 1920, calls)).rotateFinal("video_merge"))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+
+    const posted = await finished("16:9");
+    const project = await posted.projects.findById("video_merge");
+    await posted.projects.save({ ...project, instagram_post: { media_id: "m1", ig_user_id: "u1", published_at: "2026-09-13T00:00:00.000Z", caption: "c" } });
+    await expect(new LocalVideoMergeService(posted.projects, posted.projectsRoot, sized(1920, 1080, calls)).rotateFinal("video_merge"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_FINAL_ALREADY_PUBLISHED" } });
+
+    const turnedOnce = await finished("16:9");
+    await expect(new LocalVideoMergeService(turnedOnce.projects, turnedOnce.projectsRoot, sized(1080, 1920, calls)).rotateFinal("video_merge"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_FINAL_ALREADY_ROTATED" } });
+    await expect(fs.readdir(path.join(path.dirname(turnedOnce.finalPath), "history"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    expect(calls.filter((args) => args[0] === "ffmpeg")).toHaveLength(0);
+  });
+
+  it("leaves the old cut and the finished state alone when the turn fails", async () => {
+    const { projectsRoot, projects, finalPath } = await finished("16:9");
+    await expect(new LocalVideoMergeService(projects, projectsRoot, sized(1920, 1080, [], { failRotate: true })).rotateFinal("video_merge"))
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED" } });
+    await expect(fs.readFile(finalPath, "utf8")).resolves.toBe("rendered");
+    expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
+  });
+});

@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import { Body, Controller, Get, HttpException, Param, Post, Req, Res, StreamableFile } from "@nestjs/common";
-import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoLibraryResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type GetVideoVersionsResponse, type MergeVideosResponse, type RecoverVideosResponse, type RegenerateVideoResponse, type RestoreVideoVersionResponse, type SceneNumber, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveVideoReviewResponse, type GenerationProgressResponse, type GetVideoLibraryResponse, type GetVideoPromptPreviewResponse, type GetVideoReviewResponse, type GetVideoVersionsResponse, type MergeVideosResponse, type RecoverVideosResponse, type RotateFinalVideoResponse, type RegenerateVideoResponse, type RestoreVideoVersionResponse, type SceneNumber, type StartVideoGenerationResponse } from "@ai-animation-studio/shared";
 
 import { streamStoredFile, type RangeRequest, type RangeResponse } from "../http/range-stream.js";
 import { videoContentUnavailable } from "./video-workflow-api.error.js";
@@ -136,4 +136,7 @@ export class VideosController {
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/merge`)
   merge(@Param("projectId") projectId: string, @Body() body: unknown): Promise<MergeVideosResponse> { return this.mergeService.merge(projectId, body); }
+
+  @Post(`${API_ROUTES.projects}/:projectId/videos/final/rotate`)
+  rotateFinal(@Param("projectId") projectId: string): Promise<RotateFinalVideoResponse> { return this.mergeService.rotateFinal(projectId); }
 }

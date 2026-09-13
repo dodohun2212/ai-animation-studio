@@ -392,4 +392,20 @@ export class FfmpegMergeEngine {
       await fs.rename(temporary, outputPath);
     } finally { await fs.unlink(temporary).catch(() => undefined); }
   }
+
+  /**
+   * Turns a finished video a quarter clockwise, in place (RotateFinalVideoResponse) — the merge's own
+   * `rotateClockwise` turn, for a file that was merged without it. The picture is encoded at the merge's quality;
+   * the sound is copied, so the mix is untouched. Written beside the file and renamed over it, so a failure leaves
+   * the old cut exactly as it was.
+   */
+  async rotateClockwise(filePath: string): Promise<void> {
+    const temporary = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${crypto.randomUUID()}.tmp.mp4`);
+    try {
+      await this.command(["ffmpeg", "-y", "-i", filePath, "-map", "0:v:0", "-map", "0:a?", "-vf", "transpose=clock", "-c:v", "libx264", ...X264_QUALITY, "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", temporary]);
+      const stat = await fs.stat(temporary);
+      if (stat.size <= 0) throw new MediaToolError("failed", "Rotated output is empty.");
+      await fs.rename(temporary, filePath);
+    } finally { await fs.unlink(temporary).catch(() => undefined); }
+  }
 }

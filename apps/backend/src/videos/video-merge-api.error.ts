@@ -12,7 +12,9 @@ type VideoMergeErrorCode =
   | "FFMPEG_UNAVAILABLE"
   | "VIDEO_MERGE_FAILED"
   | "VIDEO_STORAGE_ERROR"
-  | "VIDEO_MERGE_CONTENT_UNAVAILABLE";
+  | "VIDEO_MERGE_CONTENT_UNAVAILABLE"
+  | "VIDEO_FINAL_ALREADY_PUBLISHED"
+  | "VIDEO_FINAL_ALREADY_ROTATED";
 
 class VideoMergeApiException extends HttpException {
   constructor(code: VideoMergeErrorCode, message: string, status: HttpStatus, details?: Record<string, unknown>) {
@@ -76,5 +78,15 @@ export const videoMergeFailed = (details?: MergeFailedDetails) =>
   new VideoMergeApiException("VIDEO_MERGE_FAILED", "Local video rendering failed. Approved scene videos were kept.", HttpStatus.INTERNAL_SERVER_ERROR, details);
 export const videoMergeStorageError = () =>
   new VideoMergeApiException("VIDEO_STORAGE_ERROR", "Local video render state could not be saved.", HttpStatus.INTERNAL_SERVER_ERROR);
+/**
+ * Turning a final that is already on Instagram (RotateFinalVideoResponse). Not the card's
+ * `videoMergeAlreadyPublished`: that one tells a person to make a new card, and an ordinary project has no such way
+ * out — its clips were paid for.
+ */
+export const videoFinalAlreadyPublished = () =>
+  new VideoMergeApiException("VIDEO_FINAL_ALREADY_PUBLISHED", "This final video has already been published to Instagram.", HttpStatus.CONFLICT);
+/** Turning a final that is already portrait — a second turn would stand the picture on its head. */
+export const videoFinalAlreadyRotated = () =>
+  new VideoMergeApiException("VIDEO_FINAL_ALREADY_ROTATED", "This final video is already portrait.", HttpStatus.CONFLICT);
 export const videoMergeContentUnavailable = () =>
   new VideoMergeApiException("VIDEO_MERGE_CONTENT_UNAVAILABLE", "The final merged video is unavailable.", HttpStatus.NOT_FOUND);

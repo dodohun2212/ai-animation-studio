@@ -2413,6 +2413,23 @@ export interface MergeVideosResponse {
 }
 
 /**
+ * `POST videoFinalRotate` — turn a finished 16:9 project's final video a quarter clockwise, in place, so it fills a
+ * 9:16 Reel (the same turn as {@link MergeVideosRequest.rotateClockwise}, for a video that was merged without it).
+ * No body. Re-merging is not the way: an ordinary project cannot be merged twice, because its clips were paid for
+ * (캡틴D wanted 꽃말_보리수나무 turned after it was finished — Cowork Round 879).
+ *
+ * The cut it replaces is kept as a final-video version first, so it can be restored. Only the picture is
+ * re-encoded; the sound is copied. `project.updatedAt` moves, which is what a screen's final-video address busts
+ * its cache on.
+ *
+ * Refused, before anything is written: a project without a finished final (VIDEO_MERGE_CONTENT_UNAVAILABLE), a
+ * shape other than 16:9 (INVALID_REQUEST), a final already posted to Instagram (VIDEO_FINAL_ALREADY_PUBLISHED —
+ * the post and the file would stop matching), and a final that is already portrait (VIDEO_FINAL_ALREADY_ROTATED —
+ * a second turn would stand it on its head). The last is read off the file, not remembered.
+ */
+export type RotateFinalVideoResponse = MergeVideosResponse;
+
+/**
  * One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset
  * Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's
  * doc comment for that distinction). "upload" is the only source, permanently — not a placeholder for a later
@@ -3216,6 +3233,7 @@ export const API_ROUTES = {
   videoMerge: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/merge`,
   videoContent: (projectId: string, sceneNumber: SceneNumber) => `/projects/${encodeURIComponent(projectId)}/videos/${sceneNumber}/content`,
   videoFinalContent: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/content`,
+  videoFinalRotate: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/rotate`,
   videoLibrary: "/videos/library",
   videoVersions: (projectId: string, scene: SceneNumber | "final") => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions`,
   videoVersionContent: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/content`,
