@@ -1,4 +1,4 @@
-import { DEFAULT_VIDEO_MODEL, RUNWAY_CLIP_DURATIONS, VIDEO_MODEL_OPTIONS, videoModelOption, videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
+import { CLIP_DURATION_CHOICES, DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS, videoModelTakesDuration, videoModelOption, videoSceneEstimatedCostUsd } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -114,7 +114,8 @@ describe("WorkflowGuideScreen", () => {
   // The model picker (캡틴D 승인, Cowork Round 756): the rate names its model, moves with the clip length and the
   // picked model, says it is for the calculation only, and warns on a clip the model cannot make.
   const defaultOption = videoModelOption(DEFAULT_VIDEO_MODEL);
-  const longest = RUNWAY_CLIP_DURATIONS[RUNWAY_CLIP_DURATIONS.length - 1]!;
+  // The longest the default model makes among the lengths offered — pricing a length it cannot make is the warning below, not a price.
+  const longest = Math.max(...CLIP_DURATION_CHOICES.filter((seconds) => videoModelTakesDuration(defaultOption, seconds)));
   const setLength = (seconds: number) => fireEvent.change(screen.getByLabelText("장면당 길이"), { target: { value: String(seconds) } });
   const videoTotal = () => screen.getByTestId("workflow-guide-stage-video-cost").textContent;
 
@@ -129,7 +130,7 @@ describe("WorkflowGuideScreen", () => {
   it("prices the video stage from this projection's own clip length, not a flat per-scene number", () => {
     render(<WorkflowGuideScreen onBack={() => {}} />);
 
-    setLength(RUNWAY_CLIP_DURATIONS[0]!);
+    setLength(CLIP_DURATION_CHOICES[0]);
     const atShortest = videoTotal();
     setLength(longest);
     // The two lengths this app offers must not quote the same total — the defect the clip-length argument was
@@ -211,10 +212,10 @@ describe("WorkflowGuideScreen", () => {
 
     for (const option of VIDEO_MODEL_OPTIONS) {
       fireEvent.change(picker, { target: { value: option.id } });
-      for (const seconds of RUNWAY_CLIP_DURATIONS) {
+      for (const seconds of CLIP_DURATION_CHOICES) {
         setLength(seconds);
         const warned = screen.queryByTestId("workflow-guide-clip-too-long") !== null;
-        expect(warned, `${option.label} at ${seconds}s`).toBe(seconds > option.maxDurationSeconds);
+        expect(warned, `${option.label} at ${seconds}s`).toBe(!videoModelTakesDuration(option, seconds));
       }
     }
   });

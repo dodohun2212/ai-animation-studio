@@ -4,7 +4,8 @@ import {
   LONG_OUTLINE_ESTIMATED_COST_USD,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
-  RUNWAY_CLIP_DURATIONS,
+  CLIP_DURATION_CHOICES,
+  videoModelTakesDuration,
   STORY_ESTIMATED_COST_USD,
   TTS_ESTIMATED_COST_USD,
   DEFAULT_VIDEO_MODEL,
@@ -12,7 +13,6 @@ import {
   videoModelOption,
   videoSceneEstimatedCostUsd,
   type VideoModel,
-  type RunwayClipDurationSeconds,
 } from "@ai-animation-studio/shared";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 
@@ -202,7 +202,7 @@ function FlowArrow({ label }: { label: string }) {
  */
 export function WorkflowGuideScreen({ onBack }: Props) {
   const [sceneCount, setSceneCount] = useState(6);
-  const [clipDurationSeconds, setClipDurationSeconds] = useState<RunwayClipDurationSeconds>(5);
+  const [clipDurationSeconds, setClipDurationSeconds] = useState<number>(5);
   /** Short is the default so the screen opens on the simpler of the two. */
   const [projectKind, setProjectKind] = useState<"short" | "long">("short");
   const [episodeCount, setEpisodeCount] = useState(5);
@@ -242,7 +242,8 @@ export function WorkflowGuideScreen({ onBack }: Props) {
    * run the provider would refuse is the same failure as quoting it low: a number in front of a button that
    * does not describe what would happen.
    */
-  const clipTooLongForModel = clipDurationSeconds > videoModel.maxDurationSeconds;
+  // Both ends since B1: models differ at the short end too (H3 Max starts at 5 s), and 15-30 s are offered now.
+  const clipOutsideModel = !videoModelTakesDuration(videoModel, clipDurationSeconds);
   const narrationTotal = narrationCalls * TTS_ESTIMATED_COST_USD;
   const totalCalls = storyCalls + imageCalls + videoCalls + narrationCalls;
   const totalCost = storyTotal + imageTotal + videoTotal + narrationTotal;
@@ -383,9 +384,9 @@ export function WorkflowGuideScreen({ onBack }: Props) {
               id="workflow-guide-clip-duration"
               className="ml-2 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none"
               value={clipDurationSeconds}
-              onChange={(event) => setClipDurationSeconds(Number(event.target.value) as RunwayClipDurationSeconds)}
+              onChange={(event) => setClipDurationSeconds(Number(event.target.value))}
             >
-              {RUNWAY_CLIP_DURATIONS.map((seconds) => (
+              {CLIP_DURATION_CHOICES.map((seconds) => (
                 <option key={seconds} value={seconds}>
                   {seconds}초
                 </option>
@@ -418,9 +419,9 @@ export function WorkflowGuideScreen({ onBack }: Props) {
             ? " 이 모델은 앞 클립이 끝난 장면에서 다음 클립을 시작할 수 있습니다."
             : " 이 모델은 앞 클립이 끝난 장면을 이어받지 못합니다 — 이어지는 릴에서 컷이 뒤로 돌아갈 수 있습니다."}
         </p>
-        {clipTooLongForModel && (
+        {clipOutsideModel && (
           <p role="alert" data-testid="workflow-guide-clip-too-long" className="text-xs font-semibold text-rose-300">
-            {videoModel.label}은(는) 한 장면을 최대 {videoModel.maxDurationSeconds}초까지만 만듭니다. 아래 영상 비용은 이 조합으로는 실제로 나갈 수 없는 값입니다.
+            {videoModel.label}은(는) 한 장면을 {videoModel.minDurationSeconds}~{videoModel.maxDurationSeconds}초로만 만듭니다. 아래 영상 비용은 이 조합으로는 실제로 나갈 수 없는 값입니다.
           </p>
         )}
         <label className="flex items-start gap-2.5 text-sm text-slate-300">

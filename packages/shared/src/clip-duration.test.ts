@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CLIP_DURATION_CHOICES, CLIP_DURATION_LIMITS, clipDurationSecondsPerScene, isClipDurationSeconds, RUNWAY_CLIP_DURATIONS, VIDEO_MODEL_OPTIONS, videoModelTakesDuration, videoSceneEstimatedCostUsd } from "./index.js";
+import { CLIP_DURATION_CHOICES, CLIP_DURATION_LIMITS, clipDurationSecondsPerScene, isClipDurationSeconds, VIDEO_MODEL_OPTIONS, videoModelTakesDuration, videoSceneEstimatedCostUsd } from "./index.js";
 
 /**
  * How long one scene's clip is, for an Episode that only stores its total — and therefore what it costs.
@@ -21,7 +21,7 @@ describe("one scene's clip length, derived from an Episode's total", () => {
     // Never something in between: a fraction reaches the adapter as a duration the provider rejects, after the
     // preflight has already quoted it. Nor a whole number past the limits, which no model makes.
     for (const [total, scenes] of [[45, 6], [44, 6], [10, 6], [200, 6]] as const) {
-      expect(RUNWAY_CLIP_DURATIONS, `${total}/${scenes}`).toContain(clipDurationSecondsPerScene(total, scenes));
+      expect([5, 10], `${total}/${scenes}`).toContain(clipDurationSecondsPerScene(total, scenes));
     }
   });
 

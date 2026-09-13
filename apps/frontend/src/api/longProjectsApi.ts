@@ -690,8 +690,8 @@ function isBudgetPreview(value: unknown): value is BudgetPreview {
 const isGetEpisodeVideoPreviewResponse = (value: unknown): value is GetLongEpisodeVideoPreviewResponse => isRecord(value)
   && isNonEmptyString(value.confirmationId) && VIDEO_MODELS.includes(value.model as VideoModel) && (RUNWAY_VIDEO_RATIOS as readonly string[]).includes(value.ratio as string)
   // Was `=== 5 || === 10`, spelled out beside a model check that had already been widened for this exact
-  // reason. The values happened to be right, which is the whole danger: a third clip length added to
-  // RUNWAY_CLIP_DURATIONS would make this guard call a correct server response malformed, and the screen say
+  // reason. The values happened to be right, which is the whole danger: a third clip length added to the
+  // contract would make this guard call a correct server response malformed, and the screen say
   // 서버 응답을 확인할 수 없습니다 about a server that is working. That is not hypothetical — the short
   // project's twin of this line said `=== 5` and cost 캡틴D the entire video step this morning (9fff608).
   // B1-b made that happen: an Episode's scene length is now any whole number the contract allows.

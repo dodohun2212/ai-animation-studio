@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { RUNWAY_CLIP_DURATIONS, VIDEO_SECOND_ESTIMATED_COST_USD, videoModelOption, videoSceneEstimatedCostUsd } from "./domain.js";
+import { CLIP_DURATION_CHOICES, CLIP_DURATION_LIMITS, VIDEO_SECOND_ESTIMATED_COST_USD, videoModelOption, videoSceneEstimatedCostUsd } from "./domain.js";
 
 describe("what one generated scene is quoted at", () => {
   /**
    * A 10-second project buys twice the video. It used to be quoted the same price.
    *
-   * `VIDEO_SCENE_ESTIMATED_COST_USD` was flat at $0.25 while RUNWAY_CLIP_DURATIONS has always offered 5 and 10,
+   * `VIDEO_SCENE_ESTIMATED_COST_USD` was flat at $0.25 while the app has always offered 5 and 10 seconds,
    * and the number fed the preflight that decides whether to spend, the confirmation panel, the preview, the
    * retry notice and the workflow guide. Ten-second projects exist on this machine.
    */
@@ -16,7 +16,7 @@ describe("what one generated scene is quoted at", () => {
 
   /** Every length the app offers has to be priced — a duration with no price is a duration quoted at nothing. */
   it("prices every clip length the app lets someone choose", () => {
-    for (const seconds of RUNWAY_CLIP_DURATIONS) {
+    for (const seconds of [CLIP_DURATION_LIMITS.min, ...CLIP_DURATION_CHOICES, CLIP_DURATION_LIMITS.max]) {
       expect(videoSceneEstimatedCostUsd(seconds), `${seconds}s`).toBeCloseTo(seconds * VIDEO_SECOND_ESTIMATED_COST_USD, 8);
       expect(videoSceneEstimatedCostUsd(seconds)).toBeGreaterThan(0);
     }
@@ -29,8 +29,10 @@ describe("what one generated scene is quoted at", () => {
    * so about the same number. Rounding is what would do it silently.
    */
   it("never rounds a quote below the per-second rate", () => {
-    for (const seconds of RUNWAY_CLIP_DURATIONS) {
-      expect(videoSceneEstimatedCostUsd(seconds)).toBeGreaterThanOrEqual(seconds * VIDEO_SECOND_ESTIMATED_COST_USD);
+    for (let seconds = CLIP_DURATION_LIMITS.min; seconds <= CLIP_DURATION_LIMITS.max; seconds += 1) {
+      // Every whole length since B1, so float products like 7 x 0.05 = 0.35000000000000003 appear: a quote of 0.35
+      // is not below that. The margin is far under a cent, so a real rounding-down would still fail here.
+      expect(videoSceneEstimatedCostUsd(seconds), `${seconds}s`).toBeGreaterThanOrEqual(seconds * VIDEO_SECOND_ESTIMATED_COST_USD - 1e-9);
     }
   });
 });

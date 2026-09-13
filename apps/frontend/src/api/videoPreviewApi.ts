@@ -76,8 +76,8 @@ function isVideoPromptPreview(value: unknown): value is VideoPromptPreview {
     // Was `=== 5`, and it cost 캡틴D the whole video step on the first 10-second project: the server answered
     // correctly with durationSeconds 10, this guard called it malformed, and the screen said 서버 응답을 확인할
     // 수 없습니다 about a server that was working. Exactly the failure the `model` comment above describes, left
-    // in the line below it. `RUNWAY_CLIP_DURATIONS` is the contract's own list of what a clip may be, so a third
-    // length added there can never make a good response unreadable here again.
+    // in the line below it. `isClipDurationSeconds` is the contract's own rule for what a clip may be, so a length
+    // the server may answer can never make a good response unreadable here again.
     isClipDurationSeconds(value.durationSeconds) &&
     typeof value.estimatedCostUsd === "number" &&
     value.estimatedCostUsd >= 0

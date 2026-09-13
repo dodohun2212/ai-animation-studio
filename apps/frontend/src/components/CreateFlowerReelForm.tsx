@@ -1,11 +1,11 @@
 import { useRef, useState, type FormEvent } from "react";
 import {
+  CLIP_DURATION_CHOICES,
   IMAGE_ESTIMATED_COST_USD,
   STORY_ESTIMATED_COST_USD,
   VIDEO_SECOND_ESTIMATED_COST_USD,
   type AspectRatio,
   type Project,
-  type RunwayClipDurationSeconds,
   type SettingsPreset,
   type ShortProjectSettingsInput,
 } from "@ai-animation-studio/shared";
@@ -39,7 +39,7 @@ const field =
  * no chain, the pot simply changes more times (Cowork Round 617 ④, agreed in CLI Round 618 ④).
  */
 const FLOWER_SCENE_COUNT = 4;
-const FLOWER_CLIP_DURATION_SECONDS: RunwayClipDurationSeconds = 5;
+const FLOWER_CLIP_DURATION_SECONDS: (typeof CLIP_DURATION_CHOICES)[number] = 5;
 const FLOWER_ASPECT_RATIO: AspectRatio = "9:16";
 const FLOWER_TOTAL_SECONDS = FLOWER_SCENE_COUNT * FLOWER_CLIP_DURATION_SECONDS;
 

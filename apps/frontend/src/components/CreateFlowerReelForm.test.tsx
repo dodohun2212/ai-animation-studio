@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS } from "@ai-animation-studio/shared";
+import { CLIP_DURATION_CHOICES, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "@ai-animation-studio/shared";
 
 import { jsonResponse, makeProject, withStatus } from "../api/testUtils.js";
 import { CreateFlowerReelForm, FLOWER_PRESET_REVISION, presetSettings } from "./CreateFlowerReelForm.js";
@@ -105,14 +105,14 @@ describe("CreateFlowerReelForm", () => {
      * 🟠 CLI Round 662 ②. The old form wrote the lower bound into the code —
      * `SCENE_COUNTS.filter((v) => v >= MIN_SCENE_COUNT)` — so a contract that moved broke the build. Two of the
      * three constants that replaced it kept a compile-time check of their own, because their contract types are
-     * unions: `RunwayClipDurationSeconds` is `5 | 10` and `AspectRatio` is `"9:16" | "16:9"`, and the constants
+     * unions: the clip length is one of `CLIP_DURATION_CHOICES` and `AspectRatio` is `"9:16" | "16:9"`, and the constants
      * are declared as those types. The scene count is the one that did not — MIN/MAX_SCENE_COUNT are plain
      * numbers with no union type to annotate against, so `FLOWER_SCENE_COUNT = 4` is just `number` and a
      * contract that moved would pass silently. This is that check, moved from compile time to here.
      */
     expect(settings.sceneCount).toBeGreaterThanOrEqual(MIN_SCENE_COUNT);
     expect(settings.sceneCount).toBeLessThanOrEqual(MAX_SCENE_COUNT);
-    expect(RUNWAY_CLIP_DURATIONS).toContain(settings.clipDurationSeconds);
+    expect(CLIP_DURATION_CHOICES).toContain(settings.clipDurationSeconds);
     expect(settings.narrationEnabled).toBe(true);
     // The preset turns the chain on, which is the setting's whole distinction: one flower, one patch of
     // ground, one forward movement. The brief asks for 「같은 자리의 땅」 and this lets the pictures obey it.
