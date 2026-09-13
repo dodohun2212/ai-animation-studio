@@ -2221,6 +2221,17 @@ export interface VideoReview {
   updatedAt: string;
   /** Actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded (e.g. the local fake execution mode). */
   costUsd?: number;
+  /**
+   * The model this scene's clip was made with — from the job's own record, never from today's setting. Absent
+   * when no provider made it (the local fake execution mode).
+   *
+   * 🔴 The setting and the clip can disagree, and a screen that reads the setting says true things about the
+   * wrong clip: Cowork reported the first chained reel as wan3_720p twice, from the screen, when every record,
+   * ledger line and file said h3_max_768p (Rounds 802–806, F5). Anything a screen says about a finished clip —
+   * its bars, its sound — comes from here. A record older than the model field is gen4_turbo, the only model there
+   * was (recordedVideoModel).
+   */
+  model?: VideoModel;
 }
 
 export interface GetVideoReviewResponse {

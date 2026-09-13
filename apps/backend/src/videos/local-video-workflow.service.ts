@@ -452,11 +452,14 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     }
   }
 
-  private toReviews(reviews: StoredReview[], timestamp: string, sceneNumbers: readonly SceneNumber[], costsByScene: Partial<Record<number, number>>): VideoReview[] {
-    return sceneNumbers.map((scene) => {
+  private toReviews(reviews: StoredReview[], timestamp: string, records: readonly VideoRecord[], costsByScene: Partial<Record<number, number>>): VideoReview[] {
+    return records.map((record) => {
+      const scene = record.scene_number;
       const review = reviews.find((item) => item.scene_number === scene);
       const costUsd = costsByScene[scene];
-      return { sceneNumber: scene, status: review?.status ?? "pending", updatedAt: review?.updated_at ?? timestamp, ...(costUsd !== undefined ? { costUsd } : {}) };
+      // The clip's own model, from its record (VideoReview.model) — only for a clip a provider made.
+      const model = record.execution_mode === "runway" ? recordedVideoModel(record.model) : undefined;
+      return { sceneNumber: scene, status: review?.status ?? "pending", updatedAt: review?.updated_at ?? timestamp, ...(costUsd !== undefined ? { costUsd } : {}), ...(model ? { model } : {}) };
     });
   }
 
@@ -656,7 +659,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     // comment.
     return {
       project: toApiProject(project),
-      reviews: this.toReviews(reviews, project.updated_at, records.map((record) => record.scene_number), costsByScene),
+      reviews: this.toReviews(reviews, project.updated_at, records, costsByScene),
       staleness: await computeSceneStaleness(project, await sceneReferenceContext(this.assets, this.mappings, project.project_id)),
     };
   }
@@ -665,7 +668,8 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     if (!isObject(body) || Object.keys(body).length !== 1 || body.approved !== true) throw invalidVideoWorkflowRequest();
     const scene = sceneNumber(Number(rawScene)); if (!scene || String(scene) !== rawScene) throw invalidVideoWorkflowRequest();
     await this.getReview(projectId, jobId); const project = await this.projects.findById(projectId.trim());
-    const jobSceneNumbers = this.records(project, jobId).map((record) => record.scene_number);
+    const jobRecords = this.records(project, jobId);
+    const jobSceneNumbers = jobRecords.map((record) => record.scene_number);
     if (!jobSceneNumbers.includes(scene)) throw invalidVideoWorkflowRequest();
     const timestamp = new Date().toISOString(); const reviews = (await this.loadReviews(project.project_id)).filter((item) => item.scene_number !== scene);
     reviews.push({ scene_number: scene, status: "approved", updated_at: timestamp });
@@ -674,6 +678,6 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     try { await atomicWriteUtf8File(this.reviewFile(project.project_id), JSON.stringify(reviews.sort((a, b) => a.scene_number - b.scene_number), null, 2)); await this.projects.save(updated); }
     catch { throw videoStorageError(); }
     const costsByScene = this.budget ? await this.budget.costsByScene(project.project_id) : {};
-    return { project: toApiProject(updated), reviews: this.toReviews(reviews, timestamp, jobSceneNumbers, costsByScene) };
+    return { project: toApiProject(updated), reviews: this.toReviews(reviews, timestamp, jobRecords, costsByScene) };
   }
 }

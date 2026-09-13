@@ -589,6 +589,32 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  /*
+   * 🔴 The review names the model each clip was made with, from the job's record — not today's setting. The first
+   * chained reel was reported as wan3_720p, twice, from a screen, when every record said h3_max_768p (Cowork
+   * Rounds 802–806). The setting is changed after the run here on purpose: that is the case the screen got wrong.
+   */
+  it("names the model each clip was made with, from its record, even after the setting moved on", async () => {
+    const deps = await setupWithConnectedRunway({ model: "h3_max_480p" });
+    const workflow = newWorkflow(deps);
+    vi.stubGlobal("fetch", runwayFetchMock());
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+    let progress = await workflow.run("video_workflow", deps.accepted.jobId);
+    for (let scene = 1; scene <= 6; scene++) {
+      for (let check = 0; check < 2; check++) {
+        now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+        progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+      }
+    }
+    expect(progress.status).toBe("succeeded");
+    await deps.providerSettings.saveVideoModel({ model: "wan3_720p" });
+
+    const review = await workflow.getReview("video_workflow", deps.accepted.jobId);
+
+    expect(review.reviews.map((item) => item.model)).toEqual(Array(6).fill("h3_max_480p"));
+  });
+
   it("reports each scene's real recorded cost in the review response, accumulating across a regeneration", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);

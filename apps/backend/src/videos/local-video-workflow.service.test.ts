@@ -58,6 +58,8 @@ describe("local fake video workflow", () => {
     expect(await Promise.all([1, 2, 3, 4, 5, 6].map((scene) => fs.stat(path.join(projectsRoot, "video_workflow", "videos", "runway", `scene${scene}.mp4`))))).toHaveLength(6);
     const review = await new LocalVideoWorkflowService(projects, projectsRoot).getReview("video_workflow", accepted.jobId);
     expect(JSON.stringify(review)).not.toContain(projectsRoot); expect(review.reviews).toHaveLength(6);
+    // No provider made these placeholders, so no model is named for them (VideoReview.model).
+    expect(review.reviews.every((item) => item.model === undefined)).toBe(true);
     expect(review.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [] });
   });
 
