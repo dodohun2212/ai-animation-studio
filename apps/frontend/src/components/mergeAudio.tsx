@@ -21,6 +21,23 @@ export const AUDIO_MODE_LABELS: Record<AudioMode, string> = {
   silent: "무음",
 };
 
+/**
+ * 클립 소리를 얹었을 때 모드를 부르는 이름 — **「만」이 빠집니다.**
+ *
+ * 🔴 「나레이션만 + 영상 소리로 병합」은 자기 안에서 부딪힙니다(CLI Round 826). 「만」은 「이것 하나뿐」인데
+ * 바로 옆에 「+」가 붙어 있으니, 버튼이 자기가 무슨 일을 하는지 두 가지로 말하는 셈입니다.
+ *
+ * 🔴 문자열에서 「만」을 떼지 않고 **표를 따로** 둡니다. 떼는 방식은 「배경음악만」에는 맞고 「무음」에는
+ * 손댈 게 없고, 한국어가 아닌 이름이 생기면 조용히 틀립니다 — `Record` 면 모드가 하나 늘 때 **여기서
+ * 컴파일이 막힙니다.** `silent` 가 빈 문자열인 것도 값입니다: 얹을 것이 없으니 「영상 소리」만 남습니다.
+ */
+const AUDIO_MODE_LABELS_WITH_CLIP: Record<AudioMode, string> = {
+  narration: "나레이션",
+  "narration+bgm": "나레이션 + 배경음악",
+  bgm: "배경음악",
+  silent: "",
+};
+
 /** The two modes that mix in an uploaded track, and so require one to be chosen. */
 export function needsTrack(mode: AudioMode): boolean {
   return mode === "narration+bgm" || mode === "bgm";
@@ -80,7 +97,8 @@ export function toAudioSettings(
 export function mergeButtonLabel(mode: AudioMode | null, clipVolumePercent: number): string {
   if (mode === null) return "최종 영상으로 병합";
   if (clipVolumePercent <= 0) return `${AUDIO_MODE_LABELS[mode]}으로 병합`;
-  return mode === "silent" ? "영상 소리로 병합" : `${AUDIO_MODE_LABELS[mode]} + 영상 소리로 병합`;
+  const base = AUDIO_MODE_LABELS_WITH_CLIP[mode];
+  return base === "" ? "영상 소리로 병합" : `${base} + 영상 소리로 병합`;
 }
 
 /** m:ss, so a position can be compared against the track length a person sees on the player. */

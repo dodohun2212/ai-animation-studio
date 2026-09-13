@@ -630,6 +630,33 @@ describe("VideoMergeScreen", () => {
    *
    * 0%일 때 옛 글자가 그대로인 것도 같이 봅니다 — 「무음」이 사라지면 이번엔 반대쪽이 거짓말입니다.
    */
+  /**
+   * 🔴 「나레이션만 + 영상 소리로 병합」은 자기 안에서 부딪힙니다 — 「만」은 「이것 하나뿐」인데 바로 옆에
+   * 「+」가 붙습니다(CLI Round 826). 버튼이 자기가 무슨 일을 하는지 두 가지로 말하면, 그건 아무 말도 안 한
+   * 것과 같습니다.
+   *
+   * 0% 일 때 「나레이션만으로 병합」이 **그대로**인 것도 같이 봅니다 — 「만」을 아예 없애면 이번엔 그쪽이
+   * 거짓말입니다(나레이션만 들어가는 게 맞으니까요).
+   */
+  it("drops 만 only when something is actually added to the narration", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const withSound = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: true }]));
+    renderScreen(
+      mergeFetch,
+      { scenes, narrationAvailable: true },
+      { narrationEnabled: true, subtitlesEnabled: false },
+      undefined, undefined, undefined, undefined, withSound,
+    );
+
+    const button = await screen.findByTestId("open-merge-confirm-button");
+    expect(button.textContent, "나레이션만 들어가는 동안은 「만」이 맞습니다").toBe("나레이션만으로 병합");
+
+    fireEvent.change(screen.getByLabelText("섞는 음량"), { target: { value: "30" } });
+    expect(button.textContent).toBe("나레이션 + 영상 소리로 병합");
+    expect(button.textContent, "「만」과 「+」가 같이 있으면 안 됩니다").not.toContain("만 +");
+  });
+
   it("never says 무음 when the clips' own sound is going in", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
     const scenes = sixScenes();
