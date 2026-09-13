@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_LICENSE_KINDS, type AudioLibraryTrack, type AudioLicenseKind, type GetAudioLibraryResponse, type UploadAudioTrackResponse } from "@ai-animation-studio/shared";
+import { AUDIO_LICENSE_KINDS, AUDIO_UPLOAD_MAX_BYTES, type AudioLibraryTrack, type AudioLicenseKind, type GetAudioLibraryResponse, type UploadAudioTrackResponse } from "@ai-animation-studio/shared";
 
 import { safeUploadFilename } from "../assets/upload-filename.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
@@ -20,7 +20,7 @@ import {
   invalidAudioRequest,
 } from "./audio-api.error.js";
 
-const MAX_BYTES = 50 * 1024 * 1024;
+const MAX_BYTES = AUDIO_UPLOAD_MAX_BYTES;
 const ALLOWED_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".ogg"]);
 
 /** The contract's own list — a second copy here is the shape that made a written value unreadable in the project schema (Cowork Round 436). */
@@ -191,7 +191,7 @@ export class AudioLibraryService {
       || (body.sourceUrl !== undefined && typeof body.sourceUrl !== "string")) {
       throw invalidAudioRequest("Upload request is invalid — licenseKind and attributionRequired are required.");
     }
-    if (file.buffer.length === 0 || file.buffer.length > MAX_BYTES) throw invalidAudioFile(file.buffer.length > MAX_BYTES ? "Audio file exceeds 50 MB." : undefined);
+    if (file.buffer.length === 0 || file.buffer.length > MAX_BYTES) throw invalidAudioFile(file.buffer.length > MAX_BYTES ? `Audio file exceeds ${Math.round(MAX_BYTES / (1024 * 1024))} MB.` : undefined);
     const originalName = safeOriginalName(file.originalname);
     const extension = path.extname(originalName).toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(extension)) throw invalidAudioFile("Audio file type is unsupported — use MP3, WAV, M4A, or OGG.");

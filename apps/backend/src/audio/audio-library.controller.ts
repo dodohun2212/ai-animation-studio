@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import { ArgumentsHost, BadRequestException, Catch, Controller, Delete, ExceptionFilter, Get, HttpException, Param, PayloadTooLargeException, Post, Body, UploadedFile, UseFilters, UseInterceptors, StreamableFile, Req, Res } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { API_ROUTES, AUDIO_UPLOAD_FILE_FIELD, type DeleteAudioTrackResponse, type GetAudioLibraryResponse, type UploadAudioTrackResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, AUDIO_UPLOAD_FILE_FIELD, AUDIO_UPLOAD_MAX_BYTES, type DeleteAudioTrackResponse, type GetAudioLibraryResponse, type UploadAudioTrackResponse } from "@ai-animation-studio/shared";
 
 import { streamStoredFile, type RangeRequest, type RangeResponse } from "../http/range-stream.js";
 import { AudioLibraryService } from "./audio-library.service.js";
@@ -40,7 +40,7 @@ export class AudioLibraryController {
 
   @Post(API_ROUTES.audioLibraryUpload)
   @UseFilters(AudioUploadExceptionFilter)
-  @UseInterceptors(FileInterceptor(AUDIO_UPLOAD_FILE_FIELD, { limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 6, parts: 8, fieldSize: 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor(AUDIO_UPLOAD_FILE_FIELD, { limits: { fileSize: AUDIO_UPLOAD_MAX_BYTES, files: 1, fields: 6, parts: 8, fieldSize: 1024 * 1024 } }))
   upload(@UploadedFile() file: MemoryUpload | undefined, @Body() body: unknown): Promise<UploadAudioTrackResponse> {
     return this.audio.upload(file, body);
   }

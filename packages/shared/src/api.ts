@@ -2942,6 +2942,12 @@ export interface UpdateSceneResponse {
  * them. Read these; do not retype the string.
  */
 export const AUDIO_UPLOAD_FILE_FIELD = "audio";
+/**
+ * The largest audio file the library accepts, in bytes. The server refuses anything bigger (the upload's own size
+ * limit and the service's check both read this), and the screen refuses it *before* sending and builds its
+ * 「… 이하」 label from it — one number, so the sentence and the check cannot drift (Cowork Round 834).
+ */
+export const AUDIO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
 /** The Asset Library's equivalent — three routes read it, and the frontend writes it in three places. */
 export const ASSET_UPLOAD_FILE_FIELD = "image";
 

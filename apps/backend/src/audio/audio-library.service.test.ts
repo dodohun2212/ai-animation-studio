@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { MediaToolError, type MediaCommandRunner } from "../videos/ffmpeg-merge.service.js";
 import { AudioLibraryService } from "./audio-library.service.js";
+import { AUDIO_UPLOAD_MAX_BYTES } from "@ai-animation-studio/shared";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
@@ -87,6 +88,16 @@ describe("AudioLibraryService", () => {
 
     const listed = await service.list();
     expect(listed.tracks.map((track) => track.title)).toEqual(["second", "first"]);
+  });
+
+  /** AUDIO_UPLOAD_MAX_BYTES — the one number the screen's label, the screen's check and this refusal all read. */
+  it("takes a file at the stated limit and refuses one byte over it", async () => {
+    const { service } = await setup();
+    const atLimit = Buffer.concat([MP3, Buffer.alloc(AUDIO_UPLOAD_MAX_BYTES - MP3.length)]);
+    await expect(service.upload({ buffer: atLimit, originalname: "at-limit.mp3" }, { licenseKind: "self-made", attributionRequired: false })).resolves.toBeDefined();
+    const over = Buffer.concat([MP3, Buffer.alloc(AUDIO_UPLOAD_MAX_BYTES - MP3.length + 1)]);
+    await expect(service.upload({ buffer: over, originalname: "over.mp3" }, { licenseKind: "self-made", attributionRequired: false }))
+      .rejects.toMatchObject({ response: { code: "AUDIO_FILE_INVALID" } });
   });
 
   it("rejects a file that is not decodable as audio, and does not leave the bytes on disk", async () => {
