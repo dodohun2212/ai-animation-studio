@@ -31,6 +31,17 @@ describe("LongEpisodeSettingsScreen", () => {
     expect(screen.getByTestId("episode-settings-total").textContent).toContain("90초");
   });
 
+  // item 5(D1): this screen has no video-model context, so it offers every CLIP_DURATION_CHOICES value — not
+  // the Runway-only 5/10 pair it used to be limited to, and the stale "이 둘뿐입니다" copy is gone with it.
+  it("offers the full curated set of clip durations, and keeps an out-of-list saved value visible", async () => {
+    renderScreen(body({ settings: { sceneCount: 6, clipDurationSeconds: 7, episodeDurationSeconds: 42 } }));
+
+    const select = (await screen.findByTestId("episode-clip-duration")) as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toEqual(["5", "10", "15", "20", "30", "7"]);
+    expect(select).toHaveValue("7");
+    expect(document.body.textContent).not.toContain("이 둘뿐입니다");
+  });
+
   // The point of showing the default at all: "8 scenes" means nothing without "the rest of the work is 6".
   it("says when this Episode differs from the project default, and when it does not", async () => {
     renderScreen(body({ settings: { sceneCount: 9, clipDurationSeconds: 5, episodeDurationSeconds: 45 } }));

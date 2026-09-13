@@ -98,11 +98,14 @@ function SectionHeading({ children }: { children: ReactNode }) {
   );
 }
 
-/** The three shapes the video step can actually produce, in the spelling its ratio check compares against. */
+/** The shapes the video step can actually produce, in the spelling its ratio check compares against. */
 const ASPECT_OPTIONS: { value: string; label: string }[] = [
   { value: "9:16", label: "세로형 9:16" },
   { value: "16:9", label: "가로형 16:9" },
   { value: "1:1", label: "정사각형 1:1" },
+  // CLI Round 855/857: 요청 자체는 3:4(832:1104)로 나가고 병합에서 4:5 틀에 맞춘다 — videoRatioLabel 이
+  // 확인 화면에서 그 사실을 말한다. 여기 선택지 이름은 결과물의 화면 비율(4:5)이다.
+  { value: "4:5", label: "세로형 4:5" },
 ];
 
 /**

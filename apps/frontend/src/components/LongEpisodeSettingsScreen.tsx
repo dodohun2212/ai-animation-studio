@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  CLIP_DURATION_CHOICES,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
-  RUNWAY_CLIP_DURATIONS,
   type LongEpisodeSettings,
 } from "@ai-animation-studio/shared";
 
@@ -172,12 +172,23 @@ export function LongEpisodeSettingsScreen({ projectId, episodeNumber, onBack }: 
                 setSaved(false);
               }}
             >
-              {RUNWAY_CLIP_DURATIONS.map((duration) => (
+              {/* item 5(D1): same reasoning as the project-level picker (LongProjectSettingsScreen) — this
+                  screen doesn't know which video model the Episode will use, so it offers every
+                  CLIP_DURATION_CHOICES value rather than guessing a narrower set. A value the project settings
+                  screen produced before this range existed is kept selected instead of disappearing. */}
+              {CLIP_DURATION_CHOICES.map((duration) => (
                 <option key={duration} value={duration}>{duration}초</option>
               ))}
+              {!(CLIP_DURATION_CHOICES as readonly number[]).includes(clipDurationSeconds) && (
+                <option key={clipDurationSeconds} value={clipDurationSeconds}>
+                  {clipDurationSeconds}초(권장 목록 밖)
+                </option>
+              )}
             </select>
-            {/* Not a house rule, and worth saying so — otherwise the two options read as an arbitrary limit. */}
-            <span className="mt-1 block text-xs text-slate-500">지금 연결된 영상 AI(Runway)가 받는 길이가 이 둘뿐입니다.</span>
+            {/* Was "이 둘뿐입니다" (Runway가 5·10초만 받던 시절의 문장) — item 5로 1~30초까지 받게 되면서
+                거짓말이 됐다. 실제 최소·최대는 영상 시작 시 고른 모델에 달려 있고 이 화면은 그 모델을 모르므로,
+                숫자로 약속하지 않고 그 사실 자체를 말한다. */}
+            <span className="mt-1 block text-xs text-slate-500">실제로 받는 범위는 영상 시작 때 고르는 모델에 따라 다릅니다 — 맞지 않으면 시작 전에 알려드립니다.</span>
           </label>
 
           <p className="text-sm text-slate-300" data-testid="episode-settings-total">

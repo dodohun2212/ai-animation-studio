@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Asset, ProjectSummary, RunwayClipDurationSeconds } from "@ai-animation-studio/shared";
-import { PHOTO_CARD_QUOTE_MAX_LENGTH, RUNWAY_CLIP_DURATIONS } from "@ai-animation-studio/shared";
+import type { Asset, PhotoCardDurationSeconds, ProjectSummary } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_DURATIONS, PHOTO_CARD_QUOTE_MAX_LENGTH } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createPhotoCard, toPhotoCardDisplayError } from "../api/photoCardsApi.js";
@@ -57,7 +57,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
   const [assetId, setAssetId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [quote, setQuote] = useState("");
-  const [seconds, setSeconds] = useState<RunwayClipDurationSeconds>(RUNWAY_CLIP_DURATIONS[0]);
+  const [seconds, setSeconds] = useState<PhotoCardDurationSeconds>(PHOTO_CARD_DURATIONS[0]);
   const [vertical, setVertical] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<DisplayError | null>(null);
@@ -242,9 +242,9 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
               className={field}
               value={seconds}
               disabled={pending}
-              onChange={(event) => setSeconds(Number(event.target.value) as RunwayClipDurationSeconds)}
+              onChange={(event) => setSeconds(Number(event.target.value) as PhotoCardDurationSeconds)}
             >
-              {RUNWAY_CLIP_DURATIONS.map((value) => <option key={value} value={value}>{value}초</option>)}
+              {PHOTO_CARD_DURATIONS.map((value) => <option key={value} value={value}>{value}초</option>)}
             </select>
           </label>
 

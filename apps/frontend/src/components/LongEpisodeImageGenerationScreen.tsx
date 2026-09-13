@@ -17,6 +17,7 @@ import {
   toLongProjectDisplayError,
 } from "../api/longProjectsApi.js";
 import { isLongEpisodeStatusBefore, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
+import { imageBoxAspectClass } from "../utils/sceneFields.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
@@ -621,7 +622,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
                   alt={`${sceneNumber}번 장면 이미지`}
                   data-testid={`episode-image-review-picture-${sceneNumber}`}
                   data-aspect={aspectRatio}
-                  className={`${aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
+                  className={`${imageBoxAspectClass(aspectRatio)} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
                 />
                 <div className="flex flex-wrap justify-end gap-3">
                   <span className="flex flex-col items-end gap-0.5">

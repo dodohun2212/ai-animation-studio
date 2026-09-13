@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type LongProjectSettings } from "@ai-animation-studio/shared";
+import { CLIP_DURATION_CHOICES, MAX_SCENE_COUNT, MIN_SCENE_COUNT, type LongProjectSettings } from "@ai-animation-studio/shared";
 
 import { getLongProjectSettings, toLongProjectDisplayError, updateLongProjectSettings } from "../api/longProjectsApi.js";
 import { GlobalStyleAssetCard } from "./GlobalStyleAssetCard.js";
@@ -205,9 +205,20 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
                 setField("episodeDurationSeconds", state.settings!.sceneCount * clipDurationSeconds);
               }}
             >
-              {RUNWAY_CLIP_DURATIONS.map((duration) => (
+              {/* item 5(D1): this screen has no video-model context of its own (the model lives on the video
+                  screens, not project settings), so there is nothing to filter CLIP_DURATION_CHOICES against —
+                  every curated value is offered, same reasoning as CreateLongProjectForm. A value saved before
+                  this range existed, or one a per-Episode override produced (clipDurationSecondsPerScene can
+                  return an exact division like 7), is kept selected rather than silently swapped to whatever
+                  the list happens to render first. */}
+              {CLIP_DURATION_CHOICES.map((duration) => (
                 <option key={duration} value={duration}>{duration}초</option>
               ))}
+              {!(CLIP_DURATION_CHOICES as readonly number[]).includes(state.settings.clipDurationSeconds) && (
+                <option key={state.settings.clipDurationSeconds} value={state.settings.clipDurationSeconds}>
+                  {state.settings.clipDurationSeconds}초(권장 목록 밖)
+                </option>
+              )}
             </select>
           </label>
           <p className="text-sm text-slate-400">
@@ -225,6 +236,8 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
             >
               <option value="9:16">9:16</option>
               <option value="16:9">16:9</option>
+              <option value="1:1">1:1</option>
+              <option value="4:5">4:5</option>
             </select>
             {/* Said here rather than after the save is refused. The refusal is the same either way; the only
                 thing that can change is whether it arrives before or after the person decided to change it. */}

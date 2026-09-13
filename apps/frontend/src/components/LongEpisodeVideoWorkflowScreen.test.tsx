@@ -110,6 +110,28 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(spec.textContent).toContain("5초");
   });
 
+  // item 5/6, A1 for this screen: 15초 에피소드 + gen4 조합(최대 10초)은 서버가 작업을 쓰기 전에 거부한다
+  // (LONG_EPISODE_VIDEO_DURATION_OUT_OF_RANGE) — 이 화면은 그걸 미리 말하고 확인창을 못 열게 잠가야 한다.
+  // 같은 videoSetupIssues 를 쓰는 short-project 확인 화면(VideoPromptPreviewScreen)과 같은 testid 를 쓴다.
+  it("locks the confirm button before a 15-second Episode combined with a gen4-class model can be submitted", async () => {
+    const tooLong = { ...preview, durationSecondsPerScene: 15 };
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /videos/generations/current": { jobId: null }, "GET /videos/preview": tooLong }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const issue = await screen.findByTestId("setup-issue-duration");
+    expect(issue.textContent).toContain("최대 10초");
+    expect(screen.getByTestId("episode-video-open-confirm")).toBeDisabled();
+  });
+
+  it("does not lock a combination the connected model actually supports", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /videos/generations/current": { jobId: null }, "GET /videos/preview": preview }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-summary");
+    expect(screen.queryByTestId("setup-issues")).toBeNull();
+    expect(screen.getByTestId("episode-video-open-confirm")).not.toBeDisabled();
+  });
+
   it("shows a landscape Episode as landscape rather than always claiming vertical", async () => {
     // The orientation comes from the response, so a project set to 16:9 reads as 16:9 here — this line is the
     // only place a wrong output shape is visible before six clips are paid for.

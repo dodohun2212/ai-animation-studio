@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, RUNWAY_CLIP_DURATIONS, type LongProject, type LongProjectSettings } from "@ai-animation-studio/shared";
+import { CLIP_DURATION_CHOICES, MAX_SCENE_COUNT, MIN_SCENE_COUNT, type LongProject, type LongProjectSettings } from "@ai-animation-studio/shared";
 
 import { createLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
@@ -251,7 +251,11 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
             setField("episodeDurationSeconds", settings.sceneCount * clipDurationSeconds);
           }}
         >
-          {RUNWAY_CLIP_DURATIONS.map((duration) => (
+          {/* item 5(D1): a new project has no video model chosen yet, so there is nothing to filter these
+              against — every CLIP_DURATION_CHOICES value is offered, and the model-specific narrowing
+              (ShortProjectSettingsScreen's shownClipDurations pattern) starts applying once a model exists,
+              on the settings screen. */}
+          {CLIP_DURATION_CHOICES.map((duration) => (
             <option key={duration} value={duration}>{duration}초</option>
           ))}
         </select>
@@ -276,6 +280,8 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         >
           <option value="9:16">9:16</option>
           <option value="16:9">16:9</option>
+          <option value="1:1">1:1</option>
+          <option value="4:5">4:5</option>
         </select>
       </div>
       <Field label="누가 볼 영상인가" value={settings.audience} onChange={(value) => setField("audience", value)} disabled={submitting} />

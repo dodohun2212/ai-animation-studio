@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeStatus, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber } from "@ai-animation-studio/shared";
+import { VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
+import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeStatus, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber, VideoModelOption } from "@ai-animation-studio/shared";
 
 import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateAllLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { LongEpisodeSceneVersions } from "./LongEpisodeSceneVersions.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { omittedSectionLabel } from "../utils/omittedSectionLabels.js";
+import { hasBlockingIssue, videoSetupIssues, type VideoSetup } from "../utils/videoModelFacts.js";
 import { isLongEpisodeStatusBefore, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { sceneRemedyAdvice } from "../utils/sceneFailureAdvice.js";
@@ -246,6 +248,23 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
     return () => { cancelled = true; };
   }, [error?.code, projectId, episodeNumber]);
   const valid = preview !== null && preview.scenes.every((scene) => { const prompt = prompts[scene.sceneNumber] ?? ""; return prompt.trim().length > 0 && prompt.length <= LIMIT; });
+  /*
+   * item 5/6, A1 for this screen: the short project's confirm screen (VideoPromptPreviewScreen) already locks
+   * a combination the server would refuse before it creates the job — this one showed the model, ratio and
+   * length as plain text and said nothing when the combination itself was invalid. `preview.model` is validated
+   * against VIDEO_MODELS server-side before this screen ever sees it (isGetEpisodeVideoPreviewResponse), so
+   * looking it up here is safe; `.find` rather than the throwing `videoModelOption` keeps this read-only screen
+   * from crashing if the two catalogues ever drift apart — losing the lock is safer here than losing the screen.
+   */
+  const setupOption: VideoModelOption | undefined = preview ? VIDEO_MODEL_OPTIONS.find((option) => option.id === preview.model) : undefined;
+  const setup: VideoSetup | undefined = preview
+    ? { durationSeconds: preview.durationSecondsPerScene, sceneCount: preview.scenes.length, ratio: preview.ratio }
+    : undefined;
+  /* `chain` is left out here: a Long Episode never sends an end frame, whatever the model (c4cf00a — the chain
+     setting is the short project's), so "this model cannot take an end frame" is true of every model on this
+     screen, and shown only for gen4-class ones it reads as if the others would join the cuts (CLI Round 859). */
+  const setupIssues = setupOption && setup ? videoSetupIssues(setupOption, setup).filter((issue) => issue.id !== "chain") : [];
+  const setupBlocked = hasBlockingIssue(setupIssues);
   async function start(): Promise<void> { if (!preview || !valid || busyRef.current || !startRequestId) return; busyRef.current = true; setBusy(true); setError(null); try { const response = await startLongEpisodeVideoGeneration(projectId, episodeNumber, { confirmationId: preview.confirmationId, userRequestId: startRequestId, approved: true, prompts: preview.scenes.map((scene) => ({ sceneNumber: scene.sceneNumber, prompt: prompts[scene.sceneNumber] ?? "" })) }); setJob({ paidProvider: response.paidProvider, jobId: response.jobId, status: "created", completedSceneNumbers: [], failedSceneNumbers: [], sceneNumbers: preview.scenes.map((scene) => scene.sceneNumber), episode: response.episode }); setConfirmStart(false); setStartRequestId(null); } catch (caught) { fail("video-step", caught); } finally { busyRef.current = false; setBusy(false); } }
   async function action(fn: () => Promise<LongEpisodeVideoProgress>): Promise<void> { if (busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); try { setJob(await fn()); setUnplayable([]); setVideoVersion((current) => current + 1); } catch (caught) { fail("job", caught); } finally { busyRef.current = false; setBusy(false); } }
   /**
@@ -306,6 +325,32 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
           <p data-testid="episode-video-output-spec" className="text-sm text-slate-400">
             모델: {preview.model} · 비율: {videoRatioLabel(preview.ratio)} · 장면당 길이: {preview.durationSecondsPerScene}초
           </p>
+          {/* Same lock as the short project's confirm screen (VideoPromptPreviewScreen), reusing the same
+              videoSetupIssues so the two never drift into disagreeing about the same combination. A 15-second
+              Episode length with a gen4-class model (max 10s) or an unsupported aspect refuses at video-start —
+              this says so before the money-line below, not after a rejected submit. */}
+          {setupOption && setup && setupIssues.length > 0 && (
+            <section
+              aria-label="이 모델과 지금 설정"
+              data-testid="setup-issues"
+              className={`space-y-2 rounded-xl border p-3 ${setupBlocked ? "border-rose-400/40 bg-rose-950/20" : "border-amber-400/30 bg-amber-500/[0.06]"}`}
+            >
+              <h3 className={`text-sm font-semibold ${setupBlocked ? "text-rose-300" : "text-amber-300"}`}>
+                {setupBlocked ? "이대로는 전송되지 않습니다" : "이 설정으로 보내면 이렇게 됩니다"}
+              </h3>
+              <ul className="space-y-1">
+                {setupIssues.map((issue) => (
+                  <li
+                    key={issue.id}
+                    data-testid={`setup-issue-${issue.id}`}
+                    className={issue.severity === "blocking" ? "text-sm text-rose-200" : "text-sm text-amber-200/90"}
+                  >
+                    {issue.text}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {/* Spec: the maximum call count and the remaining local budget must be visible before approval.
               `budget` is omitted when no Runway credential is connected — then there is nothing to show. */}
           <div
@@ -354,7 +399,7 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
               </li>
             ))}
           </ol>
-          <button type="button" data-testid="episode-video-open-confirm" className={primaryButton} disabled={!valid || confirmStart} onClick={() => { setStartRequestId(crypto.randomUUID()); setConfirmStart(true); }}>영상 생성 확인창 열기</button>
+          <button type="button" data-testid="episode-video-open-confirm" className={primaryButton} disabled={!valid || confirmStart || setupBlocked} onClick={() => { setStartRequestId(crypto.randomUUID()); setConfirmStart(true); }}>영상 생성 확인창 열기</button>
           {confirmStart && (
             <div role="alertdialog" data-testid="episode-video-start-confirm" className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
               <p className="text-sm text-amber-200">이 확인창을 연 것만으로는 아직 요청이 가지 않았습니다. 장면 영상을 순서대로 만들까요? Runway 키가 연결되어 있으면 이때부터 실제로 청구됩니다.</p>

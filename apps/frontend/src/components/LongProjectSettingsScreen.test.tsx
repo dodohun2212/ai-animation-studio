@@ -217,7 +217,9 @@ describe("LongProjectSettingsScreen", () => {
     const sceneCountInput = (await screen.findByDisplayValue("6")) as HTMLInputElement;
     fireEvent.change(sceneCountInput, { target: { value: "8" } });
     const clipDurationSelect = (await screen.findByDisplayValue("5초")) as HTMLSelectElement;
-    expect([...clipDurationSelect.options].map((option) => option.value)).toEqual(["5", "10"]);
+    // item 5(D1): this screen has no video-model context, so it offers every CLIP_DURATION_CHOICES value
+    // rather than the Runway-only ["5", "10"] it used to be limited to.
+    expect([...clipDurationSelect.options].map((option) => option.value)).toEqual(["5", "10", "15", "20", "30"]);
     fireEvent.change(clipDurationSelect, { target: { value: "10" } });
     expect(screen.getByText(/에피소드당 예상 영상 길이: 80초/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
@@ -226,6 +228,17 @@ describe("LongProjectSettingsScreen", () => {
     const body = JSON.parse(String(init.body)) as { settings: Record<string, unknown> };
     expect(body.settings).toMatchObject({ sceneCount: 8, clipDurationSeconds: 10 });
     expect(body.settings).not.toHaveProperty("episodeDurationSeconds");
+  });
+
+  // A value outside the curated list — saved before this range existed, or produced by a per-Episode override —
+  // must stay visibly selected rather than the <select> silently falling back to whichever option renders first.
+  it("keeps an out-of-list saved clip duration selected instead of dropping it", async () => {
+    const settings = makeLongProjectSettings({ clipDurationSeconds: 7 });
+    stubScreenFetch({ settings });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    const clipDurationSelect = (await screen.findByDisplayValue("7초(권장 목록 밖)")) as HTMLSelectElement;
+    expect([...clipDurationSelect.options].map((option) => option.value)).toEqual(["5", "10", "15", "20", "30", "7"]);
   });
 
   // Everything the script prompt reads about the work now lives on this one screen. The move is only real if
@@ -286,5 +299,21 @@ describe("LongProjectSettingsScreen", () => {
     // The counterpart the rule above needs: without it, a change that disabled the field unconditionally would
     // still pass the locked test.
     expect(screen.queryByTestId("long-settings-aspect-locked")).toBeNull();
+  });
+
+  /** item 6: 1:1 이 세 번째, 4:5(CLI Round 855/857)가 네 번째 선택지로 늘었고, 나머지와 똑같이 고르고 저장할 수 있습니다. */
+  it("offers 1:1 as a third aspect ratio choice and saves it", async () => {
+    const fetchMock = stubScreenFetch({ settings: makeLongProjectSettings(), aspectRatioChangeable: true });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    const select = (await screen.findByTestId("long-settings-aspect-ratio")) as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toEqual(["9:16", "16:9", "1:1", "4:5"]);
+
+    fireEvent.change(select, { target: { value: "1:1" } });
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    const [, init] = callTo(fetchMock, "/long-projects/long_test/settings", "PATCH");
+    const body = JSON.parse(String(init.body)) as { settings: { aspectRatio: string } };
+    expect(body.settings.aspectRatio).toBe("1:1");
   });
 });

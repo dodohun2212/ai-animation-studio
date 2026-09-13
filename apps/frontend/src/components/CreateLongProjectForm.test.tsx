@@ -28,6 +28,15 @@ describe("CreateLongProjectForm", () => {
     expect(screen.getByLabelText("화면 비율")).toBeTruthy();
   });
 
+  /** item 5(D1): a new project has no model chosen yet, so it offers all of CLIP_DURATION_CHOICES, not just Runway's old 5·10. */
+  it("offers the full curated set of clip durations, not just Runway's old 5/10", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
+
+    const select = screen.getByLabelText("클립 길이(초)") as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toEqual(["5", "10", "15", "20", "30"]);
+  });
+
   it("rejects empty required fields (projectId, title, logline) without calling fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -99,6 +108,26 @@ describe("CreateLongProjectForm", () => {
     expect(body.settings.title).toBe("우주 방랑자");
     expect(body.settings.logline).toBe("귀환 이야기");
     expect(body.settings.aspectRatio).toBe("9:16");
+  });
+
+  /** item 6: 1:1 이 세 번째, 4:5(CLI Round 855/857)가 네 번째 선택지로 늘었고, 나머지와 똑같이 고르고 만들 수 있습니다. */
+  it("offers 1:1 as a third aspect ratio choice and creates the project with it", async () => {
+    const project = makeLongProject({ id: "long_test", title: "우주 방랑자", logline: "귀환 이야기" });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { project }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
+
+    const select = screen.getByLabelText("화면 비율") as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toEqual(["9:16", "16:9", "1:1", "4:5"]);
+    fireEvent.change(select, { target: { value: "1:1" } });
+
+    fillRequiredFields("long_test", "우주 방랑자", "귀환 이야기");
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body.settings.aspectRatio).toBe("1:1");
   });
 
   it("disables the submit button while submitting and lets only one rapid duplicate submit call fetch", async () => {

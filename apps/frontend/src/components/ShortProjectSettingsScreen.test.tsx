@@ -922,13 +922,13 @@ describe("ShortProjectSettingsScreen", () => {
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     const select = (await screen.findByTestId("settings-aspect")) as HTMLSelectElement;
-    // item 6: 1:1 이 세 번째 선택지로 늘었습니다.
-    expect([...select.options].map((option) => option.value)).toEqual(["9:16", "16:9", "1:1"]);
+    // item 6: 1:1 이 세 번째로, 4:5(CLI Round 855/857)가 네 번째 선택지로 늘었습니다.
+    expect([...select.options].map((option) => option.value)).toEqual(["9:16", "16:9", "1:1", "4:5"]);
     expect(select.value).toBe("16:9");
     expect(screen.queryByTestId("settings-aspect-unknown")).toBeNull();
   });
 
-  /** item 6: 정사각(1:1)도 나머지 둘과 똑같이 고르고 저장할 수 있습니다 — 셋째 값이라고 다른 취급을 받지 않습니다. */
+  /** item 6: 정사각(1:1)도 나머지와 똑같이 고르고 저장할 수 있습니다 — 셋째 값이라고 다른 취급을 받지 않습니다. */
   it("saves 1:1 the same way it saves the other two shapes", async () => {
     const project = makeProject({});
     const fetchMock = stubFetchByRoute({
@@ -948,6 +948,29 @@ describe("ShortProjectSettingsScreen", () => {
     const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")!;
     const body = JSON.parse(String((call[1] as RequestInit).body)) as { settings: { styleNotes: { aspect: string } } };
     expect(body.settings.styleNotes.aspect).toBe("1:1");
+  });
+
+  // CLI Round 855/857: 4:5 가 네 번째 선택지로 늘었습니다 — 나머지와 똑같이 고르고 저장됩니다. 실제로 나가는
+  // 요청은 3:4(832:1104)지만, 저장되는 값은 결과물의 화면 비율인 "4:5" 그대로입니다.
+  it("saves 4:5 the same way it saves the other shapes", async () => {
+    const project = makeProject({});
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+      "PATCH /projects/sample_project/settings": { project, settings },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+
+    fireEvent.change(await screen.findByTestId("settings-aspect"), { target: { value: "4:5" } });
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const call = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")!;
+    const body = JSON.parse(String((call[1] as RequestInit).body)) as { settings: { styleNotes: { aspect: string } } };
+    expect(body.settings.styleNotes.aspect).toBe("4:5");
   });
 
   it("keeps an unrecognised saved ratio visible and says what it will actually produce", async () => {

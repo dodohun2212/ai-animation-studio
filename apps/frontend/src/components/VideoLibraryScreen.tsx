@@ -9,6 +9,7 @@ import {
   videoVersionContentUrl,
 } from "../api/videoLibraryApi.js";
 import { listLongEpisodeVideoVersions, longEpisodeFinalVideoContentUrl, longEpisodeVideoVersionContentUrl, restoreLongEpisodeVideoVersion } from "../api/longProjectsApi.js";
+import { imageBoxAspectClass } from "../utils/sceneFields.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
@@ -202,7 +203,7 @@ function VersionSlots({
               {/* eslint-disable-next-line jsx-a11y/media-has-caption -- generated clips carry no caption track */}
               <video
                 data-testid={`version-player-${version.versionId}`}
-                className={`${aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-800`}
+                className={`${imageBoxAspectClass(aspectRatio)} w-full rounded-xl border border-white/10 bg-slate-800`}
                 controls
                 preload="none"
                 src={versionContentUrlFor(target, openSlot, version.versionId)}

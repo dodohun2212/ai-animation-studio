@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { longEpisodeFieldGroups, SCENE_FIELD_GROUPS, SCENE_FIELD_KEYS, videoRatioLabel } from "./sceneFields.js";
+import { imageBoxAspectClass, longEpisodeFieldGroups, SCENE_FIELD_GROUPS, SCENE_FIELD_KEYS, videoRatioLabel } from "./sceneFields.js";
 
 /**
  * Every field on LongEpisodeScene (packages/shared/src/api.ts), which is also the list the long Episode's
@@ -113,8 +113,33 @@ describe("sceneFields", () => {
     // makes a wrong orientation impossible to notice before paying for six clips.
     expect(videoRatioLabel("720:1280")).toBe("세로형 9:16 (720:1280)");
     expect(videoRatioLabel("1280:720")).toBe("가로형 16:9 (1280:720)");
-    // An unfamiliar value is passed through rather than mislabelled as one of the two known shapes.
+    // item 6: the square ratio Runway is asked for is not a fourth "unfamiliar" value — it is the exact
+    // string RUNWAY_RATIO_FOR_ASPECT["1:1"] sends, and it gets its own label like the other two.
+    expect(videoRatioLabel("960:960")).toBe("정사각형 1:1 (960:960)");
+    // An unfamiliar value is still passed through rather than mislabelled as one of the three known shapes.
     expect(videoRatioLabel("1024:1024")).toBe("1024:1024");
+    // 4:5 프로젝트가 실제로 청하는 값은 3:4(832:1104)다 — 「4:5」라고만 적으면 이번 요청의 실제 값과
+    // 다른 거짓말이 된다(CLI Round 857). 그 값 자체와, 그게 4:5 로 맞춰진다는 사실을 둘 다 담는다.
+    expect(videoRatioLabel("832:1104")).toBe("세로 3:4 (병합에서 4:5로 맞춤, 832:1104)");
+  });
+
+  /**
+   * 🔴 item 6 — `aspectRatio === "16:9" ? 가로 : 세로` 삼항이 여러 화면에 흩어져 있었고, 셋째 값(1:1)이
+   * 생기자 전부 `else` 로 떨어져 정사각 프로젝트의 그림을 세로 상자에 잘라 넣었습니다. 세 갈래를 다 봅니다 —
+   * 하나만 보면 나머지 둘 중 하나가 여전히 잘못 갈립니다.
+   *
+   * 🔴 CLI Round 856: 그 뒤로도 같은 버그 모양이 한 단 위에 남아 있었다 — 인자가 `string | undefined` 라
+   * 「넷째 값이 생기면 여기서 결정이 필요하다」는 주석이 타입으로 지켜지지 않았다. 4:5(Round 857)가 그 넷째
+   * 값이라, 이제는 `Record<AspectRatio, …>` 로 4:5 도 같이 본다 — 빠뜨렸으면 이 파일이 컴파일되지 않았을 것.
+   */
+  it("draws a square box for 1:1 instead of falling into the portrait branch", () => {
+    expect(imageBoxAspectClass("16:9")).toBe("aspect-video");
+    expect(imageBoxAspectClass("9:16")).toBe("aspect-[9/16]");
+    expect(imageBoxAspectClass("1:1")).toBe("aspect-square");
+    expect(imageBoxAspectClass("4:5")).toBe("aspect-[4/5]");
+    // 모르는 값(짧은 프로젝트의 자유 글자 등)은 세로 상자로 — project-aspect.ts 의 기본값과 같은 방향입니다.
+    expect(imageBoxAspectClass(undefined)).toBe("aspect-[9/16]");
+    expect(imageBoxAspectClass("1920x1080")).toBe("aspect-[9/16]");
   });
 
   it("uses distinct short keys and never reuses one across groups", () => {

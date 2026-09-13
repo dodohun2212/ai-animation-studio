@@ -13,6 +13,7 @@ import {
 } from "../api/imageReviewApi.js";
 import { Spinner } from "./Spinner.js";
 import { workflowStateLabel } from "../utils/workflowStateLabels.js";
+import { imageBoxAspectClass } from "../utils/sceneFields.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
@@ -543,7 +544,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                             src={imageReviewContentUrl(projectId, review.sceneNumber, review.updatedAt)}
                             alt={`${review.sceneNumber}번 장면`}
                             data-testid={`filmstrip-image-${review.sceneNumber}`}
-                            className={`${currentProject?.aspectRatio === "16:9" ? "aspect-video w-40" : "aspect-[9/16] w-24"} rounded-xl border border-white/10 bg-slate-800 object-cover`}
+                            className={`${imageBoxAspectClass(currentProject?.aspectRatio)} ${currentProject?.aspectRatio === "16:9" ? "w-40" : "w-24"} rounded-xl border border-white/10 bg-slate-800 object-cover`}
                           />
                           <span className="mt-1 block text-center text-[11px] tabular-nums text-slate-500">
                             {review.sceneNumber}
@@ -610,7 +611,7 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                           alt={`${review.sceneNumber}번 장면 이미지`}
                           data-testid={`review-image-${review.sceneNumber}`}
                           data-aspect={currentProject?.aspectRatio ?? "9:16"}
-                          className={`${currentProject?.aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
+                          className={`${imageBoxAspectClass(currentProject?.aspectRatio)} w-full rounded-xl border border-white/10 bg-slate-800 object-cover`}
                         />
                         {/* Silence unless it happened: the Backend sends both counts only when its own reference
                             cap actually dropped something, and sends the used count too so this sentence never has

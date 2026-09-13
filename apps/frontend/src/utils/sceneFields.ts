@@ -14,6 +14,8 @@
  * from it), while changing the on-screen script costs nothing. `impact` states that before the edit, not after.
  */
 
+import { isAspectRatio, type AspectRatio } from "@ai-animation-studio/shared";
+
 export interface SceneEditableField {
   /** Field name in the short project's scene-edit request body. */
   key: string;
@@ -154,11 +156,46 @@ export const LONG_EPISODE_OPTIONAL_FIELD_KEYS: string[] = SCENE_FIELD_GROUPS.fla
  * Plain-language label for a Runway output ratio.
  *
  * The raw value ("720:1280") is what the provider wants and means nothing to the person deciding whether to
- * spend money on it — what they picked in project settings was "9:16" or "16:9". Both are shown: the shape in
- * words, and the exact value the request will carry.
+ * spend money on it — what they picked in project settings was "9:16", "16:9" or, since item 6, "1:1" or "4:5".
+ * Both are shown: the shape in words, and the exact value the request will carry.
  */
 export function videoRatioLabel(ratio: string): string {
   if (ratio === "1280:720") return `가로형 16:9 (${ratio})`;
   if (ratio === "720:1280") return `세로형 9:16 (${ratio})`;
+  if (ratio === "960:960") return `정사각형 1:1 (${ratio})`;
+  // 4:5 프로젝트가 실제로 요청하는 비율. 4:5 를 받는 모델이 없어 가장 가까운 세로 3:4(832:1104)로 청하고
+  // 병합에서 4:5 틀에 맞추므로, 「4:5」라고만 적으면 이번 요청이 나가는 값과 다른 거짓이 된다
+  // (CLI Round 857). 요청이 실제로 3:4 로 나간다는 사실과, 그게 4:5 로 맞춰진다는 사실을 둘 다 말한다.
+  if (ratio === "832:1104") return `세로 3:4 (병합에서 4:5로 맞춤, ${ratio})`;
   return ratio;
+}
+
+/**
+ * The Tailwind aspect-box class a preview image should draw at, from the project's own `aspectRatio` field.
+ *
+ * item 6: several screens drew this with `aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"` — a
+ * two-way ternary that was correct while `AspectRatio` only had two members. Once "1:1" became a real value
+ * that ternary's `else` caught it and drew every square project's pictures in a tall portrait box, cropping a
+ * square image into a slice of itself — the same bug shape as `project-aspect.ts`'s old
+ * `aspect === "16:9" ? landscape : portrait`.
+ *
+ * 🔴 CLI's own reading of this function (Round 856) found the same bug shape still alive one level up: the
+ * comment above promised "a fourth aspect ratio would need a decision here", but the signature took
+ * `string | undefined` and fell back to portrait for anything it didn't recognise — so 4:5 (which landed the
+ * very next round, CLI Round 857) would have silently drawn as a portrait box rather than forcing a decision.
+ * A `Record<AspectRatio, …>` does what the comment always claimed: a fifth aspect ratio is now a compile error
+ * at this table, the same guarantee the server's own per-aspect tables (`IMAGE_SIZE_FOR_ASPECT` and friends in
+ * domain.ts) already have. `isAspectRatio` filters anything else — today that is only a short project's free-text
+ * `aspectRatio`, which keeps its documented portrait fallback via the `"9:16"` default below rather than a type
+ * error, since that field is not typed as `AspectRatio` at all.
+ */
+const IMAGE_BOX_ASPECT_CLASS = {
+  "9:16": "aspect-[9/16]",
+  "16:9": "aspect-video",
+  "1:1": "aspect-square",
+  "4:5": "aspect-[4/5]",
+} as const satisfies Record<AspectRatio, string>;
+
+export function imageBoxAspectClass(aspectRatio: string | undefined): (typeof IMAGE_BOX_ASPECT_CLASS)[AspectRatio] {
+  return IMAGE_BOX_ASPECT_CLASS[isAspectRatio(aspectRatio) ? aspectRatio : "9:16"];
 }
