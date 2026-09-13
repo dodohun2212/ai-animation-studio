@@ -467,6 +467,23 @@ describe("InstagramPostScreen", () => {
     expect((await screen.findByTestId("post-previous")).textContent).toContain("캡션 없이 올라갔습니다");
   });
 
+  /*
+   * Item 6 (CLI Round 860): a square or 4:5 file is taller-or-as-tall as it is wide, so a `height >= width` check
+   * called it 세로 9:16 and raised nothing. It is off the reel frame like a landscape one, measured or planned.
+   */
+  it("names a square or 4:5 reel for what it is, measured or planned, and warns as for landscape", async () => {
+    renderScreen({ projects: [libraryProject({ aspectRatio: "4:5" })], project: { aspectRatio: "4:5" }, durationSeconds: 30 });
+    await pickProject();
+    expect(screen.getByTestId("post-check-shape").textContent?.startsWith("세로 4:5")).toBe(true);
+    expect(screen.getByTestId("post-check-shape").textContent).toContain("9:16 이 기본");
+
+    loadVideoMetadata({ videoWidth: 1080, videoHeight: 1080, duration: 30 });
+    const shape = screen.getByTestId("post-check-shape").textContent ?? "";
+    // The chip comes first in the row; the warning after it names 9:16 as the reel's default, so the chip is read on its own.
+    expect(shape.startsWith("정사각 1:1"), "the file wins over the plan").toBe(true);
+    expect(shape).toContain("9:16 이 기본");
+  });
+
   it("warns when the video is landscape rather than the vertical shape a reel expects", async () => {
     renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" } });
     await pickProject();

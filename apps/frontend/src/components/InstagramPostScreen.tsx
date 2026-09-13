@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { FINAL_VIDEO_RELATIVE_PATH, instagramHashtagCount, INSTAGRAM_CAPTION_MAX, INSTAGRAM_HASHTAG_MAX } from "@ai-animation-studio/shared";
+import { ASPECT_RATIOS, FINAL_VIDEO_RELATIVE_PATH, instagramHashtagCount, INSTAGRAM_CAPTION_MAX, INSTAGRAM_HASHTAG_MAX, isAspectRatio, MERGE_FRAME_FOR_ASPECT } from "@ai-animation-studio/shared";
 import type { AspectRatio, InstagramPublishTarget, InstagramTargetDiagnostics, LongEpisodeDetail, Project, VideoLibraryEpisodeSummary, VideoLibraryProjectSummary } from "@ai-animation-studio/shared";
 
 import { getProject, getProjectSettings, toDisplayError } from "../api/projectsApi.js";
 import { forgetInstagramPost, forgetLongEpisodeInstagramPost, InstagramPublishApiError, publishLongEpisodeToInstagram, publishToInstagram, toInstagramPublishDisplayError, type UnknownAttemptDetails } from "../api/instagramPublishApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
+import { imageBoxAspectClass } from "../utils/sceneFields.js";
 import { getInstagramTargets, setInstagramTarget, targetLabel, toInstagramTargetsDisplayError } from "../api/instagramTargetsApi.js";
 import { getPostDraft, putPostDraft, toPostDraftDisplayError } from "../api/postDraftApi.js";
 import { getVideoLibrary, toVideoLibraryDisplayError } from "../api/videoLibraryApi.js";
@@ -15,6 +16,27 @@ import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSection, outlineButton } from "./ui/surfaces.js";
+
+
+/**
+ * What shape a reel file is. The merge only renders the four frames in MERGE_FRAME_FOR_ASPECT, so a measured
+ * file is one of them; anything else (a file from elsewhere) is named by its orientation alone. Measured as
+ * `height >= width` this used to be two answers, and a square or 4:5 file came out 세로 9:16 (CLI Round 860).
+ */
+type ReelShape = (typeof ASPECT_RATIOS)[number] | "landscape" | "portrait";
+function shapeOfFrame(width: number, height: number): ReelShape {
+  const known = ASPECT_RATIOS.find((aspect) => Math.abs(MERGE_FRAME_FOR_ASPECT[aspect].width / MERGE_FRAME_FOR_ASPECT[aspect].height - width / height) < 0.01);
+  return known ?? (width > height ? "landscape" : "portrait");
+}
+/** The chip, and the subject of the confirmation's sentence ("…이라 릴스 화면에서"). 16:9 keeps its old words. */
+const REEL_SHAPE_CHIP: Record<ReelShape, string> = {
+  "9:16": "세로 9:16",
+  "16:9": "가로 영상",
+  "1:1": "정사각 1:1 영상",
+  "4:5": "세로 4:5 영상",
+  landscape: "가로 영상",
+  portrait: "9:16 이 아닌 세로 영상",
+};
 
 interface Props {
   /** The completed project that brought the person here, if this screen was opened from its final video. */
@@ -251,7 +273,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
    * Null until the metadata arrives, and stays null if it never does — the planned values are then shown as
    * what they are rather than as a measurement.
    */
-  const [measured, setMeasured] = useState<{ vertical: boolean | null; seconds: number | null } | null>(null);
+  const [measured, setMeasured] = useState<{ frame: { width: number; height: number } | null; seconds: number | null } | null>(null);
   /**
    * Which moment of the video Instagram should use as the cover, in milliseconds.
    *
@@ -561,9 +583,13 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
   const tooLong = checkedSeconds !== null && checkedSeconds > REEL_MAX_SECONDS;
   /* Each half is measured or it is not, separately. A browser that states a duration but no frame size is
      ordinary, and `measured` being non-null used to be taken as both facts having been read. */
-  const notVertical = measured?.vertical != null
-    ? !measured.vertical
-    : (project?.aspectRatio ?? episode?.aspectRatio) === "16:9";
+  const plannedAspect = project?.aspectRatio ?? episode?.aspectRatio;
+  const reelShape: ReelShape = measured?.frame != null
+    ? shapeOfFrame(measured.frame.width, measured.frame.height)
+    : isAspectRatio(plannedAspect) ? plannedAspect : "9:16";
+  // Anything but 9:16 is off the reel frame — landscape, and since item 6 square and 4:5 too. It used to be
+  // `!vertical`, measured as `height >= width`, so a square or 4:5 file passed as 세로 9:16 (CLI Round 860).
+  const offReelFrame = reelShape !== "9:16";
   const copyBlocked = captionOver || hashtagsOver || creditMissing;
   /* The server's own record, on either shape — never a local flag. A reload has to keep saying "already
      posted", because the mistake this prevents is a second public copy of something already out there. */
@@ -837,7 +863,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
             <video
               ref={videoRef}
               data-testid="post-video-player"
-              className={`${notVertical ? "aspect-video" : "aspect-[9/16]"} w-full rounded-xl border border-white/10 bg-slate-950/60`}
+              className={`${reelShape === "landscape" ? "aspect-video" : reelShape === "portrait" ? "aspect-[9/16]" : imageBoxAspectClass(reelShape)} w-full rounded-xl border border-white/10 bg-slate-950/60`}
               controls
               /* Was "none". Metadata is what makes the two checks below about this file rather than about the
                  settings it was supposed to be made from, and it is a local read of a file already on disk. */
@@ -854,10 +880,10 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                    says why that is the worst of the three outcomes: a check that reports the plan as a
                    measurement is worse than no check, because it is believed. And it is believed three cards
                    above the publish button, which is the one action here nobody can take back. */
-                const vertical = element.videoWidth && element.videoHeight
-                  ? element.videoHeight >= element.videoWidth
+                const frame = element.videoWidth && element.videoHeight
+                  ? { width: element.videoWidth, height: element.videoHeight }
                   : null;
-                setMeasured(vertical === null && seconds === null ? null : { vertical, seconds });
+                setMeasured(frame === null && seconds === null ? null : { frame, seconds });
               }}
             />
             {/* Instagram's own uploader offers a frame strip for this; the app has the same video already on
@@ -946,10 +972,10 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
           <div className={cardSection} data-testid="post-checks">
             <p className="text-sm font-semibold text-slate-100">올리기 전 확인</p>
             <div className="flex flex-wrap items-center gap-2" data-testid="post-check-shape">
-              <StatusChip tone={notVertical ? "progress" : "success"}>{notVertical ? "가로 영상" : "세로 9:16"}</StatusChip>
-              {notVertical && (
+              <StatusChip tone={offReelFrame ? "progress" : "success"}>{REEL_SHAPE_CHIP[reelShape]}</StatusChip>
+              {offReelFrame && (
                 <span className="text-xs text-slate-400">
-                  릴스는 세로가 기본입니다. 올라가긴 하지만 화면에 여백이 생기거나 잘립니다.
+                  릴스는 세로 9:16 이 기본입니다. 올라가긴 하지만 화면에 여백이 생기거나 잘립니다.
                 </span>
               )}
             </div>
@@ -968,9 +994,9 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
             {/* Three outcomes, because there are three. Saying which half came from the file is the whole point
                 of the line: the two checks above look identical whether they were measured or assumed. */}
             <p className="text-xs text-slate-500" data-testid="post-check-source">
-              {measured?.vertical != null && measured.seconds !== null
+              {measured?.frame != null && measured.seconds !== null
                 ? "위 영상 파일을 직접 재어 본 값입니다."
-                : measured?.vertical != null
+                : measured?.frame != null
                   ? "화면 비율은 위 영상 파일에서 직접 쟀고, 길이는 파일이 알려주지 않아 설정값으로 적었습니다."
                   : measured?.seconds != null
                     ? "길이는 위 영상 파일에서 직접 쟀고, 화면 비율은 파일이 알려주지 않아 설정값으로 적었습니다."
@@ -1267,15 +1293,15 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                         말해 주지 않고, 되돌릴 수 없는 쪽으로 넘어갑니다.
                         인스타그램이 무엇을 할지는 단언하지 않습니다 — 여기서 확인한 적이 없습니다. 잰 값인지
                         설정값인지도 같이 말합니다(설정값으로 「넘습니다」 라고 단언하면 그게 더 나쁩니다). */}
-                    {(tooLong || notVertical) && (
+                    {(tooLong || offReelFrame) && (
                       <p data-testid="post-publish-confirm-checks" className="text-sm text-amber-200">
                         {[
                           "올리기 전 확인에 걸린 것이 있습니다.",
                           tooLong && checkedSeconds !== null
                             ? `길이 ${durationLabel(checkedSeconds)}로 릴스 한도(${REEL_MAX_LABEL})를 넘습니다.`
                             : "",
-                          notVertical ? "가로 영상이라 릴스 화면에서 여백이 생기거나 잘립니다." : "",
-                          (tooLong && measured?.seconds == null) || (notVertical && measured?.vertical == null)
+                          offReelFrame ? `${REEL_SHAPE_CHIP[reelShape]}이라 릴스 화면에서 여백이 생기거나 잘립니다.` : "",
+                          (tooLong && measured?.seconds == null) || (offReelFrame && measured?.frame == null)
                             ? "영상 파일에서 재지 못해 설정값으로 적은 값입니다 — 실제 파일이 다를 수 있습니다."
                             : "",
                         ].filter(Boolean).join(" ")}
