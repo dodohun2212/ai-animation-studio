@@ -164,6 +164,30 @@ describe("WorkflowGuideScreen", () => {
     expect(new Set(totals).size).toBe(distinctQuotes.size);
   });
 
+  /**
+   * 🔴 「확정한 장면 이미지 1장 (첫 프레임)」이 고정 문구였습니다. 2026-09-11 부터 이 앱은 **두 장**을 보냅니다 —
+   * 「장면 이어 그리기」를 켠 프로젝트에서 모델이 끝 그림을 받으면, 클립 N 이 그림 N+1 로 끝나도록 다음 장면
+   * 그림이 같이 나갑니다. 꽃말_버즘나무가 정확히 그 경우였습니다.
+   *
+   * 이 화면의 일이 **「무엇이 나가고 얼마가 드는지」**인데 나가는 것 하나를 빠뜨리고 있었습니다. 그리고 못 받는
+   * 모델에서는 여전히 한 장이라, 두 갈래를 다 봐야 합니다 — 양쪽에서 상대 문장이 **없다**는 것까지.
+   */
+  it("counts the pictures a clip is actually sent, on both kinds of model", () => {
+    render(<WorkflowGuideScreen onBack={() => {}} />);
+    const picker = screen.getByTestId("workflow-guide-video-model");
+    const card = () => screen.getByTestId("workflow-guide-stage-video").textContent ?? "";
+
+    const takesLastFrame = VIDEO_MODEL_OPTIONS.find((option) => option.acceptsLastFrame)!;
+    fireEvent.change(picker, { target: { value: takesLastFrame.id } });
+    expect(card(), takesLastFrame.label).toContain("끝 프레임으로 1장 더");
+    expect(card(), takesLastFrame.label).not.toContain("장면 이미지 1장 (첫 프레임)");
+
+    const firstFrameOnly = VIDEO_MODEL_OPTIONS.find((option) => !option.acceptsLastFrame)!;
+    fireEvent.change(picker, { target: { value: firstFrameOnly.id } });
+    expect(card(), firstFrameOnly.label).toContain("장면 이미지 1장 (첫 프레임)");
+    expect(card(), firstFrameOnly.label).not.toContain("끝 프레임으로 1장 더");
+  });
+
   it("says the picked model is for the calculation only, and points at where the real choice lives", () => {
     render(<WorkflowGuideScreen onBack={() => {}} />);
 
