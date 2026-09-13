@@ -20,6 +20,18 @@ const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 /** Accepted by the server; stated here too so the picker does not offer files it will reject. */
 const ACCEPTED = ".mp3,.wav,.m4a,.ogg,audio/mpeg,audio/wav,audio/mp4,audio/ogg";
+/**
+ * 🔴 The server's own limit (`audio-library.service.ts` MAX_BYTES, and the controller's multer `fileSize`).
+ *
+ * The label said "50MB 이하" and nothing enforced it, so a 300MB file was accepted by the picker, uploaded in
+ * full, and refused at the end — the screen stating a rule it did not apply. The number lives here once and the
+ * label is built from it, so the sentence and the check can never drift apart.
+ *
+ * It is still a second copy of a backend constant. Asked CLI to export it from the contract; until then this is
+ * the only place on this side that knows it.
+ */
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const MAX_UPLOAD_LABEL = `${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB`;
 
 type LicenseKind = AudioLibraryTrack["licenseKind"];
 
@@ -100,7 +112,17 @@ export function AudioLibraryScreen({ onBack }: Props) {
     setUploadError(null);
     setUploadedTitle(null);
     try {
-      const response = await uploadAudioTrack(file, { title, artist, licenseKind, attributionRequired, attributionText, sourceUrl });
+      // 🔴 화면에 보이지 않는 값은 보내지 않습니다. 「그 밖의 경우」로 문구를 적어둔 뒤 라이선스를 바꾸면
+      // attributionRequired 는 false 로 내려가지만 문구는 상태에 남아 있었고, 그대로 올라가 목록에 「캡션 문구:
+      // … (CC BY 4.0)」 가 표시됐습니다 — 출처를 적을 필요가 없는 음원에 남의 조건을 붙여 두는 셈입니다.
+      const response = await uploadAudioTrack(file, {
+        title,
+        artist,
+        licenseKind,
+        attributionRequired,
+        attributionText: attributionRequired ? attributionText : "",
+        sourceUrl,
+      });
       setUploadedTitle(response.track.title);
       setTitle("");
       setArtist("");
@@ -135,6 +157,9 @@ export function AudioLibraryScreen({ onBack }: Props) {
 
   const tracks = state.status === "ready" ? state.tracks : [];
   const selectedLicense = LICENSE_OPTIONS.find((option) => option.value === licenseKind);
+  const tooBig = file !== null && file.size > MAX_UPLOAD_BYTES;
+  /** 출처를 표시해야 하는 음원인데 문구가 비어 있는 경우 — 막지는 않고, 지금이 아는 유일한 시점이라고만 말합니다. */
+  const attributionTextMissing = attributionRequired && !attributionText.trim();
 
   return (
     <section className="mt-8 max-w-3xl space-y-5">
@@ -157,7 +182,7 @@ export function AudioLibraryScreen({ onBack }: Props) {
           음원 올리기
         </h2>
         <label className="block text-sm text-slate-300" htmlFor="audio-file">
-          파일 (MP3, WAV, M4A, OGG · 50MB 이하)
+          파일 (MP3, WAV, M4A, OGG · {MAX_UPLOAD_LABEL} 이하)
           <input
             id="audio-file"
             data-testid="audio-file-input"
@@ -261,14 +286,28 @@ export function AudioLibraryScreen({ onBack }: Props) {
           type="button"
           data-testid="audio-upload-button"
           className={primaryButton}
-          disabled={!file || !licenseKind || uploadPending}
+          disabled={!file || !licenseKind || tooBig || uploadPending}
           onClick={() => void upload()}
         >
           {uploadPending ? "올리는 중..." : "보관함에 추가"}
         </button>
+        {file && tooBig && (
+          <p role="alert" data-testid="audio-file-too-big" className="text-xs text-amber-300">
+            이 파일은 {fileSize(file.size)}로 {MAX_UPLOAD_LABEL} 을(를) 넘습니다. 올려도 서버가 거절하므로, 더 짧게 자르거나
+            더 낮은 음질로 다시 내보낸 파일을 골라 주세요.
+          </p>
+        )}
         {file && !licenseKind && (
           <p data-testid="audio-license-required" className="text-xs text-amber-300">
             음원을 어떻게 구하셨는지 골라야 올릴 수 있습니다. 지금이 출처를 아는 유일한 시점입니다.
+          </p>
+        )}
+        {/* 막지는 않습니다 — 계약상 문구는 선택이고, 정확한 표기를 아직 모를 수도 있습니다. 다만 비워 두면 나중에
+            병합 화면이 「무엇을 적어야 하는지 적혀 있지 않습니다」만 말할 수 있으니, 아는 지금 말합니다. */}
+        {attributionTextMissing && (
+          <p data-testid="audio-attribution-text-missing" className="text-xs text-amber-300">
+            출처를 표시해야 하는 음원인데 캡션 문구가 비어 있습니다. 지금 적어두지 않으면 게시할 때 무엇을 적어야 하는지
+            찾아볼 곳이 없습니다.
           </p>
         )}
         {uploadError && (
@@ -318,7 +357,9 @@ export function AudioLibraryScreen({ onBack }: Props) {
                   이 음원은 캡션에 출처를 적어야 합니다.
                 </p>
               )}
-              {track.attributionText && (
+              {/* 문구는 출처 표시가 필요한 음원에만. 병합 화면도 같은 조건으로 냅니다 — 한쪽만 보여 주면
+                  필요 없는 음원에 남의 조건이 붙어 있는 것처럼 읽힙니다(예전에 올린 음원에 남아 있을 수 있습니다). */}
+              {track.attributionRequired && track.attributionText && (
                 <p data-testid={`audio-track-attribution-text-${track.trackId}`} className="text-xs text-slate-400">
                   캡션 문구: {track.attributionText}
                 </p>

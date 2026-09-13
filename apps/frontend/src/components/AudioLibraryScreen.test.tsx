@@ -18,6 +18,13 @@ function track(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** A File that claims a size without allocating it — 50MB of real bytes in a test is not worth the memory. */
+function sizedFile(bytes: number, name = "long.mp3"): File {
+  const file = new File(["x"], name, { type: "audio/mpeg" });
+  Object.defineProperty(file, "size", { value: bytes });
+  return file;
+}
+
 function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal("fetch", fetchMock);
   return render(<AudioLibraryScreen onBack={() => {}} />);
@@ -126,6 +133,125 @@ describe("AudioLibraryScreen", () => {
     // "그 밖의 경우" is the one the label cannot answer, so that is the one that asks.
     fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "other" } });
     expect(screen.getByTestId("audio-attribution-required")).toBeTruthy();
+  });
+
+  /**
+   * 🔴 화면이 「50MB 이하」라고 적어 두고 그 규칙을 적용하지 않으면, 300MB 파일이 통째로 올라간 뒤에야 거절됩니다.
+   * 여기서 막는 편이 기다림도 없고, 무엇을 해야 하는지도 말해 줄 수 있습니다.
+   */
+  it("refuses a file larger than the limit it states, before anything is uploaded", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [] }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("audio-library-empty");
+    fireEvent.change(screen.getByTestId("audio-file-input"), { target: { files: [sizedFile(60 * 1024 * 1024)] } });
+    fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "cc0" } });
+
+    const tooBig = screen.getByTestId("audio-file-too-big");
+    expect(tooBig.textContent, "실제 크기를 말해 줍니다").toContain("60.0 MB");
+    expect(tooBig.textContent, "무엇을 하면 되는지도").toContain("다시 내보낸");
+    expect(screen.getByTestId("audio-upload-button")).toBeDisabled();
+    expect(fetchMock.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "POST")).toBe(false);
+  });
+
+  /** 반대쪽: 상한 안쪽 파일은 아무 말 없이 그대로 올라갑니다 — 없음/있음을 한 갈래에서만 재면 조건을 뒤집어도 안 잡힙니다. */
+  it("says nothing about size for a file inside the limit", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [] })));
+
+    await screen.findByTestId("audio-library-empty");
+    fireEvent.change(screen.getByTestId("audio-file-input"), { target: { files: [sizedFile(50 * 1024 * 1024)] } });
+    fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "cc0" } });
+
+    expect(screen.queryByTestId("audio-file-too-big"), "정확히 상한이면 서버가 받습니다").toBeNull();
+    expect(screen.getByTestId("audio-upload-button")).not.toBeDisabled();
+  });
+
+  /**
+   * 🔴 화면에 보이지 않는 값을 보내고 있었습니다. 「그 밖의 경우」로 문구를 적은 뒤 라이선스를 바꾸면
+   * attributionRequired 는 false 가 되지만 문구는 상태에 남아 그대로 올라갔고, 출처를 적을 필요가 없는 음원에
+   * 남의 조건이 붙었습니다.
+   */
+  it("does not send a caption line for a licence that needs no credit", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { tracks: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { track: track() }))
+      .mockResolvedValueOnce(jsonResponse(200, { tracks: [track()] }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("audio-library-empty");
+    fireEvent.change(screen.getByTestId("audio-file-input"), {
+      target: { files: [new File(["x"], "night.mp3", { type: "audio/mpeg" })] },
+    });
+    fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "cc-by" } });
+    fireEvent.change(screen.getByTestId("audio-attribution-text"), { target: { value: "Music: 「밤」 by ○○○ (CC BY 4.0)" } });
+    // 마음을 바꿔 「직접 만든 음원」으로. 문구 칸은 사라지지만 값은 상태에 남아 있습니다.
+    fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "self-made" } });
+    expect(screen.queryByTestId("audio-attribution-text")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("audio-upload-button"));
+    await screen.findByTestId("audio-upload-success");
+
+    const form = (fetchMock.mock.calls[1] as [string, RequestInit])[1].body as FormData;
+    expect(form.get("attributionRequired")).toBe("false");
+    expect(form.get("attributionText"), "보이지 않는 값은 보내지 않습니다").toBeNull();
+  });
+
+  /** 반대쪽: 정말 필요한 음원의 문구는 그대로 갑니다. */
+  it("sends the caption line for a licence that does need credit", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { tracks: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { track: track({ attributionRequired: true }) }))
+      .mockResolvedValueOnce(jsonResponse(200, { tracks: [track({ attributionRequired: true })] }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("audio-library-empty");
+    fireEvent.change(screen.getByTestId("audio-file-input"), {
+      target: { files: [new File(["x"], "night.mp3", { type: "audio/mpeg" })] },
+    });
+    fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "cc-by" } });
+    fireEvent.change(screen.getByTestId("audio-attribution-text"), { target: { value: "Music: 「밤」 by ○○○ (CC BY 4.0)" } });
+    fireEvent.click(screen.getByTestId("audio-upload-button"));
+    await screen.findByTestId("audio-upload-success");
+
+    const form = (fetchMock.mock.calls[1] as [string, RequestInit])[1].body as FormData;
+    expect(form.get("attributionRequired")).toBe("true");
+    expect(form.get("attributionText")).toBe("Music: 「밤」 by ○○○ (CC BY 4.0)");
+  });
+
+  /** 출처를 표시해야 하는데 문구가 비어 있으면 지금 말합니다 — 막지는 않습니다(계약상 선택 항목입니다). */
+  it("points out an empty caption line while the source is still known, without blocking the upload", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [] })));
+
+    await screen.findByTestId("audio-library-empty");
+    fireEvent.change(screen.getByTestId("audio-file-input"), {
+      target: { files: [new File(["x"], "night.mp3", { type: "audio/mpeg" })] },
+    });
+    fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "cc-by" } });
+
+    expect(screen.getByTestId("audio-attribution-text-missing").textContent).toContain("비어 있습니다");
+    expect(screen.getByTestId("audio-upload-button"), "경고이지 금지가 아닙니다").not.toBeDisabled();
+
+    fireEvent.change(screen.getByTestId("audio-attribution-text"), { target: { value: "Music: 「밤」 by ○○○" } });
+    expect(screen.queryByTestId("audio-attribution-text-missing")).toBeNull();
+  });
+
+  /** 예전에 올려 둔 음원에 문구만 남아 있을 수 있습니다 — 필요 없는 음원에 남의 조건을 붙여 보이지 않습니다. */
+  it("shows a caption line only on tracks that actually need one", async () => {
+    renderScreen(
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          tracks: [
+            track({ attributionRequired: true, attributionText: "Music: A by B (CC BY 4.0)" }),
+            track({ trackId: "t2", title: "직접 만든 곡", attributionText: "Music: A by B (CC BY 4.0)" }),
+          ],
+        }),
+      ),
+    );
+
+    await waitFor(() => expect(screen.getByTestId("audio-track-attribution-text-t1")).toBeTruthy());
+    expect(screen.queryByTestId("audio-track-attribution-text-t2")).toBeNull();
   });
 
   it("asks before removing a track and says the original file is untouched", async () => {
