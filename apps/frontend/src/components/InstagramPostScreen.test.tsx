@@ -863,6 +863,62 @@ describe("InstagramPostScreen", () => {
   });
 
   /**
+   * 🔴 「올리기 전 확인」은 게시를 **막지 않는** 검사입니다 — 그래서 스크롤해 내려와 버튼만 누른 사람에게는
+   * 아무도 다시 말해 주지 않고, 되돌릴 수 없는 쪽으로 넘어갑니다. 커버 줄이 이 상자에 생긴 이유와 같습니다:
+   * 확인 카드는 버튼에서 한 화면 떨어진 회색 줄이고, 그 거리 때문에 커버를 두 번 놓쳤습니다.
+   */
+  it("repeats a failed pre-flight check on the confirmation, saying whether it was measured or assumed", async () => {
+    renderScreen({
+      durationSeconds: 200,
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
+    });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+
+    const checks = await screen.findByTestId("post-publish-confirm-checks");
+    expect(checks.textContent).toContain("릴스 한도(3분)를 넘습니다");
+    expect(checks.textContent, "잰 값인지 설정값인지 — 설정값으로 단언하면 그게 더 나쁩니다").toContain("설정값으로 적은 값입니다");
+  });
+
+  /** 잰 값일 때는 설정값이라는 단서가 붙지 않습니다 — 붙은 채로 두면 잰 것까지 의심하게 만듭니다. */
+  it("does not call a measured check an assumption, and carries the shape warning too", async () => {
+    renderScreen({
+      projects: [libraryProject({ aspectRatio: "9:16" })],
+      project: { aspectRatio: "9:16" },
+      durationSeconds: 30,
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
+    });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    loadVideoMetadata({ videoWidth: 1920, videoHeight: 1080, duration: 30 });
+
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+
+    const checks = await screen.findByTestId("post-publish-confirm-checks");
+    expect(checks.textContent).toContain("가로 영상");
+    expect(checks.textContent, "길이는 한도 안이라 말할 것이 없습니다").not.toContain("릴스 한도");
+    expect(checks.textContent).not.toContain("설정값으로 적은 값입니다");
+  });
+
+  /** 반대쪽: 걸린 것이 없으면 상자에 그 줄 자체가 없습니다 — 늘 뜨는 경고는 읽히지 않습니다. */
+  it("says nothing about checks on the confirmation when none of them failed", async () => {
+    renderScreen({
+      durationSeconds: 30,
+      targets: { targets: [{ igUserId: "1", username: "ibad_studio", pageName: "이배드" }], selectedIgUserId: "1" },
+    });
+    await pickProject();
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    loadVideoMetadata({ videoWidth: 1080, videoHeight: 1920, duration: 30 });
+
+    fireEvent.click(await screen.findByTestId("post-publish-button"));
+
+    await screen.findByTestId("post-publish-confirm");
+    expect(screen.queryByTestId("post-publish-confirm-checks")).toBeNull();
+  });
+
+  /**
    * A photo card is one picture held under a slow zoom: every frame is the same frame. The picker would ask a
    * question whose answers are identical, so it is dropped and a sentence says why — silence would read as a
    * missing feature.

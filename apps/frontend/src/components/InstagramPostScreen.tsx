@@ -74,6 +74,8 @@ function parseEpisodeSelection(value: string): { projectId: string; episodeNumbe
  * file is carried to another app, not after.
  */
 const REEL_MAX_SECONDS = 180;
+/** 화면이 말하는 한도 — 숫자에서 만듭니다. 한도를 고치면 문장 셋이 같이 움직이도록. */
+const REEL_MAX_LABEL = `${Math.round(REEL_MAX_SECONDS / 60)}분`;
 
 const fieldClass =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
@@ -958,7 +960,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                 <>
                   <StatusChip tone={tooLong ? "danger" : "success"}>{durationLabel(checkedSeconds)}</StatusChip>
                   <span className="text-xs text-slate-400">
-                    {tooLong ? "릴스 한도(3분)를 넘습니다. 장면 수나 장면 길이를 줄여야 합니다." : "릴스 한도(3분) 안입니다."}
+                    {tooLong ? `릴스 한도(${REEL_MAX_LABEL})를 넘습니다. 장면 수나 장면 길이를 줄여야 합니다.` : `릴스 한도(${REEL_MAX_LABEL}) 안입니다.`}
                   </span>
                 </>
               )}
@@ -1256,6 +1258,27 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                              saying what was requested is the part that is true. The grid crop is named because
                              it is the likeliest reason a correctly-sent frame still looks wrong. */
                           : `${(coverOffsetMs / 1000).toFixed(1)}초 지점을 커버로 요청합니다. 인스타그램이 프로필 격자에서 다시 잘라 보여 줄 수 있습니다.`}
+                      </p>
+                    )}
+                    {/* 🔴 「올리기 전 확인」의 빨간 줄을 여기서 한 번 더 말합니다.
+                        커버 줄이 여기 생긴 이유와 같은 이유입니다 — 확인 카드는 버튼에서 한 화면 떨어진 회색
+                        줄이고, 그 거리 때문에 캡틴D 가 커버를 두 번 놓쳤습니다. 길이·화면비는 **게시를 막지
+                        않는** 검사라서 더 그렇습니다: 스크롤해 내려와 버튼만 누른 사람에게는 아무도 다시
+                        말해 주지 않고, 되돌릴 수 없는 쪽으로 넘어갑니다.
+                        인스타그램이 무엇을 할지는 단언하지 않습니다 — 여기서 확인한 적이 없습니다. 잰 값인지
+                        설정값인지도 같이 말합니다(설정값으로 「넘습니다」 라고 단언하면 그게 더 나쁩니다). */}
+                    {(tooLong || notVertical) && (
+                      <p data-testid="post-publish-confirm-checks" className="text-sm text-amber-200">
+                        {[
+                          "올리기 전 확인에 걸린 것이 있습니다.",
+                          tooLong && checkedSeconds !== null
+                            ? `길이 ${durationLabel(checkedSeconds)}로 릴스 한도(${REEL_MAX_LABEL})를 넘습니다.`
+                            : "",
+                          notVertical ? "가로 영상이라 릴스 화면에서 여백이 생기거나 잘립니다." : "",
+                          (tooLong && measured?.seconds == null) || (notVertical && measured?.vertical == null)
+                            ? "영상 파일에서 재지 못해 설정값으로 적은 값입니다 — 실제 파일이 다를 수 있습니다."
+                            : "",
+                        ].filter(Boolean).join(" ")}
                       </p>
                     )}
                     <p className="text-xs text-slate-400">올리는 데 몇 분까지 걸릴 수 있습니다.</p>
