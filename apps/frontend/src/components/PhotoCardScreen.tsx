@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Asset, PhotoCardDurationSeconds, ProjectSummary } from "@ai-animation-studio/shared";
+import type { Asset, AspectRatio, PhotoCardDurationSeconds, ProjectSummary } from "@ai-animation-studio/shared";
 import { PHOTO_CARD_DURATIONS, PHOTO_CARD_QUOTE_MAX_LENGTH } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
@@ -58,7 +58,11 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
   const [projectId, setProjectId] = useState("");
   const [quote, setQuote] = useState("");
   const [seconds, setSeconds] = useState<PhotoCardDurationSeconds>(PHOTO_CARD_DURATIONS[0]);
-  const [vertical, setVertical] = useState(true);
+  // Was a `vertical` boolean (9:16 vs 16:9 only) — item 6 gave `AspectRatio` two more members (1:1, then 4:5),
+  // and a boolean has no way to hold a third or fourth value. Carrying the real `AspectRatio` here, the same
+  // type `CreatePhotoCardRequest.aspectRatio` already takes, means a fifth aspect ratio is a decision at the
+  // <option> list below rather than a silent "everything not 9:16 is 16:9" the boolean would have forced.
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<DisplayError | null>(null);
   /**
@@ -121,7 +125,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
         assetId,
         quote: trimmedQuote,
         clipDurationSeconds: seconds,
-        aspectRatio: vertical ? "9:16" : "16:9",
+        aspectRatio,
       });
       onCreated(response.project.id);
     } catch (caught) {
@@ -253,12 +257,14 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
             <select
               data-testid="photo-card-aspect"
               className={field}
-              value={vertical ? "9:16" : "16:9"}
+              value={aspectRatio}
               disabled={pending}
-              onChange={(event) => setVertical(event.target.value === "9:16")}
+              onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}
             >
               <option value="9:16">세로 (9:16)</option>
               <option value="16:9">가로 (16:9)</option>
+              <option value="1:1">정사각형 (1:1)</option>
+              <option value="4:5">세로형 (4:5)</option>
             </select>
           </label>
 

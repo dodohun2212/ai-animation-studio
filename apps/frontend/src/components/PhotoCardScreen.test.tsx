@@ -75,6 +75,27 @@ describe("PhotoCardScreen", () => {
     });
   });
 
+  // Was a `vertical` boolean that could only ever send "9:16" or "16:9" — item 6 gave the field two more real
+  // values (1:1, then 4:5), so both are asserted here rather than just the one the boolean already had room for.
+  it("offers all four aspect ratios and sends the one actually chosen", async () => {
+    const fetchMock = stub(
+      jsonResponse(200, { assets: [picture] }),
+      jsonResponse(200, { project: makeProject({ id: "quote_01", photoCard: true }) }),
+    );
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
+
+    const select = (await screen.findByTestId("photo-card-aspect")) as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toEqual(["9:16", "16:9", "1:1", "4:5"]);
+
+    fireEvent.change(select, { target: { value: "4:5" } });
+    await fillAndSubmit();
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/photo-cards")).toBe(true));
+    const call = fetchMock.mock.calls.find(([url]) => url === "/photo-cards")!;
+    const body = JSON.parse(String((call[1] as RequestInit).body)) as { aspectRatio: string };
+    expect(body.aspectRatio).toBe("4:5");
+  });
+
   // The button stays out of reach until the three things the server requires are present. Without this the
   // person presses it, waits, and reads a refusal that only says what they could have been told before.
   it("will not submit until a picture, a quote and a name are all there", async () => {
