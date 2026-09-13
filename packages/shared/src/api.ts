@@ -2419,6 +2419,12 @@ export interface UploadAudioTrackRequest {
   artist?: string;
   licenseKind: AudioLicenseKind;
   attributionRequired: boolean;
+  /**
+   * The caption line the licence asks for. Required — non-blank — when `attributionRequired` is true, and the
+   * upload is refused without it: the library has no route to add it later, a merge copies the credit it had,
+   * and publishing refuses a video whose music needs a credit it does not carry. Left blank here, the only way
+   * out was delete, upload again and merge again, found out just before posting (CLI Round 835 · Cowork 837).
+   */
   attributionText?: string;
   sourceUrl?: string;
 }

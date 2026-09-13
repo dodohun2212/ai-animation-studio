@@ -220,9 +220,16 @@ describe("AudioLibraryScreen", () => {
     expect(form.get("attributionText")).toBe("Music: 「밤」 by ○○○ (CC BY 4.0)");
   });
 
-  /** 출처를 표시해야 하는데 문구가 비어 있으면 지금 말합니다 — 막지는 않습니다(계약상 선택 항목입니다). */
-  it("points out an empty caption line while the source is still known, without blocking the upload", async () => {
-    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [] })));
+  /**
+   * 🔴 출처가 필요한데 문구가 비면 **올릴 수 없습니다.**
+   *
+   * 처음엔 경고만 두려 했는데 경로가 그걸 허락하지 않았습니다(CLI Round 835): 보관함에는 문구만 고치는 길이
+   * 없고, 게시는 「출처가 필요한데 문구가 없다」로 거절하며, 병합은 문구를 복사해 둡니다. 그래서 비운 채
+   * 올리면 푸는 방법이 「지우고 → 다시 올리고 → 다시 병합」 뿐이고, 그 사실을 게시 직전에야 알게 됩니다.
+   */
+  it("will not upload a track that needs credit until the caption line is written", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [] }));
+    renderScreen(fetchMock);
 
     await screen.findByTestId("audio-library-empty");
     fireEvent.change(screen.getByTestId("audio-file-input"), {
@@ -230,11 +237,45 @@ describe("AudioLibraryScreen", () => {
     });
     fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "cc-by" } });
 
-    expect(screen.getByTestId("audio-attribution-text-missing").textContent).toContain("비어 있습니다");
-    expect(screen.getByTestId("audio-upload-button"), "경고이지 금지가 아닙니다").not.toBeDisabled();
+    const note = screen.getByTestId("audio-attribution-text-missing");
+    expect(note.textContent, "무엇을 해야 하는지").toContain("적어야 올릴 수 있습니다");
+    expect(note.textContent, "왜 나중에 고칠 수 없는지도").toContain("게시가 막히고");
+    expect(screen.getByTestId("audio-upload-button")).toBeDisabled();
+    expect(fetchMock.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "POST")).toBe(false);
 
+    // 반대쪽: 문구를 적으면 안내가 사라지고 버튼이 열립니다 — 잠금이 풀리지 않으면 그건 막다른 골목입니다.
     fireEvent.change(screen.getByTestId("audio-attribution-text"), { target: { value: "Music: 「밤」 by ○○○" } });
     expect(screen.queryByTestId("audio-attribution-text-missing")).toBeNull();
+    expect(screen.getByTestId("audio-upload-button")).not.toBeDisabled();
+  });
+
+  /** 공백만 적은 것은 크레딧이 아닙니다 — `.trim()` 이 빠지면 빈 문구가 서버까지 갑니다. */
+  it("does not accept whitespace as a caption line", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [] })));
+
+    await screen.findByTestId("audio-library-empty");
+    fireEvent.change(screen.getByTestId("audio-file-input"), {
+      target: { files: [new File(["x"], "night.mp3", { type: "audio/mpeg" })] },
+    });
+    fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "cc-by" } });
+    fireEvent.change(screen.getByTestId("audio-attribution-text"), { target: { value: "   " } });
+
+    expect(screen.getByTestId("audio-attribution-text-missing")).toBeTruthy();
+    expect(screen.getByTestId("audio-upload-button")).toBeDisabled();
+  });
+
+  /** 출처가 필요 없는 음원은 문구가 비어도 그대로 올라갑니다 — 잠금이 모든 라이선스로 번지지 않게. */
+  it("does not block a licence that needs no credit", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [] })));
+
+    await screen.findByTestId("audio-library-empty");
+    fireEvent.change(screen.getByTestId("audio-file-input"), {
+      target: { files: [new File(["x"], "night.mp3", { type: "audio/mpeg" })] },
+    });
+    fireEvent.change(screen.getByTestId("audio-license-select"), { target: { value: "cc0" } });
+
+    expect(screen.queryByTestId("audio-attribution-text-missing")).toBeNull();
+    expect(screen.getByTestId("audio-upload-button")).not.toBeDisabled();
   });
 
   /** 예전에 올려 둔 음원에 문구만 남아 있을 수 있습니다 — 필요 없는 음원에 남의 조건을 붙여 보이지 않습니다. */

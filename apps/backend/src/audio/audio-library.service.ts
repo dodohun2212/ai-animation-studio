@@ -191,6 +191,11 @@ export class AudioLibraryService {
       || (body.sourceUrl !== undefined && typeof body.sourceUrl !== "string")) {
       throw invalidAudioRequest("Upload request is invalid — licenseKind and attributionRequired are required.");
     }
+    // A credit the licence requires has to arrive with the file (UploadAudioTrackRequest.attributionText): there
+    // is no way to add it to the track afterwards, and publishing refuses a video whose music lacks it.
+    if (attributionRequired && !(typeof body.attributionText === "string" && body.attributionText.trim())) {
+      throw invalidAudioRequest("This licence requires a credit line — send attributionText with the upload.");
+    }
     if (file.buffer.length === 0 || file.buffer.length > MAX_BYTES) throw invalidAudioFile(file.buffer.length > MAX_BYTES ? `Audio file exceeds ${Math.round(MAX_BYTES / (1024 * 1024))} MB.` : undefined);
     const originalName = safeOriginalName(file.originalname);
     const extension = path.extname(originalName).toLowerCase();

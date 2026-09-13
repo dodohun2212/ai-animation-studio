@@ -90,6 +90,21 @@ describe("AudioLibraryService", () => {
     expect(listed.tracks.map((track) => track.title)).toEqual(["second", "first"]);
   });
 
+  /*
+   * A credit the licence requires must come with the file (UploadAudioTrackRequest.attributionText) — the library
+   * cannot add it later and publishing refuses a video whose music lacks it. Blank or whitespace is not a credit;
+   * a licence that needs no credit uploads without one.
+   */
+  it("refuses a track whose licence needs a credit when no credit line comes with it", async () => {
+    const { service } = await setup();
+    for (const attributionText of [undefined, "", "   "]) {
+      await expect(service.upload({ buffer: MP3, originalname: "cc.mp3" }, { licenseKind: "cc-by", attributionRequired: true, ...(attributionText !== undefined ? { attributionText } : {}) }), JSON.stringify(attributionText))
+        .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+    await expect(service.upload({ buffer: MP3, originalname: "cc.mp3" }, { licenseKind: "cc-by", attributionRequired: true, attributionText: "Music by Jane Doe" })).resolves.toBeDefined();
+    await expect(service.upload({ buffer: MP3, originalname: "own.mp3" }, { licenseKind: "self-made", attributionRequired: false })).resolves.toBeDefined();
+  });
+
   /** AUDIO_UPLOAD_MAX_BYTES — the one number the screen's label, the screen's check and this refusal all read. */
   it("takes a file at the stated limit and refuses one byte over it", async () => {
     const { service } = await setup();

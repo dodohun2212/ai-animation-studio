@@ -236,7 +236,7 @@ function VersionSlots({
                         그 파일을 놓아 버려서(`final_video_path: null`) 카드가 「최종 영상 없음」이 되고, 이 화면의
                         「최종 영상」 자리도 사라집니다. 되돌린 뒤에 알게 되는 쪽이라 여기서 말합니다. */}
                     {openSlot !== "final"
-                      && " 이미 합쳐 둔 최종 영상은 이 장면과 맞지 않게 되므로 프로젝트에서 떨어져 나갑니다 — 카드가 「최종 영상 없음」으로 바뀌고 여기서 열 수 없게 됩니다. 다시 합치면 새로 만들어지고, 합치는 데 드는 돈은 없습니다."}
+                      && " 이미 합쳐 둔 최종 영상은 이 장면과 맞지 않게 되므로 프로젝트에서 떨어져 나갑니다 — 카드가 「최종 영상 없음」으로 바뀌고 여기서 열 수 없게 됩니다. 다시 합치면 새로 만들어지고, 합치는 데 드는 돈은 없습니다 — 그때 지금 것은 지난 버전으로 남습니다."}
                   </p>
                   {/* Versions are stored per file, but which audio a merge used is stored once
                       per project — so after a restore the app genuinely cannot say which track

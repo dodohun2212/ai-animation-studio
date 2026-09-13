@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AUDIO_LICENSE_KINDS, type AudioLibraryTrack } from "@ai-animation-studio/shared";
+import { AUDIO_LICENSE_KINDS, AUDIO_UPLOAD_MAX_BYTES, type AudioLibraryTrack } from "@ai-animation-studio/shared";
 
 import { audioTrackContentUrl, deleteAudioTrack, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "../api/audioLibraryApi.js";
 import { Spinner } from "./Spinner.js";
@@ -21,17 +21,14 @@ const fieldClassName =
 /** Accepted by the server; stated here too so the picker does not offer files it will reject. */
 const ACCEPTED = ".mp3,.wav,.m4a,.ogg,audio/mpeg,audio/wav,audio/mp4,audio/ogg";
 /**
- * 🔴 The server's own limit (`audio-library.service.ts` MAX_BYTES, and the controller's multer `fileSize`).
+ * The 「… 이하」 label, built from the contract's own number rather than retyped.
  *
  * The label said "50MB 이하" and nothing enforced it, so a 300MB file was accepted by the picker, uploaded in
- * full, and refused at the end — the screen stating a rule it did not apply. The number lives here once and the
- * label is built from it, so the sentence and the check can never drift apart.
- *
- * It is still a second copy of a backend constant. Asked CLI to export it from the contract; until then this is
- * the only place on this side that knows it.
+ * full, and refused at the end — the screen stating a rule it did not apply. `AUDIO_UPLOAD_MAX_BYTES`
+ * (Round 835, `071ab01`) is now the one number the upload interceptor, the service check, the refusal text and
+ * this screen all read, so the sentence and the check cannot drift.
  */
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-const MAX_UPLOAD_LABEL = `${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB`;
+const MAX_UPLOAD_LABEL = `${Math.round(AUDIO_UPLOAD_MAX_BYTES / (1024 * 1024))}MB`;
 
 type LicenseKind = AudioLibraryTrack["licenseKind"];
 
@@ -157,8 +154,17 @@ export function AudioLibraryScreen({ onBack }: Props) {
 
   const tracks = state.status === "ready" ? state.tracks : [];
   const selectedLicense = LICENSE_OPTIONS.find((option) => option.value === licenseKind);
-  const tooBig = file !== null && file.size > MAX_UPLOAD_BYTES;
-  /** 출처를 표시해야 하는 음원인데 문구가 비어 있는 경우 — 막지는 않고, 지금이 아는 유일한 시점이라고만 말합니다. */
+  const tooBig = file !== null && file.size > AUDIO_UPLOAD_MAX_BYTES;
+  /**
+   * 🔴 출처를 표시해야 하는 음원인데 문구가 비어 있으면 **올리지 못합니다.**
+   *
+   * 처음엔 경고만 했는데, CLI 가 경로를 따라가 보니 막는 쪽이 맞았습니다(Round 835):
+   * 이 보관함에는 **고치는 길이 없고**(목록·올리기·지우기·내용뿐), 게시는 「출처가 필요한데 문구가 없다」로
+   * **거절**하며, 병합은 문구를 `used_audio` 에 **복사**해 둡니다. 그래서 문구 없이 올리면 그 음원으로 만든
+   * 영상은 게시가 막히고, 푸는 방법은 **지우고 → 문구와 함께 다시 올리고 → 다시 병합** 뿐입니다. 경고만
+   * 하면 그 사실을 게시 직전에야 알게 됩니다 — 「지금이 출처를 아는 유일한 시점」 이라는 이 화면의 전제와
+   * 어긋납니다. 서버도 같은 조건으로 거절하므로 화면을 건너뛴 호출도 막힙니다.
+   */
   const attributionTextMissing = attributionRequired && !attributionText.trim();
 
   return (
@@ -286,7 +292,7 @@ export function AudioLibraryScreen({ onBack }: Props) {
           type="button"
           data-testid="audio-upload-button"
           className={primaryButton}
-          disabled={!file || !licenseKind || tooBig || uploadPending}
+          disabled={!file || !licenseKind || tooBig || attributionTextMissing || uploadPending}
           onClick={() => void upload()}
         >
           {uploadPending ? "올리는 중..." : "보관함에 추가"}
@@ -302,12 +308,12 @@ export function AudioLibraryScreen({ onBack }: Props) {
             음원을 어떻게 구하셨는지 골라야 올릴 수 있습니다. 지금이 출처를 아는 유일한 시점입니다.
           </p>
         )}
-        {/* 막지는 않습니다 — 계약상 문구는 선택이고, 정확한 표기를 아직 모를 수도 있습니다. 다만 비워 두면 나중에
-            병합 화면이 「무엇을 적어야 하는지 적혀 있지 않습니다」만 말할 수 있으니, 아는 지금 말합니다. */}
+        {/* 왜 잠겼는지와, 나중에 어떤 대가를 치르게 되는지를 같이 말합니다 — 잠긴 버튼만 있으면 사람은 무엇을
+            해야 하는지 모르고, 이유가 없으면 성가신 규칙으로 읽힙니다. */}
         {attributionTextMissing && (
           <p data-testid="audio-attribution-text-missing" className="text-xs text-amber-300">
-            출처를 표시해야 하는 음원인데 캡션 문구가 비어 있습니다. 지금 적어두지 않으면 게시할 때 무엇을 적어야 하는지
-            찾아볼 곳이 없습니다.
+            출처를 표시해야 하는 음원입니다 — 캡션 문구를 적어야 올릴 수 있습니다. 보관함에는 나중에 문구만 고치는 길이
+            없어서, 비운 채 올리면 이 음원으로 만든 영상은 게시가 막히고 지웠다 다시 올려 다시 합쳐야 합니다.
           </p>
         )}
         {uploadError && (

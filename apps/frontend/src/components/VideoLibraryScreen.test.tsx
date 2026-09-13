@@ -182,6 +182,8 @@ describe("VideoLibraryScreen", () => {
     expect(panel.textContent).toContain("떨어져 나갑니다");
     expect(panel.textContent, "카드가 어떻게 바뀌는지 그 말로").toContain("최종 영상 없음");
     expect(panel.textContent, "되돌릴 길도 같이").toContain("다시 합치면");
+    // 다시 합칠 때 지금 최종본이 어디로 가는지까지 (CLI Round 836: archiveExistingFinal 이 지난 버전으로 옮깁니다).
+    expect(panel.textContent).toContain("지난 버전으로 남습니다");
 
     fireEvent.click(within(panel).getByRole("button", { name: "예, 되돌립니다" }));
 
