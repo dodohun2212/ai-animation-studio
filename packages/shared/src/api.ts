@@ -2703,7 +2703,16 @@ export interface VideoLibraryProjectSummary {
   sceneCount: number;
   videosReadyCount: number;
   finalVideoAvailable: boolean;
-  /** Sum of every recorded Runway spend for this project (RunwayBudget.costsByScene, across every attempt, not just this month) — 0 for a project that never used a real Runway credential (local-fake execution mode). */
+  /**
+   * Everything recorded against this project, both ledgers, across every attempt and not just this month: Runway's
+   * video spend (RunwayBudget.costsByScene) plus OpenAI's story, image and narration spend (OpenAiBudget.costsByProject).
+   * 0 for a project that never used a real credential (local-fake execution mode).
+   *
+   * 🔴 This said 「Runway spend」 after the code stopped meaning that — it read only RunwayBudget once, and showed $8.00
+   * against $12.60 actually spent (Cowork Round 532); the fix added OpenAI and the sentence stayed behind. A money
+   * field's comment decides what the screen reading it says, and Cowork nearly labelled this 「영상 $X」 from it
+   * (Cowork Round 835).
+   */
   totalActualCostUsd: number;
   /** Same meaning and source as ProjectSummary.aspectRatio (see that field's doc comment) — lets a library card's thumbnail box match the shape this project's videos were actually rendered in. */
   aspectRatio: AspectRatio;
@@ -2785,7 +2794,11 @@ export interface VideoLibraryEpisodeSummary {
   sceneCount: number;
   videosReadyCount: number;
   finalVideoAvailable: boolean;
-  /** Same meaning as the short row's: every recorded Runway spend for this Episode, across every attempt. */
+  /**
+   * Every recorded Runway spend for this Episode, across every attempt — video only. Not the short row's meaning:
+   * an Episode's scripts, images and narration are recorded against the parent story id, so they appear once on the
+   * story's `ownCostUsd` rather than on each Episode.
+   */
   totalActualCostUsd: number;
   aspectRatio: AspectRatio;
   /**
