@@ -359,6 +359,13 @@ export function VideoLibraryScreen({ onBack }: Props) {
     ? projects.filter((project) => project.topic.toLowerCase().includes(term) || project.projectId.toLowerCase().includes(term))
     : projects;
   /**
+   * Split into the two kinds the sidebar itself already treats as separate things (단기 프로젝트 vs 명언 카드) —
+   * so a search across dozens of flower reels and a handful of quote cards no longer forces one flat scroll
+   * where the two are shuffled together by nothing more meaningful than last-updated time.
+   */
+  const filteredScenes = filtered.filter((project) => project.photoCard !== true);
+  const filteredCards = filtered.filter((project) => project.photoCard === true);
+  /**
    * Episodes arrive in their own array, deliberately — the publish route reads the short-project store, so an
    * Episode listed among `projects` would be a row a person can pick and then cannot publish. They are listed
    * here, and searched by the same box, because "where are my finished videos" is one question.
@@ -432,8 +439,8 @@ export function VideoLibraryScreen({ onBack }: Props) {
             </p>
           )}
 
-          <ul className="space-y-3" data-testid="library-projects">
-            {filtered.map((project) => {
+          {(() => {
+            const renderProject = (project: VideoLibraryProjectSummary) => {
               const target: VersionTarget = { kind: "project", projectId: project.projectId };
               const open = sameTarget(openTarget, target);
               return (
@@ -504,8 +511,43 @@ export function VideoLibraryScreen({ onBack }: Props) {
                   )}
                 </li>
               );
-            })}
-          </ul>
+            };
+
+            return (
+              <>
+                {/* 단편 프로젝트와 명언 카드를 나눈 것 — 둘 다 있을 때, 서로 다른 두 종류가 최근 수정 순서 하나로만
+                    뒤섞여 있으면 원하는 걸 찾으려고 전부 훑어야 합니다. 사이드바가 이미 이 둘을 다른 메뉴로
+                    나눠 놓았으니, 여기서도 같은 구분을 씁니다. 검색은 그대로 둘 다에 적용됩니다. */}
+                {Boolean(filteredScenes.length) && (
+                  <div className="space-y-3" data-testid="library-scene-projects">
+                    {Boolean(filteredCards.length) && (
+                      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+                        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+                        단편 프로젝트
+                      </h2>
+                    )}
+                    <ul className="space-y-3" data-testid="library-projects">
+                      {filteredScenes.map(renderProject)}
+                    </ul>
+                  </div>
+                )}
+
+                {Boolean(filteredCards.length) && (
+                  <div className="space-y-3" data-testid="library-photo-cards">
+                    {Boolean(filteredScenes.length) && (
+                      <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
+                        <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+                        명언 카드
+                      </h2>
+                    )}
+                    <ul className="space-y-3" data-testid="library-photo-cards-list">
+                      {filteredCards.map(renderProject)}
+                    </ul>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* Episodes, in their own list. Absent entirely when there are none, so a person who only makes short
               projects never sees a heading for a thing they do not have. */}

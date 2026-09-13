@@ -72,6 +72,32 @@ describe("VideoLibraryScreen", () => {
     expect((await screen.findByTestId("library-summary-1")).textContent).toContain("장면 6/6");
   });
 
+  // 캡틴D: "영상 싹다 나열해서 보기 불편하게 하지 말고" — the sidebar already keeps 단기 프로젝트 and 명언 카드
+  // apart, so this list groups the same way instead of shuffling both kinds by last-updated time alone.
+  it("splits scene projects and photo cards into their own sections when both are present", async () => {
+    const scene = libraryProject({ projectId: "1", topic: "이배드의 탄생" });
+    const card = libraryProject({ projectId: "card_1", topic: "명언", sceneCount: 1, videosReadyCount: 0, photoCard: true });
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { projects: [scene, card] })));
+
+    const sceneSection = await screen.findByTestId("library-scene-projects");
+    const cardSection = await screen.findByTestId("library-photo-cards");
+    expect(within(sceneSection).getByTestId("library-project-1")).toBeTruthy();
+    expect(within(sceneSection).queryByTestId("library-project-card_1")).toBeNull();
+    expect(within(cardSection).getByTestId("library-project-card_1")).toBeTruthy();
+    expect(within(cardSection).queryByTestId("library-project-1")).toBeNull();
+    expect(sceneSection.textContent).toContain("단편 프로젝트");
+    expect(cardSection.textContent).toContain("명언 카드");
+  });
+
+  // A section heading over one kind alone, with nothing to distinguish it from, is a label nobody asked for.
+  it("shows no group headings when only one kind of project exists", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { projects: [libraryProject()] })));
+
+    const sceneSection = await screen.findByTestId("library-scene-projects");
+    expect(sceneSection.textContent).not.toContain("단편 프로젝트");
+    expect(screen.queryByTestId("library-photo-cards")).toBeNull();
+  });
+
   /**
    * 같은 카드의 다음 줄에도 같은 모순이 남아 있었습니다. 카드를 열면 「1번 장면」 자리가 먼저 열리는데, 명언
    * 카드에는 장면 영상이 설계상 없으므로 「최종 영상 있음」 바로 아래에 「아직 저장된 영상이 없습니다」가 붙습니다.
