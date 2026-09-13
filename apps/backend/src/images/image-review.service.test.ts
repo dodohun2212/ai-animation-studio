@@ -238,6 +238,32 @@ describe("provider-free generated image review", () => {
     expect(result.budget).toEqual({ monthlyLimitUsd: 10, spentUsd: 4, remainingUsd: 6, estimatedRequestCostUsd: 0.10, canSpend: true });
   });
 
+  /*
+   * F4 (docs/00_NOW.md): in a chained project a clip ends on the NEXT scene's picture, so redrawing picture N+1
+   * would change how clip N should end with nothing on clip N saying so — the staleness check compares prompts,
+   * and clip N's prompt did not change. That cannot happen today only because a picture cannot be redrawn once a
+   * clip exists: the video start writes its records and GENERATING_VIDEOS in one save, and no state after it
+   * leads back to the two this gate allows. This pins that. If a later change opens a redraw here, clip N (and
+   * clip N+1, whose first frame this is) need a staleness of their own before it ships.
+   */
+  it("refuses to redraw a picture in every state a clip can exist in, so no clip is left ending on a picture that changed", async () => {
+    const { projects, projectsRoot, service } = await setup();
+    const fetchMock = vi.fn(() => { throw new Error("a refused redraw must not reach a provider"); });
+    vi.stubGlobal("fetch", fetchMock);
+    const before = await fs.readFile(path.join(projectsRoot, "review", "images", "scene2.png"));
+    const afterVideoStart = [
+      WorkflowState.GeneratingVideos, WorkflowState.Interrupted, WorkflowState.ReviewingVideos, WorkflowState.VideosApproved,
+      WorkflowState.VideosReady, WorkflowState.Rendering, WorkflowState.Completed, WorkflowState.Failed,
+    ];
+    for (const state of afterVideoStart) {
+      const project = await projects.findById("review"); project.workflow_state = state; await projects.save(project);
+      await expect(service.regenerate("review", "2", { approved: true }), state).rejects.toMatchObject({ response: { code: "IMAGE_REVIEW_NOT_ALLOWED" } });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(projectsRoot, "review", "images", "scene2.png"))).toEqual(before);
+    vi.unstubAllGlobals();
+  });
+
   it("requires an explicit action, a numeric scene 1 through 6, IMAGES_REVIEW, and a valid PNG", async () => {
     const { projectsRoot, projects, service } = await setup();
     await expect(service.approve("review", "1", {})).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
