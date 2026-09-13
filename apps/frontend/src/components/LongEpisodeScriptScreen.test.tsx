@@ -173,7 +173,7 @@ describe("LongEpisodeScriptScreen", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { episode: episode("script_review") })));
     render(<LongEpisodeScriptScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    expect((await screen.findByTestId("episode-script-group-구도")).textContent).toContain("이미지를 다시 만들어야");
+    expect((await screen.findByTestId("episode-script-group-그림에 담기는 것")).textContent).toContain("이미지를 다시 만들어야");
     expect(screen.getByTestId("episode-script-group-움직임").textContent).toContain("영상을 다시 만들어야");
     expect(screen.getByTestId("episode-script-group-화면 대본").textContent).toContain("다시 만들 것이 없습니다");
     // narration is now on both sides (see sceneFields.ts) — its group renders here too, with the same

@@ -72,7 +72,7 @@ describe("SceneEditScreen", () => {
     await screen.findByDisplayValue("행동 1");
     // The consequence has to be visible up front, not only after saving.
     // getByLabelText("구도") is ambiguous here: the composition field's own label text is also "구도".
-    expect(screen.getByTestId("scene-edit-group-구도").textContent).toContain("이미지를 다시 만들어야");
+    expect(screen.getByTestId("scene-edit-group-그림에 담기는 것").textContent).toContain("이미지를 다시 만들어야");
     expect(screen.getByLabelText("움직임").textContent).toContain("이미지는 그대로 쓸 수 있습니다");
     expect(screen.getByLabelText("다음 장면과의 연결").textContent).toContain("다음 장면의 영상");
     expect(screen.getByLabelText("화면 대본").textContent).toContain("다시 만들 것이 없습니다");

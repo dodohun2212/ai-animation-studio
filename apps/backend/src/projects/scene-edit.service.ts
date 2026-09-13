@@ -20,9 +20,11 @@ import { invalidRequest } from "./project-api.error.js";
  *
  * 🟠 Two of those groupings stopped being true on 2026-09-11 and the list below still reads by the old ones.
  * `start_motion` is now in *both* groups — the image builder draws the scene's still from it and the video
- * prompt opens on it — and `visual_action` is in neither: no prompt reads it any more (it stays editable
- * because it is the scene's own record of what happens, and because `local-image-generation.service.ts` still
- * requires it to be non-empty). The order of the names below is unchanged on purpose; the grouping was never
+ * prompt opens on it — and `visual_action` is in neither: no prompt reads it any more (it stays editable because
+ * it is the scene's own record of what happens, and the Story AI still writes it first as the beat the motion
+ * fields are drawn out of). The image gate moved to `start_motion` too (local-image-generation.service.ts); the
+ * edit screen now groups the fields the way the code reads them (Cowork Round 826). The order of the names below
+ * is unchanged on purpose; the grouping was never
  * what the code did, only how it was read, and recomputation has always been per-scene rather than per-field.
  */
 const EDITABLE_SCENE_FIELDS = [
