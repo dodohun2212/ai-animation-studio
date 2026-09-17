@@ -31,6 +31,7 @@ import {
   episodeSceneErrorMessage,
 } from "./longProjectsApi.js";
 import { sceneErrorMessage } from "./videoWorkflowApi.js";
+import { RUNWAY_SCENE_ERROR_MESSAGES } from "./runwaySceneError.js";
 import { episodeImageStaleness, jsonResponse, makeLongEpisodeOutline, makeLongProject, makeLongProjectSettings, makeLongProjectSummary, nonJsonResponse } from "./testUtils.js";
 
 describe("longProjectsApi", () => {
@@ -583,8 +584,13 @@ describe("longProjectsApi", () => {
   /**
    * 장편의 Runway 장면 오류 표는 짧은 쪽(`videoWorkflowApi.ts`)의 「똑같은 독립 사본」이라고
    * 주석에 적혀 있었지만, 사본은 달라져 있었습니다 — `quota_or_permission` 과 `submit_interrupted` 가
-   * 여기에만 없었습니다. 「똑같다」는 주석은 달라졌을 때 아무 말도 하지 않으므로, 이 짝이
-   * 대신 말합니다: 한 쪽에만 칸을 넣거나 문장을 한 글자 고쳐도 빨간집니다.
+   * 여기에만 없었습니다. 이 짝이 그걸 붙들어 두 표를 같게 만들었고, **이제 표는 하나입니다**
+   * (`runwaySceneError.ts`, Cowork Round 898). 두 모듈은 이름만 다시 내보냅니다.
+   *
+   * 그래서 아래 「둘이 같은 말을 한다」는 이제 거의 자동입니다 — 남은 값어치는 **두 이름이 계속
+   * 그 한 표를 가리키는가**(한쪽이 자기 표를 다시 들면 갈립니다)와, **모든 칸이 문장을 가진다**는 쪽입니다.
+   * 마지막 하나는 새로 넣었습니다: 표에 칸을 더하면서 이 목록에 안 적으면 빨개집니다 — 사본이 사라진
+   * 자리에 남는 유일한 표류 경로가 「짝이 모르는 칸」이라서요.
    *
    * 목록은 백엔드의 닫힌 분류 + 우리가 만든 코드입니다(`RunwayErrorCategory` ·
    * `runway-workflow-support.ts` · 예산 거절 둘). CLI 가 이 합집합을 shared 로 내보내주면
@@ -606,6 +612,15 @@ describe("longProjectsApi", () => {
       "budget_ledger_unreadable",
       "submit_interrupted",
     ];
+
+    /**
+     * 🔴 표가 하나가 되면서 「두 사본이 갈린다」는 길은 없어졌지만, 새 길이 하나 생깁니다 —
+     * 표에 칸을 더하고 이 짝에는 안 적는 것. 그러면 그 칸은 아무도 안 읽은 채로 살아 있고,
+     * 문장이 비어 있거나 폴백과 같아도 여기선 조용합니다. 그래서 목록과 표를 맞대 둡니다.
+     */
+    it("has a tested sentence for every cell in the one table, and no untested cell", () => {
+      expect([...Object.keys(RUNWAY_SCENE_ERROR_MESSAGES)].sort()).toEqual([...SCENE_ERROR_CODES].sort());
+    });
 
     it("says the same thing on an Episode as on a short project, for every known code", () => {
       // fallback 은 단어로 적지 않고 모듈에게 직접 물어봅니다 — 문장을 다듬으면 짝이 조용히 느슬해지는 걸 막습니다.

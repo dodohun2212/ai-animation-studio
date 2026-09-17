@@ -16,7 +16,6 @@ import {
   VIDEO_MODELS,
   isSceneNumber as isValidSceneNumber,
   isSha256Hex,
-  providerTaskFailure,
   type AddLongEpisodeRequest,
   type AddLongEpisodeResponse,
   type ApproveLongEpisodeImageReviewResponse,
@@ -191,64 +190,15 @@ const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연�
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
 const UNKNOWN = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." };
 
-// LongEpisodeVideoProgress.sceneErrors has the same meaning and scope as
-// GenerationProgressResponse.sceneErrors in videoWorkflowApi.ts — kept as an identical, independent
-// copy here rather than a cross-module import, matching this file's existing self-contained pattern.
-// Only the closed set of known codes below gets an actionable Korean message; anything else —
-// including Runway's own raw free-text failure reason — is treated as opaque and shown with a
-// generic fallback rather than surfaced verbatim.
-const SCENE_ERROR_CATEGORY_MESSAGES: Record<string, string> = {
-  authentication: "Runway API 키 인증에 실패했습니다. API 설정 화면에서 키가 올바른지 확인해 주세요.",
-  permission: "Runway 사용 권한 문제로 요청이 거부되었습니다. Runway 계정 상태를 확인해 주세요.",
-  // 짧은 쪽 표에만 있고 여기에 없었습니다. 위의 주석은 두 표가 「똑같은 독립 사본」이라고 말하지만 아니었고,
-  // 크레딧이 모자라서 실패한 에피소드 장면은 「영상 생성에 실패했습니다. 잠시 후 다시」를 읽어 —
-  // 충전하러 가는 대신 빈 계정으로 계속 다시 눌렀습니다. 백엔드는 한 분류기(`RunwayErrorCategory`)를
-  // 두 파이프라인이 같이 씁니다 — 문장은 짧은 쪽과 한 글자도 다르지 않게 둡니다.
-  quota_or_permission: "Runway 크레딧이 부족합니다. Runway 계정에서 크레딧을 충전한 뒤 다시 시도해 주세요.",
-  rate_limit: "Runway 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
-  invalid_request: "요청 형식이 지원되지 않습니다. 문제가 계속되면 알려주세요.",
-  server: "Runway 서버에 일시적인 오류가 있습니다. 잠시 후 다시 시도해 주세요.",
-  network: "Runway 연결이 시간 초과되었거나 네트워크에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
-  timeout: "영상 생성이 제한 시간 안에 끝나지 않았습니다. 다시 시도해 주세요.",
-  no_output: "Runway가 영상 결과물을 반환하지 않았습니다. 다시 시도해 주세요.",
-  invalid_state: "영상 작업 상태가 예상과 달라 처리하지 못했습니다. 다시 시도해 주세요.",
-  budget_exceeded: `이번 달 Runway 예산을 초과하여 요청을 보내지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,
-  // Not budget_exceeded. Reusing that reason would be a lie about money — nothing was overspent; the ledger
-  // itself could not be read, so the amount spent is unknown and the request was never sent. Same sentence as
-  // the HTTP-code label because it is the same cause, and one cause reading two ways is how a person ends up
-  // fixing the wrong thing.
-  budget_ledger_unreadable: BUDGET_LEDGER_UNREADABLE_MESSAGE,
-  /* 짧은 쪽 표에만 있었던 두 번째 칸 — 그리고 빠졌을 때 가장 비싼 칸입니다.
-     `runway-workflow-support.ts:205` 가 내는 값이고, 그 모듈은 에피소드 쪽도 그대로 씁니다
-     (`episode-videos.service.ts:16`). 이 칸의 존재 이유는 「다시 보내지 마라」이고, 없으면
-     폴백이 그 반대를 — 「잠시 후 다시 시도해 주세요」를 — 말합니다. 그게 2026-09-05 에
-     한 장면을 두 번 결제한 문장입니다. 장편에서만 그 문장이 살아있었습니다. */
-  submit_interrupted: "요청을 보낸 뒤 서버가 중단되어 결과를 확인하지 못했습니다. 요청이 이미 접수되었을 수 있어 자동으로 다시 보내지 않았습니다. Runway 계정에서 해당 작업이 생성되었는지 확인한 뒤 다시 시도해 주세요.",
-};
-const SCENE_ERROR_FALLBACK = "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.";
-
 /**
- * The sentence for one failed scene — the provider's code first, this app's categories after.
+ * 한 장면이 실패했을 때의 문장 — 표와 조립기는 `runwaySceneError.ts` 한 곳에 있습니다.
  *
- * 🔴 A Runway task failure's `category` is the provider's own English sentence
- * ("An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)"), so it missed the table above
- * every time and fell through to "영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." That is the sentence
- * that was followed twice and charged twice on 2026-09-05 — and since the remedy advice shipped, it has been
- * sitting directly above it saying the opposite. One failure, two sentences, and no way to tell which is right.
- *
- * The codes and their causes live in the contract's `PROVIDER_TASK_FAILURES`, not here: the adapter already
- * decides `remedy` from those same strings, and a second list keyed on them in this file is the copy this
- * repository keeps finding — one that would drift in the worst direction.
- *
- * Cause only. Whether the attempt was charged is `billedOnFailure`'s sentence to make, one screen away, and
- * two sentences about one person's money is how the two end up disagreeing.
+ * 이 파일과 `videoWorkflowApi.ts` 가 같은 표를 각자 손으로 들고 있었고, 주석은 「똑같은 독립
+ * 사본」이라고 말했지만 두 칸이 한쪽에만 있었습니다 — 크레딧 부족과 「다시 보내지 마라」. 백엔드는
+ * 두 파이프라인에 **한 분류기**로 답하므로, 이쪽도 한 표로 답합니다. 이름만 여기 남깁니다(부르는 곳이
+ * 두 화면으로 갈려 있고, 그 갈림은 이 모듈들이 말하는 것이 맞습니다).
  */
-export function episodeSceneErrorMessage(code: string | undefined, providerCode?: string): string {
-  const known = providerTaskFailure(providerCode);
-  if (known) return known.message;
-  if (!code) return SCENE_ERROR_FALLBACK;
-  return SCENE_ERROR_CATEGORY_MESSAGES[code] ?? SCENE_ERROR_FALLBACK;
-}
+export { runwaySceneErrorMessage as episodeSceneErrorMessage } from "./runwaySceneError.js";
 
 /** Never surfaces the backend's raw message or details text — only a fixed, safe message per code. */
 const LONG_EPISODE_MERGE_ERRORS: Record<string, string> = {
