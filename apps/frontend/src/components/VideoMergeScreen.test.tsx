@@ -497,6 +497,40 @@ describe("VideoMergeScreen", () => {
     expect(JSON.parse(String(init.body)).rotateClockwise).toBe(true);
   });
 
+  /**
+   * 🔴 자막은 완성본 **안에** 구워집니다. 틀을 돌리면 그림만 도는 게 아니라 글자도 같이 눕고, 보는 사람은
+   * 폰을 돌리기 전까지 못 읽습니다. 「폰을 눕혀서 보는 영상이 됩니다」는 **그림 이야기로 읽혀서** 이 사실을
+   * 가렸고, 캡틴D 는 돌린 뒤에야 옆으로 누운 자막을 보셨습니다. 누르기 전에 알아야 하는 사실입니다.
+   */
+  it("warns that burned-in subtitles turn with the frame, before the rotate is confirmed", async () => {
+    /* 🔴 The scenes must carry narration, not just `subtitlesEnabled`. A subtitle is burned from a scene's
+       narration, so `subtitledScenes` is the scenes whose narration is non-empty — a reel with the setting on
+       and nothing to say has no letters to lie down, and the screen is right to stay quiet about it. The bare
+       `sixScenes()` has no narration, so this pair passed the setting and tested the silent branch. */
+    const narrated = sixScenes().map((scene) => ({ ...scene, narration: `내레이션 ${scene.number}` }));
+    renderScreen(vi.fn(), { scenes: narrated, aspectRatio: "16:9" }, { narrationEnabled: false, subtitlesEnabled: true });
+
+    fireEvent.click(await screen.findByTestId("merge-rotate-toggle"));
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+
+    const notice = (await screen.findByTestId("merge-confirm-rotate-notice")).textContent ?? "";
+    expect(notice).toContain("자막도 같이 눕습니다");
+    // 대안을 같이 말합니다 — 「그렇게 됩니다」만 하면 사람은 그게 유일한 길인 줄 압니다.
+    expect(notice).toContain("세로로 다시 만드는");
+  });
+
+  /** 자막이 없는 릴에는 할 말이 아닙니다 — 없는 글자가 눕는다고 겁줄 이유가 없습니다. */
+  it("says nothing about subtitles when the reel has none", async () => {
+    renderScreen(vi.fn(), { scenes: sixScenes(), aspectRatio: "16:9" }, { narrationEnabled: false, subtitlesEnabled: false });
+
+    fireEvent.click(await screen.findByTestId("merge-rotate-toggle"));
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+
+    const notice = (await screen.findByTestId("merge-confirm-rotate-notice")).textContent ?? "";
+    expect(notice).toContain("폰을 눕혀서 보는 영상이 됩니다");
+    expect(notice).not.toContain("자막도 같이 눕습니다");
+  });
+
   it("hides the rotate option on a photo card even at 16:9, where it has not been confirmed to do anything", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
     const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "한 줄" }];
@@ -937,6 +971,33 @@ describe("VideoMergeScreen", () => {
     await screen.findByTestId("merge-success");
     expect(screen.queryByTestId("photo-card-remake")).toBeNull();
     expect((screen.getByTestId("photo-card-remake-published")).textContent).toContain("새 이름");
+  });
+
+  /**
+   * 🔴 캡틴D 께서 「게시된 것도 자막을 다시 달게 해 달라」고 하셨는데, **길은 이미 있었고 이 문장이 그걸
+   * 안 가리키고 있었습니다.** 게시 기록을 지우면(「게시물 준비」의 「다시 올릴 수 있게 하기」) 여기서 그대로
+   * 고칠 수 있습니다 — 캡틴D 가 실제로 그 길로 다니신 적도 있습니다(CLI Round 892).
+   *
+   * 즉 앱이 할 수 있는 것을 알면서 **못 한다고 말하고 더 비싼 길(새 카드)만 권하고 있었습니다.** 막는 규칙은
+   * 그대로입니다 — 바뀐 것은 그 다음에 무엇을 하면 되는지뿐입니다. 이 짝이 붙드는 건 그 「다음」입니다:
+   * 두 길이 다 이름으로 불리고, 되돌릴 수 없는 쪽(게시물을 지우는 것)이 먼저 온다는 것.
+   */
+  it("names the way through — clearing the publish record — not only the more expensive one", async () => {
+    const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "문장" }];
+    renderScreen(vi.fn(), {
+      photoCard: true, scenes: still, workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4",
+      instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-09-02T00:00:00.000Z", caption: "" },
+    });
+
+    await screen.findByTestId("merge-success");
+    const notice = screen.getByTestId("photo-card-remake-published").textContent ?? "";
+    // 화면 이름과 버튼 이름을 **그대로** 부릅니다 — 「기록을 지우면 됩니다」만으로는 어디 있는지 모릅니다.
+    expect(notice).toContain("다시 올릴 수 있게 하기");
+    expect(notice).toContain("게시물 준비");
+    // 되돌릴 수 없는 쪽이 먼저: 인스타그램에서 지우는 것이 조건이라는 말이 버튼 이름보다 앞에 옵니다.
+    expect(notice.indexOf("인스타그램에서 그 게시물을 지우신 뒤")).toBeLessThan(notice.indexOf("다시 올릴 수 있게 하기"));
+    // 막는 이유는 그대로 남아 있어야 합니다 — 길을 알려 주는 것과 규칙을 푸는 것은 다릅니다.
+    expect(notice).toContain("소리 없이 다른 영상으로 바뀌기 때문");
   });
 
   // An ordinary finished project keeps its one-way door: there are paid clips behind that file.

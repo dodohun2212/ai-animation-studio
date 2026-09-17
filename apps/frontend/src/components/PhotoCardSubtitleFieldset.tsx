@@ -23,9 +23,22 @@ interface Props {
   /** The project's shape — the preview is drawn at the merge's real frame for it (MERGE_FRAME_FOR_ASPECT), 1:1 and 4:5 included. */
   aspectRatio: AspectRatio;
   layout: PhotoCardSubtitleLayout;
+  /**
+   * What this card was last merged with, when it has been merged — the values the finished video on screen was
+   * actually burned with.
+   *
+   * 🔴 Without it the only way back from a dragged slider was a page reload. 「기본값으로」 goes to the factory
+   * default, which for an already-merged card is **a third place** — not where the slider started and not what
+   * the video shows. So a person who nudged a slider to see what it did had no way to put it back, and the
+   * preview beside the finished video then disagreed with it for a reason the screen never stated.
+   */
+  savedLayout?: PhotoCardSubtitleLayout;
   onChange: (layout: PhotoCardSubtitleLayout) => void;
   disabled?: boolean;
 }
+
+const sameLayout = (a: PhotoCardSubtitleLayout, b: PhotoCardSubtitleLayout): boolean =>
+  a.scale === b.scale && a.center === b.center;
 
 /** The long side of the frame the renderer works in. Sizes are said in these pixels, which is the unit a person can picture. */
 const REFERENCE_HEIGHT = 1920;
@@ -62,7 +75,7 @@ function withAlpha(hex: string, alpha: number): string {
  * numbers are the same ones the server accepts, read from the shared bounds rather than repeated, so a slider
  * cannot reach a value the merge would refuse.
  */
-export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layout, onChange, disabled }: Props) {
+export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layout, savedLayout, onChange, disabled }: Props) {
   /*
    * Drawn at the video's real size and scaled down, not laid out small.
    *
@@ -320,15 +333,35 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
             </p>
           </div>
 
-          <button
-            type="button"
-            data-testid="photo-card-subtitle-reset"
-            className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
-            disabled={disabled || atDefault}
-            onClick={() => onChange({ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT })}
-          >
-            기본값으로
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {/*
+              🔴 저장된 값으로 돌아오는 길. 「기본값으로」는 **공장 기본값**이라, 이미 한 번 만들어 둔 카드에서는
+              세 번째 자리입니다 — 슬라이더가 시작한 곳도 아니고 아래 영상이 보여주는 값도 아닙니다. 슬라이더를
+              살짝 움직여 본 사람에게 되돌릴 길이 새로고침밖에 없었고, 그 상태에서 미리보기는 완성된 영상과
+              다르게 보이면서 **왜 다른지는 아무 말도 하지 않았습니다**(캡틴D 가 실제로 이걸 버그로 보셨습니다).
+              이 버튼은 값을 바꾸는 기능이 아니라, 바꾼 것을 **되돌릴 수 있게** 하는 기능입니다.
+            */}
+            {savedLayout && !sameLayout(layout, savedLayout) && (
+              <button
+                type="button"
+                data-testid="photo-card-subtitle-restore"
+                className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
+                disabled={disabled}
+                onClick={() => onChange({ ...savedLayout })}
+              >
+                지금 영상의 값으로
+              </button>
+            )}
+            <button
+              type="button"
+              data-testid="photo-card-subtitle-reset"
+              className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
+              disabled={disabled || atDefault}
+              onClick={() => onChange({ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT })}
+            >
+              기본값으로
+            </button>
+          </div>
         </div>
       </div>
 

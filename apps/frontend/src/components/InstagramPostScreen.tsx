@@ -1050,6 +1050,15 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                     <p className="text-xs text-slate-300">
                       폰을 눕혀서 보는 영상이 됩니다. 이전 영상은 보관되어 되돌릴 수 있습니다.
                     </p>
+                    {/*
+                      🔴 자막은 완성본 **안에** 구워져 있습니다. 파일을 돌리면 그림만 도는 게 아니라 글자도
+                      같이 눕고, 보는 사람은 폰을 돌리기 전까지 못 읽습니다. 「폰을 눕혀서 보는 영상」은
+                      그림 이야기로 읽혀서 이 사실을 가렸습니다 — 캡틴D 가 돌린 뒤에야 발견하셨습니다.
+                      여기서는 자막이 켜져 있었는지 알 길이 없으므로 **단정하지 않고 조건으로** 말합니다.
+                    */}
+                    <p className="text-xs text-amber-300" data-testid="post-rotate-subtitle-notice">
+                      자막이 들어간 영상이면 글자도 같이 눕습니다 — 글자를 바로 읽히게 하시려면 돌리지 말고 세로로 다시 만드는 쪽이 낫습니다.
+                    </p>
                     <div className="flex gap-3">
                       <button
                         type="button"

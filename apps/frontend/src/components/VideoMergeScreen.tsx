@@ -166,6 +166,9 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    * 사자성어 line from the rest.
    */
   const [layout, setLayout] = useState<PhotoCardSubtitleLayout>(DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT);
+  /* 서버가 준 값 그대로 — 슬라이더와 따로 둡니다. 슬라이더는 「다음에 구울 값」이고 이건 「지금 영상이
+     구워진 값」이라, 하나로 합치면 되돌릴 자리가 사라집니다. */
+  const [savedLayout, setSavedLayout] = useState<PhotoCardSubtitleLayout | undefined>(undefined);
   const [quote, setQuote] = useState("");
   /**
    * The same two numbers for an ordinary reel, and a separate field on purpose.
@@ -272,7 +275,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             .catch(() => { /* Unknown, which is what approvedCount already is. */ });
         }
         setPhotoCard(response.project.photoCard === true);
-        if (response.project.subtitleLayout) setLayout(response.project.subtitleLayout);
+        if (response.project.subtitleLayout) {
+          setLayout(response.project.subtitleLayout);
+          setSavedLayout(response.project.subtitleLayout);
+        }
         if (response.project.sceneSubtitleLayout) setSceneLayout(response.project.sceneSubtitleLayout);
         setQuote(response.project.scenes[0]?.narration ?? "");
         setSubtitledScenes(
@@ -354,6 +360,9 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         rotatable && rotateClockwise ? true : undefined,
       );
       setResult(response);
+      /* 🔴 방금 구운 값이 이제 「지금 영상의 값」입니다. 안 옮기면 「지금 영상의 값으로」 버튼이 **한 판 전**
+         값으로 되돌려 놓고, 그건 이 버튼이 막으려던 바로 그 어긋남입니다. */
+      if (photoCard) setSavedLayout(layout);
       // Back to showing the finished video: the request the button existed for has been made.
       setRemaking(false);
       setUnplayable(false);
@@ -425,7 +434,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       {blocked && approvedCount !== null && sceneCount !== null && (
         /* Named before the button is reached, not after the server refuses — the person can go back and
            confirm the rest instead of reading an error they did not cause. */
-        <p role="status" data-testid="merge-blocked" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+        <p role="status" data-testid="merge-blocked" className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
           아직 확정하지 않은 장면이 {sceneCount - approvedCount}개 있습니다. 장면 영상 화면에서 모두 확정한 뒤에 최종 영상을 만들 수 있습니다.
         </p>
       )}
@@ -436,6 +445,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           quote={quote}
           aspectRatio={aspectRatio}
           layout={layout}
+          savedLayout={savedLayout}
           onChange={setLayout}
           disabled={pending || confirmOpen}
         />
@@ -613,8 +623,14 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
                 {contentSentence ? ` ${contentSentence}` : ""} 유료 요청은 전송되지 않습니다.
               </p>
               {rotatable && rotateClockwise && (
-                <p data-testid="merge-confirm-rotate-notice" className="text-sm text-amber-200">
+                <p data-testid="merge-confirm-rotate-notice" className="text-sm text-amber-300">
                   90도 돌려서 만듭니다 — 폰을 눕혀서 보는 영상이 됩니다.
+                  {/* 🔴 자막은 틀 안에 구워지므로 틀이 돌면 **글자도 같이 눕습니다.** 「폰을 눕혀서 본다」는
+                      그림 이야기로 읽히고, 자막이 있는 릴에서는 읽는 사람이 폰을 돌리기 전까지 글자를 못
+                      읽습니다 — 누르기 전에 알아야 하는 사실이지 누른 뒤에 발견할 일이 아닙니다. */}
+                  {mediaMode?.subtitlesEnabled && subtitledScenes.length > 0
+                    ? " 자막도 같이 눕습니다 — 글자를 바로 읽히게 하시려면 돌리지 말고 세로로 다시 만드는 쪽이 낫습니다."
+                    : ""}
                 </p>
               )}
               <div className="flex gap-3">
@@ -664,9 +680,24 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         </div>
       )}
       {result && photoCard && published && (
-        <p data-testid="photo-card-remake-published" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
-          이 카드는 이미 인스타그램에 올렸기 때문에 다시 만들 수 없습니다. 올라간 게시물의 영상이 소리 없이 다른 영상으로 바뀌기 때문입니다. 자막을 고치시려면 카드를 새 이름으로 만들어 주세요.
-        </p>
+        /*
+         * 🔴 이 문장은 **막는 이유**만 말하고 **지나가는 길**은 엉뚱한 곳을 가리키고 있었습니다.
+         *
+         * 「카드를 새 이름으로 만들어 주세요」가 전부였는데, 실제로는 게시 기록을 지우면 여기서 그대로
+         * 고칠 수 있습니다(「게시물 준비」의 「다시 올릴 수 있게 하기」 — 캡틴D 가 실제로 그 길로 다니신 적이
+         * 있습니다, CLI Round 892). 즉 있는 길을 없다고 말하고, 대신 더 비싼 길을 권하고 있었습니다.
+         * 이 저장소가 반복해서 잡아 온 그 모양입니다 — 앱이 무슨 일이 일어났는지 정확히 알면서 할 수 있는
+         * 것 대신 할 수 없는 것을 말하는 것.
+         *
+         * 막는 규칙은 그대로입니다. 게시 기록이 걸려 있는 동안은 파일을 바꾸지 않습니다 — 그래야 올라간
+         * 게시물과 디스크의 파일이 말없이 갈라지지 않습니다. 바뀐 것은 **그 다음에 무엇을 하면 되는지**뿐입니다.
+         */
+        <div data-testid="photo-card-remake-published" className="space-y-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <p>이 카드는 이미 인스타그램에 올렸기 때문에 지금은 다시 만들 수 없습니다. 올라간 게시물의 영상이 소리 없이 다른 영상으로 바뀌기 때문입니다.</p>
+          <p className="text-xs text-slate-300">
+            자막을 고치시려면 두 가지 길이 있습니다. <strong>① 인스타그램에서 그 게시물을 지우신 뒤</strong>, 아래 「게시물 준비로」에서 <strong>「다시 올릴 수 있게 하기」</strong>를 누르시면 여기서 자막을 고쳐 다시 만들 수 있습니다. <strong>② 게시물을 그대로 두시려면</strong> 카드를 새 이름으로 만들어 주세요.
+          </p>
+        </div>
       )}
 
       {result && (
@@ -685,7 +716,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           <AttributionNotice usedAudio={result.project.usedAudio} />
           <FinalVideoGenerationSourceNotice source={result.project.finalVideoGenerationSource} testId="final-video-generation-source-notice" />
           {unplayable ? (
-            <p data-testid="final-video-missing" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
+            <p data-testid="final-video-missing" className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
               최종 영상 파일을 재생할 수 없습니다. 장면 영상 중에 내용이 비어 있는 것이 섞여 있을 수 있습니다 — 장면 영상 화면에서 하나씩 재생해 확인해 주세요.
             </p>
           ) : (

@@ -615,6 +615,22 @@ describe("InstagramPostScreen", () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === ROTATE_URL)).toHaveLength(0);
   });
 
+  /**
+   * 🔴 자막은 완성본 안에 구워져 있어서, 파일을 돌리면 글자도 같이 눕습니다. 확인창은 「폰을 눕혀서 보는
+   * 영상이 됩니다」만 말했고 그건 **그림 이야기로 읽힙니다** — 캡틴D 는 돌린 뒤에야 옆으로 누운 자막을
+   * 보셨습니다. 이 화면은 자막이 켜져 있었는지 알 길이 없으므로 단정하지 않고 조건으로 말합니다.
+   */
+  it("says burned-in subtitles turn too, before the rotate is confirmed", async () => {
+    renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" } });
+    await pickProject();
+
+    fireEvent.click(screen.getByTestId("post-rotate-final"));
+
+    const notice = screen.getByTestId("post-rotate-subtitle-notice").textContent ?? "";
+    expect(notice).toContain("글자도 같이 눕습니다");
+    expect(notice).toContain("세로로 다시 만드는");
+  });
+
   it("sends exactly one rotate request, and only after it is confirmed", async () => {
     const { fetchMock } = renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" }, rotate: "ok" });
     await pickProject();
