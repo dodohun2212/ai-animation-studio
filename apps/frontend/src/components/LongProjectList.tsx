@@ -6,6 +6,7 @@ import { formatDateTime } from "../utils/formatDateTime.js";
 import { longEpisodeOutlineStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
+import { riseInCard } from "./ui/surfaces.js";
 
 /**
  * The outline's state, in the chip grammar of §2.1 — exhaustive, so a third outline status cannot be added
@@ -126,11 +127,12 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
       )}
       {state.projects !== null && state.projects.length > 0 && (
         <ul className="mt-4 space-y-3">
-          {state.projects.map((project) => (
+          {state.projects.map((project, index) => (
             <li key={project.id}>
               <button
                 type="button"
-                className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3 text-left text-slate-100"
+                className={`flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3 text-left text-slate-100 transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 ${riseInCard}`}
+                style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
                 onClick={() => onOpenProject(project.id)}
               >
                 <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-xl bg-slate-800">

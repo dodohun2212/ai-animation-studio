@@ -13,7 +13,7 @@ import { imageBoxAspectClass } from "../utils/sceneFields.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, outlineButton } from "./ui/surfaces.js";
+import { cardSection, outlineButton, riseInCard } from "./ui/surfaces.js";
 
 interface Props {
   onBack: () => void;
@@ -440,11 +440,16 @@ export function VideoLibraryScreen({ onBack }: Props) {
           )}
 
           {(() => {
-            const renderProject = (project: VideoLibraryProjectSummary) => {
+            const renderProject = (project: VideoLibraryProjectSummary, index: number) => {
               const target: VersionTarget = { kind: "project", projectId: project.projectId };
               const open = sameTarget(openTarget, target);
               return (
-                <li key={project.projectId} data-testid={`library-project-${project.projectId}`} className={cardSection}>
+                <li
+                  key={project.projectId}
+                  data-testid={`library-project-${project.projectId}`}
+                  className={`${cardSection} ${riseInCard}`}
+                  style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <button
                       type="button"
@@ -571,11 +576,18 @@ export function VideoLibraryScreen({ onBack }: Props) {
                     </span>
                   </div>
               <ul className="space-y-3">
-                {group.rows.map((one) => {
+                {group.rows.map((one, index) => {
                   const episodeTarget: VersionTarget = { kind: "episode", projectId: one.projectId, episodeNumber: one.episodeNumber };
                   const episodeOpen = sameTarget(openTarget, episodeTarget);
                   return (
-                  <li key={`${one.projectId}-${one.episodeNumber}`} data-testid={`library-episode-${one.projectId}-${one.episodeNumber}`} className={cardSection}>
+                  <li
+                    key={`${one.projectId}-${one.episodeNumber}`}
+                    data-testid={`library-episode-${one.projectId}-${one.episodeNumber}`}
+                    className={`${cardSection} ${riseInCard}`}
+                    style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
+                  >
+                    {/* 상태·비용·「지난 영상」 버튼을 한 줄에 — 예전에는 이 버튼이 영상 아래 혼자 떨어져 있어서
+                        같은 카드의 동작이 위아래로 흩어져 있었다. */}
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <span className="text-sm font-semibold text-slate-100">{one.projectTitle} · {one.episodeNumber}화 {one.title}</span>
                       <span className="flex flex-wrap items-center gap-2">
@@ -585,6 +597,15 @@ export function VideoLibraryScreen({ onBack }: Props) {
                         <span className="text-xs text-slate-400 tabular-nums" data-testid={`library-episode-cost-${one.projectId}-${one.episodeNumber}`}>
                           누적 ${one.totalActualCostUsd.toFixed(2)}
                         </span>
+                        <button
+                          type="button"
+                          data-testid={`library-episode-versions-${one.projectId}-${one.episodeNumber}`}
+                          className={smallOutlineButton}
+                          aria-expanded={episodeOpen}
+                          onClick={() => (episodeOpen ? setOpenTarget(null) : openSlotVersions(episodeTarget, 1 as SceneNumber))}
+                        >
+                          {episodeOpen ? "지난 영상 닫기" : "지난 영상 보기"}
+                        </button>
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 tabular-nums">
@@ -612,18 +633,9 @@ export function VideoLibraryScreen({ onBack }: Props) {
                         src={longEpisodeFinalVideoContentUrl(one.projectId, one.episodeNumber, one.updatedAt)}
                       />
                     )}
-                    {/* The paid past clips, reachable at last. Until now an Episode's versions existed only
-                        inside its video job screen, so once that job was behind you the only way back to a clip
-                        you had already paid for was to pay again. */}
-                    <button
-                      type="button"
-                      data-testid={`library-episode-versions-${one.projectId}-${one.episodeNumber}`}
-                      className={smallOutlineButton}
-                      aria-expanded={episodeOpen}
-                      onClick={() => (episodeOpen ? setOpenTarget(null) : openSlotVersions(episodeTarget, 1 as SceneNumber))}
-                    >
-                      {episodeOpen ? "지난 영상 닫기" : "지난 영상 보기"}
-                    </button>
+                    {/* The paid past clips, reachable at last (button now lives in the header row above).
+                        Until now an Episode's versions existed only inside its video job screen, so once that
+                        job was behind you the only way back to a clip you had already paid for was to pay again. */}
                     {episodeOpen && (
                       <VersionSlots
                         target={episodeTarget}

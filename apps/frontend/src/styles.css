@@ -1,6 +1,60 @@
 @import "tailwindcss";
 
 /*
+ * 디자인 톤 B(Cowork 룩북 라운드) — 기존 보라·핑크 그라데이션(§2.1)에 골드 포인트 색 하나를 더하고, 목록
+ * 화면에서만 쓰는 절제된 모션 세 가지를 유틸리티 클래스로 추가한다. 새 클래스를 붙인 요소만 영향을 받고,
+ * 기존 화면은 그대로다 — `.effect-card`/`rise-in`/`shimmer-sweep`/`pulse-dot`을 실제로 쓰는 곳에서만 켜진다.
+ */
+@theme {
+  --color-gold: #e8c27a;
+  --color-gold-ink: #2b1d09;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer-sweep {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(340%); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .25; }
+}
+
+/* 카드를 스치는 빛 한 줄 — 호버할 때만 움직이고, 평소에는 완전히 정지해 있다. */
+.effect-card { position: relative; overflow: hidden; }
+.effect-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.1) 50%, transparent 60%);
+  transform: translateX(-120%);
+}
+.effect-card:hover::after {
+  transform: translateX(120%);
+  transition: transform 0.7s ease;
+}
+
+/* 실제로 진행 중인 항목의 진행 바에만 붙이는 반짝임 — 끝난 항목의 바는 움직이지 않는다. */
+.bar-live { position: relative; overflow: hidden; }
+.bar-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: shimmer-sweep 1.3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .effect-card::after { display: none; }
+  .bar-live::after { display: none; animation: none; }
+}
+
+/*
  * The two faces the finished video is burned with, so the preview shows the letters the render will.
  *
  * The subtitle preview has always asked for "Noto Serif KR" and "Noto Sans KR" by name, and nothing ever

@@ -35,7 +35,12 @@ export function StatusChip({ tone, children, "data-testid": testId }: StatusChip
       data-tone={tone}
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${TONE_CLASSNAME[tone]}`}
     >
-      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
+      {/* 디자인 톤 B: 실제로 지금 진행 중인 것(progress 톤)에만 점이 깜빡인다 — 끝났거나 대기 중인 칩은
+          그대로 정지해 있다. 색만으로 상태를 말하지 않는다는 §6 규칙은 그대로: 점은 거들 뿐, 글자가 상태다. */}
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 rounded-full bg-current ${tone === "progress" ? "[animation:pulse-dot_1.4s_ease-in-out_infinite] motion-reduce:[animation:none]" : ""}`}
+      />
       {children}
     </span>
   );

@@ -731,6 +731,14 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
   return (
     <section aria-label="분위기·장면 참고 이미지" className={cardSection}>
       <SectionHeading>분위기·장면 참고 이미지 <AutoSaveTag /></SectionHeading>
+      {/*
+       * CLI Round 882 (가): 16장은 캐릭터·장면 참고·앞 장면까지 합쳐 장면당 전체 합계라(image-reference-selection.ts:274),
+       * 여기서 분위기 개수만 세서 경고하면 실제 한도와 어긋난다 — 그래서 개수를 세지 않고 규칙만 미리 말해 둔다.
+       * 넘쳤을 때의 결과(뒤쪽이 빠짐, 빠진 수)는 생성 뒤 ImageGenerationScreen.tsx:619 에서 실제 수치로 알려 준다.
+       */}
+      <p className="text-xs text-slate-400">
+        한 장면에 보내는 참고 이미지는 캐릭터·장면 참고·앞 장면까지 합쳐 최대 16장입니다. 넘치면 뒤쪽이 빠지고, 빠진 수는 이미지 검토에서 알려 드립니다.
+      </p>
       <p className="text-xs text-slate-400">검색 결과가 없다면 이미지 보관함에서 배경·소품·스타일 이미지를 먼저 등록해 주세요.</p>
       {error && (
         <p role="alert" data-testid="asset-reference-error" data-error-code={error.code} className="text-sm text-rose-400">

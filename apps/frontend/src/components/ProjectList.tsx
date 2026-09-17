@@ -9,6 +9,7 @@ import { WorkflowProgressBar, progressPercent } from "./WorkflowProgressBar.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { CoverThumb } from "./ui/CoverThumb.js";
 import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
+import { riseInCard } from "./ui/surfaces.js";
 
 interface ProjectListProps {
   refreshToken: number;
@@ -124,11 +125,12 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
       )}
       {state.projects !== null && projects.length > 0 && (
         <ul className="mt-4 space-y-3">
-          {projects.map((project) => (
+          {projects.map((project, index) => (
             <li key={project.id}>
               <button
                 type="button"
-                className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3 text-left text-slate-100 transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30"
+                className={`flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3 text-left text-slate-100 transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 ${riseInCard}`}
+                style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
                 onClick={() => onOpenProject(project.id)}
               >
                 {/*
