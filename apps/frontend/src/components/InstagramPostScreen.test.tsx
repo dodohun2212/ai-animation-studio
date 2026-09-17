@@ -18,6 +18,9 @@ function scene(number: number, narration: string): Scene {
 }
 
 const LIBRARY_URL = "/videos/library";
+/** What the backend stamps on a project it has just rotated — later than `makeProject`'s own `updatedAt`. */
+const ROTATED_AT = "2026-09-01T00:00:00.000Z";
+const ROTATE_URL = "/projects/p1/videos/final/rotate";
 
 function libraryProject(overrides: Record<string, unknown> = {}) {
   return {
@@ -43,6 +46,20 @@ function libraryEpisode(overrides: Record<string, unknown> = {}) {
     updatedAt: "2026-08-26T17:29:37.982Z", sceneCount: 6, videosReadyCount: 6,
     finalVideoAvailable: true, totalActualCostUsd: 1.5, aspectRatio: "9:16",
     ...overrides,
+  };
+}
+
+/**
+ * A long project's settings, in the shape `isGetLongProjectSettingsResponse` actually accepts. Only
+ * `aspectRatio` matters to this screen — it is the Episode's shape when the library listing has not landed —
+ * but the guard checks every field, and a fixture it rejects is a fixture that proves nothing.
+ */
+function makeLongSettings(aspectRatio: unknown) {
+  return {
+    title: "이배드", logline: "", overview: "", genre: "장르", tone: "", theme: "",
+    audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "",
+    episodeCount: 6, episodeDurationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5,
+    aspectRatio, narrationEnabled: false, subtitlesEnabled: false,
   };
 }
 
@@ -74,6 +91,12 @@ function renderScreen(options: {
   /** What the backend could read off the interrupted attempt. Omitted stands for a trace it could not read. */
   unknownDetails?: { startedAt: string; igUserId: string };
   forget?: "ok" | "not-recorded";
+  /**
+   * The finished-video rotate (CLI Round 885). "ok" answers with the same project carrying a LATER
+   * `updatedAt` — that later stamp is the whole point: without it the player keeps replaying the
+   * pre-rotate file, because the final video's address never changes.
+   */
+  rotate?: "ok" | "VIDEO_FINAL_ALREADY_ROTATED" | "VIDEO_FINAL_ALREADY_PUBLISHED" | "VIDEO_MERGE_BUSY";
   episodes?: ReturnType<typeof libraryEpisode>[];
   episode?: Record<string, unknown>;
   initialProjectId?: string;
@@ -92,7 +115,14 @@ function renderScreen(options: {
       return jsonResponse(200, { settings: { sceneCount: 6, clipDurationSeconds: 5, episodeDurationSeconds: 30 }, changeable: true, projectDefaults: { sceneCount: 6, clipDurationSeconds: 5 } });
     }
     if (url === "/long-projects/long/settings") {
-      return jsonResponse(200, { settings: { ...makeSettings(30), aspectRatio: "9:16" } });
+      /* 🔴 This used to answer with `makeSettings(30)` — a *short* project's settings — so
+         `isGetLongProjectSettingsResponse` rejected it every single time and the screen's `.catch(() => null)`
+         swallowed the refusal. The fallback it stands for was never once exercised. It matters here: the screen
+         reads an Episode's shape from the library row, and a direct link (`initialProjectId`) picks before that
+         listing lands, leaving these settings as the only thing that knows the shape.
+         It follows the Episode fixture so one render states one shape whichever path the screen takes. */
+      const episodeAspect = (options.episodes ?? [])[0]?.aspectRatio ?? "9:16";
+      return jsonResponse(200, { settings: makeLongSettings(episodeAspect), aspectRatioChangeable: true });
     }
     if (url === "/projects/p1") return jsonResponse(200, { project: makeProject({ id: "p1", ...options.project }) });
     if (url === "/projects/p1/settings") {
@@ -128,6 +158,15 @@ function renderScreen(options: {
     if (url === "/projects/p1/instagram/post") {
       if (options.forget === "not-recorded") return jsonResponse(409, { code: "INSTAGRAM_POST_NOT_RECORDED", message: "raw backend detail" });
       return jsonResponse(200, { project: makeProject({ id: "p1", ...options.project, instagramPost: undefined }) });
+    }
+    if (url === "/projects/p1/videos/final/rotate") {
+      if (options.rotate && options.rotate !== "ok") {
+        return jsonResponse(409, { code: options.rotate, message: "raw backend detail C:/Users/someone/project" });
+      }
+      return jsonResponse(200, {
+        project: makeProject({ id: "p1", ...options.project, aspectRatio: "9:16", updatedAt: ROTATED_AT }),
+        finalVideoPath: "videos/final/instagram_reel.mp4",
+      });
     }
     if (url === "/projects/p1/post-draft") {
       if (options.draft === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
@@ -488,6 +527,130 @@ describe("InstagramPostScreen", () => {
     renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" } });
     await pickProject();
     expect(screen.getByTestId("post-check-shape").textContent).toContain("가로 영상");
+  });
+
+  /**
+   * 🔴 CLI Round 885 — 「완성본만 돌리기」. 여섯 장면을 다시 만들지 않고 완성된 파일만 돌리는 유일한 길이라,
+   * 이 버튼이 **언제 보이는가**가 곧 기능의 안전장치입니다. 세 가지가 전부 참일 때만 보입니다: 16:9,
+   * 단편 프로젝트(주소가 에피소드를 못 받습니다), 아직 안 올라간 것.
+   */
+  it("offers the rotate only on an unpublished 16:9 short project", async () => {
+    renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" } });
+    await pickProject();
+    expect(screen.getByTestId("post-rotate-final")).toBeTruthy();
+  });
+
+  it("does not offer the rotate on a video that is already the right way up", async () => {
+    renderScreen();
+    await pickProject();
+    expect(screen.queryByTestId("post-rotate")).toBeNull();
+  });
+
+  /** 게시된 뒤에 돌리면 계정에 올라가 있는 것과 디스크의 파일이 말없이 달라집니다. */
+  it("takes the rotate away once the video has been posted", async () => {
+    renderScreen({
+      projects: [libraryProject({ aspectRatio: "16:9" })],
+      project: {
+        aspectRatio: "16:9",
+        instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-08-27T10:00:00.000Z", caption: "이전 캡션" },
+      },
+    });
+    await pickProject();
+    expect(screen.queryByTestId("post-rotate")).toBeNull();
+  });
+
+  /** 회전 주소는 프로젝트 id 하나만 받습니다 — 에피소드에는 부를 주소 자체가 없습니다. */
+  it("does not offer the rotate for a landscape Episode, which the route cannot take", async () => {
+    renderScreen({
+      projects: [],
+      episodes: [libraryEpisode({ aspectRatio: "16:9" })],
+      initialProjectId: "long",
+      initialEpisodeNumber: 1,
+    });
+    await screen.findByTestId("post-checks");
+    expect(screen.getByTestId("post-check-shape").textContent).toContain("가로 영상");
+    expect(screen.queryByTestId("post-rotate")).toBeNull();
+  });
+
+  /**
+   * 🔴 누르는 것과 **일어나는 것** 사이에 확인이 하나 있어야 합니다. 되돌릴 수 있는 작업이지만 디스크의
+   * 완성본을 바꾸는 작업이라, 첫 클릭이 곧 실행이면 지나가다 누른 사람이 파일을 바꿉니다.
+   */
+  it("asks first — the rotate button alone sends nothing", async () => {
+    const { fetchMock } = renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" } });
+    await pickProject();
+
+    fireEvent.click(screen.getByTestId("post-rotate-final"));
+
+    expect(screen.getByTestId("post-rotate-confirm")).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === ROTATE_URL)).toHaveLength(0);
+  });
+
+  it("sends exactly one rotate request, and only after it is confirmed", async () => {
+    const { fetchMock } = renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" }, rotate: "ok" });
+    await pickProject();
+
+    fireEvent.click(screen.getByTestId("post-rotate-final"));
+    fireEvent.click(screen.getByTestId("post-rotate-confirm-button"));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => String(url) === ROTATE_URL)).toHaveLength(1);
+    });
+    const call = fetchMock.mock.calls.find(([url]) => String(url) === ROTATE_URL) as [string, RequestInit];
+    expect(call[1].method).toBe("POST");
+    expect(call[1].body).toBeUndefined();
+  });
+
+  /** 돌아가기는 확인만 닫습니다 — 아무것도 보내지 않은 채로. */
+  it("sends nothing when the confirmation is backed out of", async () => {
+    const { fetchMock } = renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" } });
+    await pickProject();
+
+    fireEvent.click(screen.getByTestId("post-rotate-final"));
+    fireEvent.click(screen.getByTestId("post-rotate-cancel"));
+
+    expect(screen.getByTestId("post-rotate-final")).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === ROTATE_URL)).toHaveLength(0);
+  });
+
+  /**
+   * 🔴 주소가 그대로라서, 새 `updatedAt` 이 꼬리표로 붙지 않으면 브라우저는 돌리기 전 파일을 계속 틉니다.
+   * 그러면 사람은 "아무 일도 안 일어났다"고 결론내고 한 번 더 누릅니다 — 그게 거꾸로 뒤집는 길입니다.
+   * (에피소드 쪽은 처음부터 꼬리표를 달고 있었고, 프로젝트 쪽에만 이게 빠져 있었습니다.)
+   */
+  it("re-draws the player at a new address after a rotate, instead of replaying the old file", async () => {
+    renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" }, rotate: "ok" });
+    await pickProject();
+    const before = screen.getByTestId("post-video-player").getAttribute("src");
+
+    fireEvent.click(screen.getByTestId("post-rotate-final"));
+    fireEvent.click(screen.getByTestId("post-rotate-confirm-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("post-video-player").getAttribute("src")).not.toBe(before);
+    });
+    expect(screen.getByTestId("post-video-player").getAttribute("src")).toContain(encodeURIComponent(ROTATED_AT));
+  });
+
+  it.each([
+    ["VIDEO_FINAL_ALREADY_ROTATED"],
+    ["VIDEO_FINAL_ALREADY_PUBLISHED"],
+    ["VIDEO_MERGE_BUSY"],
+  ])("says why the rotate was refused with %s, without the server's own words", async (code) => {
+    renderScreen({
+      projects: [libraryProject({ aspectRatio: "16:9" })],
+      project: { aspectRatio: "16:9" },
+      rotate: code as "VIDEO_MERGE_BUSY",
+    });
+    await pickProject();
+
+    fireEvent.click(screen.getByTestId("post-rotate-final"));
+    fireEvent.click(screen.getByTestId("post-rotate-confirm-button"));
+
+    const shown = await screen.findByTestId("post-rotate-error");
+    expect(shown.getAttribute("data-error-code")).toBe(code);
+    expect(shown.textContent).not.toContain("raw backend detail");
+    expect(shown.textContent).not.toContain("C:/Users");
   });
 
   // The credit line is the reason the licence field exists at all — it is put into the caption automatically

@@ -1,4 +1,4 @@
-import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type FrameFit, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type FrameFit, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout, type RotateFinalVideoResponse, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 import { mergeClipsInvalidMessage, mergeFailureMessage } from "../utils/sceneFailureAdvice.js";
 
@@ -38,6 +38,9 @@ const SAFE_ERRORS: Record<string, string> = {
   VIDEO_MERGE_FAILED: "로컬 영상 병합에 실패했습니다. 승인된 장면 영상은 그대로 보존됩니다.",
   VIDEO_STORAGE_ERROR: "영상 작업 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
   VIDEO_MERGE_CONTENT_UNAVAILABLE: "최종 영상을 불러올 수 없습니다.",
+  // videoFinalRotate 전용 — CLI Round 885 (`api.ts`의 RotateFinalVideoResponse 주석 그대로).
+  VIDEO_FINAL_ALREADY_PUBLISHED: "이미 인스타그램에 게시된 영상입니다. 지금 돌리면 올라간 것과 파일이 달라집니다.",
+  VIDEO_FINAL_ALREADY_ROTATED: "이미 세로로 돌린 영상입니다. 한 번 더 돌리면 거꾸로 뒤집힙니다.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };
@@ -186,6 +189,33 @@ export async function mergeVideos(
     const apiError = toApiErrorShape(body);
     // A 5xx that did not even carry the backend's own error shape means the backend never answered — it is
     // down, restarting, or something in front of it replied. Say that, instead of blaming the response body.
+    if (isServerUnavailable(response.status, apiError.code)) {
+      throw new VideoMergeApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
+    throw new VideoMergeApiError(apiError.code, apiError.message, apiError.details);
+  }
+  if (!isMergeVideosResponse(body)) throw new VideoMergeApiError(MALFORMED.code, MALFORMED.message);
+  return body;
+}
+
+/**
+ * Turns an already-finished 16:9 project's video a quarter clockwise, in place, so it fills a 9:16 Reel with
+ * nothing cut and no bars (`POST videoFinalRotate` — see the contract's own comment on
+ * {@link RotateFinalVideoResponse} for the full refusal list: no finished final, not 16:9, already posted to
+ * Instagram, or already portrait). No body. Never call this from anywhere but an explicit, already-confirmed
+ * button press — like `mergeVideos`, this only runs a local video-processing tool, never a paid provider, but it does replace the
+ * file a person may already be about to publish.
+ */
+export async function rotateFinalVideo(projectId: string): Promise<RotateFinalVideoResponse> {
+  let response: Response;
+  try {
+    response = await fetch(API_ROUTES.videoFinalRotate(projectId), { method: "POST" });
+  } catch {
+    throw new VideoMergeApiError(NETWORK.code, NETWORK.message);
+  }
+  const body = await readJsonBody(response);
+  if (!response.ok) {
+    const apiError = toApiErrorShape(body);
     if (isServerUnavailable(response.status, apiError.code)) {
       throw new VideoMergeApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
     }

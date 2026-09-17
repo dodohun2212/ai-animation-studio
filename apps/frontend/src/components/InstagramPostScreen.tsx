@@ -10,7 +10,7 @@ import { getInstagramTargets, setInstagramTarget, targetLabel, toInstagramTarget
 import { getPostDraft, putPostDraft, toPostDraftDisplayError } from "../api/postDraftApi.js";
 import { getVideoLibrary, toVideoLibraryDisplayError } from "../api/videoLibraryApi.js";
 import { getLongEpisode, getLongEpisodeSettings, getLongProjectSettings, longEpisodeFinalVideoContentUrl, toLongProjectDisplayError } from "../api/longProjectsApi.js";
-import { finalVideoContentUrl } from "../api/videoMergeApi.js";
+import { finalVideoContentUrl, rotateFinalVideo, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
@@ -304,6 +304,11 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
   const [confirmForget, setConfirmForget] = useState(false);
   const [forgetting, setForgetting] = useState(false);
   const [forgetError, setForgetError] = useState<DisplayError | null>(null);
+  // 가로(16:9) 완성본을 제자리에서 세로로 돌리는 것 — 캡틴D가 "게시물 게시에 직접 화면 돌리는 기능만
+  // 추가하면 되는거 아님?"이라고 물었던 그 기능(Cowork Round 879, 서버는 CLI Round 885 `718d0c9`).
+  const [confirmRotate, setConfirmRotate] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [rotateError, setRotateError] = useState<DisplayError | null>(null);
   const [targets, setTargets] = useState<TargetsState>({ status: "loading" });
   const [targetPending, setTargetPending] = useState(false);
   /**
@@ -607,9 +612,11 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
   // Pressing and being refused is worse than not being able to press: the reasons are all knowable here
   // (no account chosen, caption over the limit, credit line missing, already out in the world).
   const publishBlocked = copyBlocked || !caption || !selectedTarget || Boolean(published);
+  // 🔴 project.updatedAt 을 캐시 버스터로 넘긴다 — Episode 쪽은 이미 그렇게 하고 있었는데 프로젝트 쪽만
+  // 빠져 있었다. 없으면 세로로 돌린 뒤에도 브라우저가 돌리기 전 파일을 계속 보여준다(주소가 그대로라서).
   const videoSrc = episode
     ? longEpisodeFinalVideoContentUrl(episode.projectId, episode.episodeNumber, episode.episode.updatedAt ?? String(episode.episodeNumber))
-    : finalVideoContentUrl(selection);
+    : finalVideoContentUrl(selection, project?.updatedAt);
 
   /**
    * The one irreversible, public action in this app. Reached only from a panel that named the account, and the
@@ -675,6 +682,30 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
       setForgetError(toInstagramPublishDisplayError(caught));
     } finally {
       setForgetting(false);
+    }
+  }
+
+  /**
+   * Turns this project's finished 16:9 video a quarter clockwise, in place, so it fills a 9:16 reel with nothing
+   * cut and no black bars (`POST videoFinalRotate`, CLI Round 885 `718d0c9`). Only ever called for a short
+   * project — the route takes a project id, not an Episode — and only while `!published`: the button below is
+   * hidden once posted, and the server would refuse it anyway (VIDEO_FINAL_ALREADY_PUBLISHED) since the file
+   * would then stop matching what is already live.
+   */
+  async function rotateFinal(): Promise<void> {
+    if (picked.status !== "ready" || picked.kind !== "project" || rotating) return;
+    setRotating(true);
+    setRotateError(null);
+    try {
+      const response = await rotateFinalVideo(picked.project.id);
+      setConfirmRotate(false);
+      // The response carries the rotated project — its new updatedAt is what busts videoSrc's cache above,
+      // the same shape publish/forgetPost already rely on.
+      setPicked((current) => (current.status === "ready" && current.kind === "project" ? { ...current, project: response.project } : current));
+    } catch (caught) {
+      setRotateError(toVideoMergeDisplayError(caught));
+    } finally {
+      setRotating(false);
     }
   }
 
@@ -979,6 +1010,59 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                 </span>
               )}
             </div>
+            {/* 가로(16:9)로 완성된 단편 프로젝트만: 이미 게시된 뒤에는 파일이 게시물과 달라지므로 숨긴다
+                (서버도 VIDEO_FINAL_ALREADY_PUBLISHED 로 같은 걸 막지만, 여기서는 아예 누를 일을 안 만든다). */}
+            {reelShape === "16:9" && picked.status === "ready" && picked.kind === "project" && !published && (
+              <div className="flex flex-wrap items-center gap-2" data-testid="post-rotate">
+                {!confirmRotate ? (
+                  <button
+                    type="button"
+                    className={outlineButton}
+                    data-testid="post-rotate-final"
+                    onClick={() => { setRotateError(null); setConfirmRotate(true); }}
+                  >
+                    세로로 돌리기
+                  </button>
+                ) : (
+                  <div
+                    role="alertdialog"
+                    aria-label="영상 돌리기 확인"
+                    data-testid="post-rotate-confirm"
+                    className="w-full space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
+                  >
+                    <p className="text-sm font-semibold text-amber-300">이 영상을 세로로 돌릴까요?</p>
+                    <p className="text-xs text-slate-300">
+                      폰을 눕혀서 보는 영상이 됩니다. 이전 영상은 보관되어 되돌릴 수 있습니다.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className={outlineButton}
+                        data-testid="post-rotate-cancel"
+                        disabled={rotating}
+                        onClick={() => setConfirmRotate(false)}
+                      >
+                        돌아가기
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                        data-testid="post-rotate-confirm-button"
+                        disabled={rotating}
+                        onClick={() => void rotateFinal()}
+                      >
+                        {rotating ? "돌리는 중..." : "네, 돌립니다"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {rotateError && (
+                  <p role="alert" data-testid="post-rotate-error" data-error-code={rotateError.code} className="w-full text-sm text-rose-400">
+                    {rotateError.message}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-2" data-testid="post-check-length">
               {checkedSeconds === null ? (
                 <span className="text-xs text-slate-400">길이를 확인하지 못했습니다.</span>

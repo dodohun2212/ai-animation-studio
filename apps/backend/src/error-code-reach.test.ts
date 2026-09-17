@@ -94,10 +94,10 @@ const UNNAMED_BY_A_SCREEN = new Map<string, string>([
   // (Cowork Round 786), and the reasons did not hold: three of the four places raising the storage code are
   // before the paid call and one after (CLI Round 787, `requestSent`), and "try again" says nothing about
   // money either way. `storyPromptApi.ts` names both now, with sentences that say whether a request went out.
-  // 🟠 Gaps, not decisions (2026-09-14): the turn-the-finished-final route landed before its screen. The screen
-  // (Cowork) names both when it adds the button; this assertion then says to take the entries out.
-  ["VIDEO_FINAL_ALREADY_PUBLISHED", "gap: RotateFinalVideoResponse's server half landed first; the screen button is Cowork's"],
-  ["VIDEO_FINAL_ALREADY_ROTATED", "gap: RotateFinalVideoResponse's server half landed first; the screen button is Cowork's"],
+  // 🟢 `VIDEO_FINAL_ALREADY_PUBLISHED` and `VIDEO_FINAL_ALREADY_ROTATED` were here as gaps for one day: the
+  // turn-the-finished-final route landed before its screen. `videoMergeApi.ts` names both now, with sentences
+  // that stay apart — "already posted" cannot be undone, "already upright" was only a mis-click — so the entries
+  // are gone, which is what this list is for.
   // 🟢 `INSTAGRAM_LOCAL_FAKE_VIDEO_NOT_PUBLISHABLE` was here as a gap, not a decision: the backend gate landed
   // before the screen had a sentence for it. `instagramPublishApi.ts` names it now, so the entry is gone — which
   // is the whole point of the assertion below. The exception did not have to be remembered; the guard said when.
