@@ -2454,6 +2454,84 @@ export interface GetPhotoCardSubtitleColorsResponse {
   colors: PhotoCardSubtitleColors | null;
 }
 
+/** The longest a news summary may be, in characters. Named, because "짧게" is not a rule anything can check. */
+export const NEWS_SUMMARY_MAX_CHARS = 400;
+
+/**
+ * One article this app has been given, whatever it came from.
+ *
+ * Stage one is paste: the person supplies the body themselves. A feed reader can fill this same shape later and
+ * no screen changes, which is the reason it is shaped around the *article* rather than around a feed entry.
+ *
+ * 🔴 `body` is the full text and it is not optional. The checking below can only look for things inside text it
+ * holds, so an article with no body cannot be checked — and an unchecked news summary is the one thing this
+ * feature must not produce. That rules out any source that publishes headlines and blurbs only; the condition
+ * on a publisher is not that it is reputable but that its full text arrives.
+ */
+export interface NewsArticleInput {
+  title: string;
+  body: string;
+  publisher: string;
+  /** ISO 8601. What the publisher says, not when we read it. */
+  publishedAt: string;
+  /** Where a reader goes to check it. Shown on screen and written into the caption — never dropped. */
+  sourceUrl: string;
+}
+
+/** What kind of claim a checked span is, so a screen can say which sort went missing rather than only how many. */
+export type NewsClaimKind = "number" | "date" | "quote";
+
+/**
+ * One thing the summary asserts that was looked for in the article, word for word.
+ *
+ * `found` false is the whole point of the type: a summariser invents plausible figures, dates and quotations,
+ * and those are exactly the three that can be searched for mechanically.
+ */
+export interface NewsClaimCheck {
+  kind: NewsClaimKind;
+  /** The span as the summary wrote it. Shown to the person, so they can see what was not in the article. */
+  text: string;
+  found: boolean;
+}
+
+/**
+ * What the checking actually did — deliberately not a verdict.
+ *
+ * 🔴 There is no `verified` field and there must not be one. This compares numbers, dates and quoted strings
+ * against the article's text; it cannot see whether a causal claim ("A 때문에 B") is supported, and nothing here
+ * should be read as saying it is. A screen showing this states **which three kinds were checked**, every time —
+ * without that line the feature sells a guarantee it does not have.
+ *
+ * `claims` carries every span that was looked at, found or not, because "checked 9, missed 0" and "checked 0"
+ * are different facts and a count of failures alone cannot tell them apart.
+ */
+export interface NewsSummaryCheck {
+  claims: NewsClaimCheck[];
+  /** Convenience over `claims`, and required to agree with it — the spans whose `found` is false. */
+  missing: NewsClaimCheck[];
+}
+
+/**
+ * `POST newsSummaries` — summarise one article and check the summary against it, in one paid call.
+ *
+ * 🔴 The check is not advisory. If anything in `missing` is non-empty the server **refuses**
+ * (`NEWS_SUMMARY_UNSUPPORTED_CLAIM`) and returns no summary to build a card from; there is no override, because
+ * an override becomes the ordinary path and this is the kind of mistake that leaves the building. The refusal
+ * carries the same `NewsSummaryCheck` so the screen can show which spans were not in the article.
+ *
+ * Refused before any paid call for: a body that is empty, and a summary request on an article whose
+ * `sourceUrl`/`publisher` are blank (INVALID_REQUEST) — a summary with no attribution must not be creatable.
+ */
+export interface CreateNewsSummaryRequest {
+  article: NewsArticleInput;
+}
+
+export interface CreateNewsSummaryResponse {
+  /** At most NEWS_SUMMARY_MAX_CHARS. Never the article's own sentences wholesale — a summary, with the source beside it. */
+  summary: string;
+  check: NewsSummaryCheck;
+}
+
 /**
  * One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset
  * Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's
@@ -3260,6 +3338,8 @@ export const API_ROUTES = {
   videoFinalContent: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/content`,
   videoFinalRotate: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/rotate`,
   photoCardSubtitleColors: (projectId: string, center?: number) => `/projects/${encodeURIComponent(projectId)}/photo-card/subtitle-colors${center === undefined ? "" : `?center=${center}`}`,
+  /** POST one article, get a summary that has been checked against it — or a refusal naming what was not there. */
+  newsSummaries: "/news/summaries",
   videoLibrary: "/videos/library",
   videoVersions: (projectId: string, scene: SceneNumber | "final") => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions`,
   videoVersionContent: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/content`,
@@ -3339,6 +3419,27 @@ export type {
   CreateProjectAssetMappingRequest,
   UpdateProjectAssetMappingRequest,
 };
+
+/**
+ * The one thing a `NewsSummaryCheck` can lie about, refused at the boundary.
+ *
+ * 🔴 `missing` is a convenience over `claims`, and the moment the two disagree the screen's red banner and the
+ * server's decision to refuse come apart — a summary could be handed over as clean while `claims` holds a span
+ * that was never in the article, or blocked over a span that was. Both readings of "is this safe" must come
+ * from the same list, so the derived one is checked against its source rather than trusted.
+ *
+ * Also refuses a claim with no text: an empty span cannot have been looked for, and `found: true` on one would
+ * be a pass nobody earned.
+ */
+export function assertNewsSummaryCheck(check: NewsSummaryCheck): void {
+  if (check.claims.some((claim) => !claim.text.trim())) {
+    throw new Error("A checked claim must carry the text that was looked for.");
+  }
+  const notFound = check.claims.filter((claim) => !claim.found);
+  if (check.missing.length !== notFound.length || check.missing.some((item, index) => item !== notFound[index])) {
+    throw new Error("`missing` must be exactly the claims whose `found` is false, in order.");
+  }
+}
 
 export function assertVideoGenerationApproval(request: StartVideoGenerationRequest): void {
   if (request.approved !== true) {
