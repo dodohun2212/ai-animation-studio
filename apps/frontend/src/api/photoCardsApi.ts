@@ -1,4 +1,10 @@
-import { API_ROUTES, type CreatePhotoCardRequest, type CreatePhotoCardResponse } from "@ai-animation-studio/shared";
+import {
+  API_ROUTES,
+  type CreatePhotoCardRequest,
+  type CreatePhotoCardResponse,
+  type GetPhotoCardSubtitleColorsResponse,
+  type PhotoCardSubtitleColors,
+} from "@ai-animation-studio/shared";
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
 /**
@@ -54,6 +60,60 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
  */
 const isCreatePhotoCardResponse = (value: unknown): value is CreatePhotoCardResponse =>
   isRecord(value) && isRecord(value.project) && typeof value.project.id === "string" && value.project.id.length > 0;
+
+/**
+ * `#RRGGBB`, and nothing else.
+ *
+ * 🔴 These three strings are put straight into `color` and `text-shadow`. Anything that is not exactly six hex
+ * digits behind a `#` is refused here rather than handed to CSS — a preview is not a place to find out what a
+ * browser does with an arbitrary string, and a colour that silently fails to apply would leave white text
+ * claiming to be the merge's answer.
+ */
+const isHexColor = (value: unknown): value is string => typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+
+const isSubtitleColors = (value: unknown): value is PhotoCardSubtitleColors =>
+  isRecord(value) && isHexColor(value.body) && isHexColor(value.heading) && isHexColor(value.outline);
+
+/**
+ * Checked as a three-way answer, not two.
+ *
+ * `colors: null` is a real answer — the picture could not be read, and the merge will then burn plain white on
+ * a black outline, which the preview draws. A response with no `colors` key at all is a different thing (a
+ * malformed answer) and must not collapse into the same `null`, or a broken lookup would quietly look like a
+ * picture the server had read and given up on.
+ */
+const isSubtitleColorsResponse = (value: unknown): value is GetPhotoCardSubtitleColorsResponse =>
+  isRecord(value) && "colors" in value && (value.colors === null || isSubtitleColors(value.colors));
+
+/**
+ * The colours the merge would burn for this card's text, with the band centred at `center`.
+ *
+ * The preview asked to match the video (CLI Round 888) and this is the only way it can: the server samples the
+ * picture with the same function the merge runs, so the two cannot drift. Local and free — no paid provider is
+ * involved — but each call is one pass over the picture, so the caller asks once after the slider settles
+ * rather than on every step of a drag.
+ *
+ * `center` omitted means the card's own stored layout.
+ */
+export async function getPhotoCardSubtitleColors(projectId: string, center?: number): Promise<GetPhotoCardSubtitleColorsResponse> {
+  let response: Response;
+  try {
+    response = await fetch(API_ROUTES.photoCardSubtitleColors(projectId, center));
+  } catch {
+    throw new PhotoCardsApiError(NETWORK.code, NETWORK.message);
+  }
+  let body: unknown;
+  try { body = await response.json(); } catch { body = undefined; }
+  if (!response.ok) {
+    const carriedCode = isRecord(body) && typeof body.code === "string" && body.code.trim() ? body.code : MALFORMED.code;
+    if (isServerUnavailable(response.status, carriedCode)) {
+      throw new PhotoCardsApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
+    throw new PhotoCardsApiError(carriedCode, "", isRecord(body) && isRecord(body.details) ? body.details : undefined);
+  }
+  if (!isSubtitleColorsResponse(body)) throw new PhotoCardsApiError(MALFORMED.code, MALFORMED.message);
+  return body;
+}
 
 export async function createPhotoCard(request: CreatePhotoCardRequest): Promise<CreatePhotoCardResponse> {
   let response: Response;

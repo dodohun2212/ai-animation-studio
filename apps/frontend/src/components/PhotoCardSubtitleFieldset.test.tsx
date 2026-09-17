@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_CSS_RATIO } from "@ai-animation-studio/shared";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { API_ROUTES, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_CSS_RATIO } from "@ai-animation-studio/shared";
 
+import { jsonResponse } from "../api/testUtils.js";
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
 
 const TWO_PART = "불광불급(不狂不及)\n미치도록 몰입한 사람만이,";
@@ -43,6 +45,70 @@ function withMeasuredLines(lineHeight: number, body: () => void, textWidth = 0):
   }
 }
 
+/**
+ * The colour lookup (CLI Round 888), with the clock in this file's hands.
+ *
+ * The component waits for the slider to settle before asking, so a real-timer test would either sleep or race.
+ * Fake timers make "the drag ended" a thing the test states rather than waits for, and `advanceTimersByTimeAsync`
+ * also drains the promise the answer arrives on — the reason for it rather than `advanceTimersByTime`.
+ */
+const COLORS = { body: "#ffe9b0", heading: "#ffc14d", outline: "#1a1206" };
+const SETTLE_MS = 400;
+
+function renderWithColors(answer: unknown | "fails", layout: PhotoCardSubtitleLayout = DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    if (String(input).startsWith("/projects/card_1/photo-card/subtitle-colors")) {
+      if (answer === "fails") return jsonResponse(409, { code: "INVALID_REQUEST", message: "raw backend detail" });
+      return jsonResponse(200, answer);
+    }
+    throw new Error(`unexpected fetch: ${String(input)}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { rerender } = render(
+    <PhotoCardSubtitleFieldset projectId="card_1" quote={TWO_PART} aspectRatio="9:16" layout={layout} onChange={vi.fn()} />,
+  );
+  return {
+    fetchMock,
+    move: (center: number) => rerender(
+      <PhotoCardSubtitleFieldset projectId="card_1" quote={TWO_PART} aspectRatio="9:16" layout={{ ...layout, center }} onChange={vi.fn()} />,
+    ),
+    resize: (scale: number) => rerender(
+      <PhotoCardSubtitleFieldset projectId="card_1" quote={TWO_PART} aspectRatio="9:16" layout={{ ...layout, scale }} onChange={vi.fn()} />,
+    ),
+  };
+}
+
+/** Lets the settle window pass and the answer land, in one step the test can point at. */
+async function settle(ms = SETTLE_MS): Promise<void> {
+  await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+}
+
+/** `[heading, ...body]` as the browser resolved them — jsdom normalises every colour to `rgb(...)`. */
+function drawnColors(): string[] {
+  const preview = screen.getByTestId("photo-card-subtitle-preview");
+  return (Array.from(preview.querySelectorAll("div[style*='top']")) as unknown as HTMLElement[]).map((node) => node.style.color);
+}
+
+/**
+ * The edge, read back without betting on how jsdom stores `text-shadow`.
+ *
+ * It is not one of the properties jsdom parses, so depending on the version it either normalises the colours
+ * into the `style` attribute or keeps the string as written on the style object. Both are read, and the colour
+ * is looked for in either spelling — the assertion is about which colour is drawn, and a test that turned red
+ * over `#1a1206` versus `rgb(26, 18, 6)` would be about jsdom instead.
+ */
+function shadowOf(index: number): string {
+  const preview = screen.getByTestId("photo-card-subtitle-preview");
+  const node = (Array.from(preview.querySelectorAll("div[style*='top']")) as unknown as HTMLElement[])[index]!;
+  return `${node.style.textShadow ?? ""} ${node.getAttribute("style") ?? ""}`;
+}
+
+function mentionsColor(shadow: string, hex: string): boolean {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return shadow.includes(hex)
+    || shadow.includes(`rgb(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255})`);
+}
+
 /** The renderer stacks lines by absolute top; reading it back is how a layout test says "where", not "how it looked". */
 function tops(): number[] {
   const preview = screen.getByTestId("photo-card-subtitle-preview");
@@ -51,6 +117,11 @@ function tops(): number[] {
 }
 
 describe("PhotoCardSubtitleFieldset", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   /**
    * The split is the whole reason two styles exist: the first line is the 사자성어 and gets the serif face, the
    * rest is the meaning. A card written as one line has no 사자성어 — setting it in the quote face anyway would
@@ -233,6 +304,110 @@ describe("PhotoCardSubtitleFieldset", () => {
    *
    * If a face is ever added or a `Bold` flag flipped again, change these numbers — but keep the rule.
    */
+  /**
+   * 🔴 CLI Round 886 → 888. 병합은 그림에서 색을 뽑아 굽는데 미리보기는 흰 글씨만 그렸습니다. 그러면
+   * 「병합하고, 보고, 다시 병합」이 색 때문에 그대로 돌아옵니다 — 이 미리보기가 없애려고 만들어진 바로 그것이.
+   * 조회는 병합과 **같은 함수**를 돌리므로, 여기서 보이는 두 색이 곧 ASS 에 들어가는 두 색입니다.
+   */
+  it("paints the merge's own colours — heading, body, and the outline behind both", async () => {
+    vi.useFakeTimers();
+    renderWithColors({ colors: COLORS });
+    await settle();
+
+    const [heading, ...body] = drawnColors();
+    expect(heading).toBe("rgb(255, 193, 77)");
+    for (const line of body) expect(line).toBe("rgb(255, 233, 176)");
+    // 그림자는 테두리 색의 절반 — 미리보기가 따로 정한 검정이 아니라 렌더러의 그 관계입니다.
+    expect(mentionsColor(shadowOf(0), COLORS.outline)).toBe(true);
+    expect(shadowOf(0)).toContain("rgba(26, 18, 6, 0.5)");
+  });
+
+  /**
+   * 🔴 띠가 옮겨지면 색이 바뀌므로 다시 물어야 하지만, 드래그 한 번은 수십 걸음입니다. 걸음마다 물으면
+   * 사용자 컴퓨터에서 그림을 수십 번 훑습니다(무료지만 즉시는 아닙니다). 멈춘 뒤 **한 번**입니다.
+   */
+  it("asks once after the slider settles, not once per step of the drag", async () => {
+    vi.useFakeTimers();
+    const { fetchMock, move } = renderWithColors({ colors: COLORS });
+
+    for (const center of [0.4, 0.45, 0.5, 0.55, 0.6]) {
+      move(center);
+      await settle(50);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(API_ROUTES.photoCardSubtitleColors("card_1", 0.6));
+  });
+
+  /** 글자 크기는 띠를 옮기지 않습니다 — 색이 바뀔 이유가 없으니 그림을 다시 훑을 이유도 없습니다. */
+  it("does not re-read the picture when only the text size changes", async () => {
+    vi.useFakeTimers();
+    const { fetchMock, resize } = renderWithColors({ colors: COLORS });
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resize(DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.scale + 0.01);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * `colors: null` 은 실패가 아니라 **답**입니다 — 그림을 못 읽었고, 병합도 흰 글씨 + 검은 테두리로 굽습니다.
+   * 그러면 미리보기가 맞는 것이므로 경고를 붙이면 안 됩니다.
+   */
+  it("draws white on black for a picture the server could not read, and says nothing — that is what the merge burns", async () => {
+    vi.useFakeTimers();
+    renderWithColors({ colors: null });
+    await settle();
+
+    for (const line of drawnColors()) expect(line).toBe("rgb(255, 255, 255)");
+    expect(mentionsColor(shadowOf(0), "#000000")).toBe(true);
+    expect(screen.queryByTestId("photo-card-subtitle-colors-unavailable")).toBeNull();
+  });
+
+  /**
+   * 🔴 조회 자체가 실패한 것은 다른 사실입니다. 흰 글씨가 아무 말 없이 앉아 있으면 그게 결과라고 읽히는데,
+   * 그건 886 이 만들고 888 이 닫으려던 바로 그 어긋남입니다. 그래서 여기서만 소리를 냅니다.
+   */
+  it("admits it is showing white when the lookup itself failed", async () => {
+    vi.useFakeTimers();
+    renderWithColors("fails");
+    await settle();
+
+    for (const line of drawnColors()) expect(line).toBe("rgb(255, 255, 255)");
+    const note = screen.getByTestId("photo-card-subtitle-colors-unavailable");
+    expect(note.textContent).toContain("불러오지 못해");
+    expect(note.textContent).not.toContain("raw backend detail");
+  });
+
+  /**
+   * 🔴 색은 그림의 **한 띠**에 속합니다. 슬라이더가 떠난 자리의 답을 그대로 칠하면, 미리보기가 다른 곳의
+   * 색을 이 자리의 색이라고 말하는 셈입니다. 그래서 실패하면 마지막 답을 지키지 않고 흰색으로 떨어집니다.
+   */
+  it("drops a stale answer rather than keeping colours that belong to a band the slider has left", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      if (String(input).endsWith(`center=${0.6}`)) return jsonResponse(500, {});
+      return jsonResponse(200, { colors: COLORS });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { rerender } = render(
+      <PhotoCardSubtitleFieldset projectId="card_1" quote={TWO_PART} aspectRatio="9:16" layout={DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT} onChange={vi.fn()} />,
+    );
+    await settle();
+    expect(drawnColors()[0]).toBe("rgb(255, 193, 77)");
+
+    rerender(
+      <PhotoCardSubtitleFieldset projectId="card_1" quote={TWO_PART} aspectRatio="9:16" layout={{ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, center: 0.6 }} onChange={vi.fn()} />,
+    );
+    await settle();
+
+    for (const line of drawnColors()) expect(line).toBe("rgb(255, 255, 255)");
+    expect(screen.getByTestId("photo-card-subtitle-colors-unavailable")).toBeTruthy();
+  });
+
   it("asks for the weights the two subtitle files actually are", () => {
     renderFieldset(TWO_PART);
     const nodes = Array.from(screen.getByTestId("photo-card-subtitle-preview").querySelectorAll("div")) as unknown as HTMLElement[];

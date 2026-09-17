@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import type { AspectRatio, PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { AspectRatio, PhotoCardSubtitleColors, PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 import {
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
   MERGE_FRAME_FOR_ASPECT,
@@ -13,6 +13,7 @@ import {
   splitPhotoCardSubtitle,
 } from "@ai-animation-studio/shared";
 
+import { getPhotoCardSubtitleColors } from "../api/photoCardsApi.js";
 import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
 
 interface Props {
@@ -33,6 +34,25 @@ const PREVIEW_LONG_SIDE = 420;
 
 const field = "w-full accent-violet-400 disabled:opacity-50";
 const label = "flex items-baseline justify-between text-sm text-slate-300";
+
+/**
+ * How long the slider has to sit still before the colours are asked for again.
+ *
+ * Moving the band changes which part of the picture the colours are read off, so the answer really does go
+ * stale as the slider moves — but every ask is a pass over the picture on the user's own machine (free, not
+ * instant), and a drag fires dozens of steps. CLI Round 888 asked for roughly one ask after the drag ends;
+ * this is that, and it is deliberately longer than a keypress so holding an arrow key does not queue a dozen.
+ */
+const COLOR_SETTLE_MS = 400;
+
+/** What the merge burns when it cannot read the picture — the preview's floor, and its answer while it waits. */
+const FALLBACK_COLORS: PhotoCardSubtitleColors = { body: "#ffffff", heading: "#ffffff", outline: "#000000" };
+
+/** `#RRGGBB` → `rgba(r, g, b, a)`. The guard in photoCardsApi is what makes the slice safe. */
+function withAlpha(hex: string, alpha: number): string {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`;
+}
 
 /**
  * Size and height for a photo card's burned-in text, with the card itself behind it.
@@ -76,9 +96,51 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
    * renderer's own constants used unchanged — the whole frame is drawn at full size and scaled at the end, so
    * they shrink with everything else instead of needing their own arithmetic.
    */
+  /**
+   * The colours the merge would actually burn, asked of the server rather than guessed at here.
+   *
+   * The merge picks them off the picture — bright text on a dark photo, dark on a bright one, the first line in
+   * a stronger shade (CLI Round 886). The preview drew plain white regardless, so the one thing it existed to
+   * prevent — merge, look, merge again — came back for colour. The lookup runs the **same sampling function**
+   * the merge does (Round 888), which is what makes this a preview and not a second opinion.
+   *
+   * 🔴 A failed lookup drops back to white-on-black and says so, rather than keeping the last answer. Colours
+   * belong to a band of the picture, so an answer for a band the slider has left is about somewhere else — and
+   * a preview showing colours for the wrong place is worse than one admitting it does not know.
+   */
+  const [colors, setColors] = useState<PhotoCardSubtitleColors | null>(null);
+  const [colorsUnavailable, setColorsUnavailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void getPhotoCardSubtitleColors(projectId, layout.center)
+        .then((response) => {
+          if (cancelled) return;
+          // `colors: null` is an answer, not a failure — the picture could not be read and the merge will burn
+          // white on black, which is exactly what the fallback below draws. No note belongs on that case.
+          setColors(response.colors);
+          setColorsUnavailable(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setColors(null);
+          setColorsUnavailable(true);
+        });
+    }, COLOR_SETTLE_MS);
+    // 🔴 Cleared on every change, so a drag leaves one request at the end instead of one per step. `cancelled`
+    // covers the other half: a reply that arrives after the band has moved must not paint the new position.
+    return () => { cancelled = true; clearTimeout(timer); };
+    // `scale` is deliberately absent — the band the colours are read off is decided by `center` alone, so
+    // resizing the text must not cost a pass over the picture.
+  }, [projectId, layout.center]);
+  const drawn = colors ?? FALLBACK_COLORS;
+
   const stroke = PHOTO_CARD_SUBTITLE_OUTLINE;
   const drop = PHOTO_CARD_SUBTITLE_SHADOW;
-  const shadow = `0 0 ${stroke}px #000, ${drop}px ${drop}px ${stroke * 2}px rgba(0,0,0,0.85), -${stroke}px 0 ${stroke}px #000, ${stroke}px 0 ${stroke}px #000, 0 -${stroke}px ${stroke}px #000, 0 ${stroke}px ${stroke}px #000`;
+  const edge = drawn.outline;
+  // The shadow is the outline at half strength — the renderer's own relationship between the two, not a
+  // separate black the preview invented (it used to be a flat rgba(0,0,0,0.85) under any outline colour).
+  const shadow = `0 0 ${stroke}px ${edge}, ${drop}px ${drop}px ${stroke * 2}px ${withAlpha(edge, 0.5)}, -${stroke}px 0 ${stroke}px ${edge}, ${stroke}px 0 ${stroke}px ${edge}, 0 -${stroke}px ${stroke}px ${edge}, 0 ${stroke}px ${stroke}px ${edge}`;
 
   const margin = g.margin;
 
@@ -169,7 +231,8 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
           // cannot describe two layouts drawn from different files.
           fontWeight: 700,
           fontFamily: serif ? '"Noto Serif KR", "Nanum Myeongjo", serif' : '"Noto Sans KR", system-ui, sans-serif',
-          color: "#fff",
+          // 첫 줄(사자성어)은 `heading`, 본문은 `body` — 병합이 ASS 에 넣는 그 두 색입니다.
+          color: serif ? drawn.heading : drawn.body,
           textShadow: shadow,
         }}
       >
@@ -273,8 +336,16 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
         /* Measured on the drawn frame rather than predicted, so it counts the lines the text actually wrapped
            into. A long quote at a large size runs off the top and bottom, and until the frame was drawn at full
            size this was the one failure the preview could not show. */
-        <p role="status" data-testid="photo-card-subtitle-overflow" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-200">
+        <p role="status" data-testid="photo-card-subtitle-overflow" className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
           이 길이와 크기로는 글자가 화면 밖으로 나갑니다. 글자 크기를 줄이거나, 명언을 짧게 하거나, 위치를 옮겨 주세요.
+        </p>
+      )}
+      {colorsUnavailable && (
+        /* The one case where this preview knowingly shows something the merge will not burn. Said out loud,
+           because the alternative — white text sitting there looking settled — is the exact failure Round 886
+           created and Round 888 opened the lookup to close. */
+        <p role="status" data-testid="photo-card-subtitle-colors-unavailable" className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          글자 색을 불러오지 못해 흰 글씨로 보여드리고 있습니다. 실제 영상은 그림에 맞춘 색으로 만들어집니다 — 위치를 살짝 움직이면 다시 시도합니다.
         </p>
       )}
       {/* Said plainly rather than implied by how close it looks: the browser is not the renderer, and the one
