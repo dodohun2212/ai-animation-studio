@@ -29,7 +29,14 @@ export class SceneEditApiError extends Error {
 const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "장면 내용을 저장하지 못했습니다. 입력한 내용을 다시 확인해 주세요.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
-  UNSAFE_PROJECT_ID: "프로젝트를 찾을 수 없습니다.",
+  /*
+   * 🔴 「찾을 수 없습니다」가 아닙니다 — 프로젝트는 있을 수도 있고, 문제는 **이름에 쓸 수 없는 글자가
+   * 들어간 것**입니다. 두 문장이 사람을 서로 다른 곳으로 보냅니다: 앞의 것은 없어진 프로젝트를 찾으러
+   * 목록을 뒤지게 하고, 뒤의 것은 이름을 고치게 합니다. 이 모듈만 앞의 문장을 쓰고 있었습니다
+   * (`projectsApi` · `longProjectsApi` · `photoCardsApi` · `longStoryBibleApi` 넷은 전부 이름 이야기를 합니다).
+   * 같은 코드가 한 곳에서만 다른 뜻으로 읽히는 것이라, 문구를 모으는 문제 이전에 그냥 틀린 것입니다.
+   */
+  UNSAFE_PROJECT_ID: "프로젝트 ID에 사용할 수 없는 문자가 포함되어 있습니다.",
   PROJECT_STORAGE_ERROR: "장면 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
