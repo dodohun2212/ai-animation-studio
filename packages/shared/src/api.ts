@@ -2511,26 +2511,18 @@ export interface NewsSummaryCheck {
   missing: NewsClaimCheck[];
 }
 
-/**
- * `POST newsSummaries` — summarise one article and check the summary against it, in one paid call.
+/*
+ * 🟠 The request/response pair for `POST /news/summaries` is **not here yet, on purpose** (CLI Round 910).
  *
- * 🔴 The check is not advisory. If anything in `missing` is non-empty the server **refuses**
- * (`NEWS_SUMMARY_UNSUPPORTED_CLAIM`) and returns no summary to build a card from; there is no override, because
- * an override becomes the ordinary path and this is the kind of mistake that leaves the building. The refusal
- * carries the same `NewsSummaryCheck` so the screen can show which spans were not in the article.
+ * It was written and then taken back out the same evening, because two of this repo's own guards refused it and
+ * both were right: `route-shape-coverage` (a client route with no handler — and it has no exemption list, which
+ * is the point of it) and `contract-request-coverage` (nothing in the app sends the field). A summary route
+ * whose server half does not exist is a contract the app can compile against and never reach.
  *
- * Refused before any paid call for: a body that is empty, and a summary request on an article whose
- * `sourceUrl`/`publisher` are blank (INVALID_REQUEST) — a summary with no attribution must not be creatable.
+ * So the shape above — the article, and what checking it produced — lands now because `checkNewsSummary` on the
+ * server actually returns it. The request, the response and `API_ROUTES.newsSummaries` land in the same commit
+ * as the controller that serves them, and the paid summariser behind it waits on 캡틴D's approval.
  */
-export interface CreateNewsSummaryRequest {
-  article: NewsArticleInput;
-}
-
-export interface CreateNewsSummaryResponse {
-  /** At most NEWS_SUMMARY_MAX_CHARS. Never the article's own sentences wholesale — a summary, with the source beside it. */
-  summary: string;
-  check: NewsSummaryCheck;
-}
 
 /**
  * One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset
@@ -3338,8 +3330,6 @@ export const API_ROUTES = {
   videoFinalContent: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/content`,
   videoFinalRotate: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/rotate`,
   photoCardSubtitleColors: (projectId: string, center?: number) => `/projects/${encodeURIComponent(projectId)}/photo-card/subtitle-colors${center === undefined ? "" : `?center=${center}`}`,
-  /** POST one article, get a summary that has been checked against it — or a refusal naming what was not there. */
-  newsSummaries: "/news/summaries",
   videoLibrary: "/videos/library",
   videoVersions: (projectId: string, scene: SceneNumber | "final") => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions`,
   videoVersionContent: (projectId: string, scene: SceneNumber | "final", versionId: string) => `/projects/${encodeURIComponent(projectId)}/videos/${scene}/versions/${encodeURIComponent(versionId)}/content`,
