@@ -21,6 +21,35 @@ describe("LongProjectDetail", () => {
     expect(fetchMock).toHaveBeenCalledWith("/long-projects/long_test");
   });
 
+  /**
+   * 🔴 짧은 쪽에만 있던 짝을 여기에도 둡니다 (Cowork Round 882·893).
+   *
+   * 보관 대화상자는 **공유**지만 에러를 번역하는 것은 각 호출자입니다 — 여기서는 `toLongProjectDisplayError`,
+   * 단편에서는 `toDisplayError`. 코드 이름도 다릅니다(`LONG_PROJECT_ARCHIVE_COLLISION`). 그래서 단편 쪽 짝이
+   * 초록이어도 이쪽 연결이 빠지거나 끊어진 것은 **아무도 못 봅니다**. 그때 보이는 건 「다시 시도해 주세요」
+   * 뿐이고, 이름이 겹쳐서 막힌 것을 네트워크 문제로 읽어 같은 버튼을 계속 누르게 됩니다.
+   */
+  it("says a same-named archive already exists, instead of a generic retry message", async () => {
+    const project = makeLongProject({ id: "long_test", title: "우주 방랑자" });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/archive")) return jsonResponse(409, { code: "LONG_PROJECT_ARCHIVE_COLLISION", message: "internal english detail" });
+      return jsonResponse(200, { project });
+    }));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+    await screen.findByText("우주 방랑자");
+
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 보관하기" }));
+    // 장기 프로젝트는 **제목**을 그대로 받아 적어야 합니다(단편은 주제) — 대화상자가 `projectKind` 로 갈립니다.
+    fireEvent.change(screen.getByLabelText("위 내용 그대로 입력"), { target: { value: project.title } });
+    fireEvent.click(screen.getByRole("button", { name: "보관하기" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveAttribute("data-error-code", "LONG_PROJECT_ARCHIVE_COLLISION");
+    expect(alert.textContent).toContain("보관한 프로젝트");
+    expect(alert.textContent).not.toContain("internal english detail");
+  });
+
   // Regression: an episode whose generation was interrupted gets put back a step so it can be retried. Without
   // the sentence explaining that, the person finds the episode somewhere they did not leave it and assumes they
   // broke something — short projects already learned this once.
