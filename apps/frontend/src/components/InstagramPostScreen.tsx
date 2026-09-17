@@ -586,9 +586,25 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
      losing the measurement must not cost the check, but it must not be reported as one either. */
   const checkedSeconds = measured?.seconds ?? plannedSeconds;
   const tooLong = checkedSeconds !== null && checkedSeconds > REEL_MAX_SECONDS;
+  /**
+   * The Episode's shape, read again here rather than trusted from when it was picked.
+   *
+   * 🔴 CLI Round 890 — `picked.aspectRatio` is decided once, at pick time, and its best source is the library
+   * row. Arriving by link (`initialProjectId`/`initialEpisodeNumber`) finishes picking **before the listing
+   * lands**, so there is no row to read and it settles on the last fallback, `"9:16"`. A 16:9 Episode then
+   * calls itself 세로 9:16 — and it is the same mistake shape as Round 860, where a square file passed as
+   * vertical. The measured frame usually rescues it, but a file or browser that never reports one leaves the
+   * wrong answer standing with nothing to correct it.
+   *
+   * So the row wins whenever it exists, at the moment it exists. The frozen value stays as the floor for a
+   * listing that never arrives — this widens where the truth can come from; it takes nothing away.
+   */
+  const episodeSummary = episode !== null && list.status === "ready"
+    ? list.episodes.find((one) => one.projectId === episode.projectId && one.episodeNumber === episode.episodeNumber)
+    : undefined;
   /* Each half is measured or it is not, separately. A browser that states a duration but no frame size is
      ordinary, and `measured` being non-null used to be taken as both facts having been read. */
-  const plannedAspect = project?.aspectRatio ?? episode?.aspectRatio;
+  const plannedAspect = project?.aspectRatio ?? episodeSummary?.aspectRatio ?? episode?.aspectRatio;
   const reelShape: ReelShape = measured?.frame != null
     ? shapeOfFrame(measured.frame.width, measured.frame.height)
     : isAspectRatio(plannedAspect) ? plannedAspect : "9:16";

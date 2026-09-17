@@ -98,6 +98,12 @@ function renderScreen(options: {
    */
   rotate?: "ok" | "VIDEO_FINAL_ALREADY_ROTATED" | "VIDEO_FINAL_ALREADY_PUBLISHED" | "VIDEO_MERGE_BUSY";
   episodes?: ReturnType<typeof libraryEpisode>[];
+  /**
+   * "fails" takes the long project's settings away, leaving the library row as the ONLY thing that knows an
+   * Episode's shape. Not a hypothetical: those settings are one read that can fail on its own, and the screen
+   * degrades past it deliberately (`.catch(() => null)`).
+   */
+  longSettings?: "fails";
   episode?: Record<string, unknown>;
   initialProjectId?: string;
   initialEpisodeNumber?: number;
@@ -121,6 +127,7 @@ function renderScreen(options: {
          reads an Episode's shape from the library row, and a direct link (`initialProjectId`) picks before that
          listing lands, leaving these settings as the only thing that knows the shape.
          It follows the Episode fixture so one render states one shape whichever path the screen takes. */
+      if (options.longSettings === "fails") return jsonResponse(500, { code: "PROJECT_STORAGE_ERROR", message: "raw" });
       const episodeAspect = (options.episodes ?? [])[0]?.aspectRatio ?? "9:16";
       return jsonResponse(200, { settings: makeLongSettings(episodeAspect), aspectRatioChangeable: true });
     }
@@ -556,6 +563,28 @@ describe("InstagramPostScreen", () => {
       },
     });
     await pickProject();
+    expect(screen.queryByTestId("post-rotate")).toBeNull();
+  });
+
+  /**
+   * 🔴 CLI Round 890 §2 — 링크로 바로 들어오면 목록이 도착하기 **전에** 고르기가 끝납니다. 예전에는 그때
+   * 비율이 `"9:16"` 으로 **얼어붙어**, 목록이 뒤늦게 「16:9」를 들고 와도 화면은 계속 세로라고 말했습니다.
+   * 여기서는 장편 설정까지 실패시켜 **목록만이 답을 아는** 상태로 만듭니다 — 얼리던 시절이면 빨간 짝입니다.
+   * (860 과 같은 종류: 잰 값이 안 오는 파일·브라우저에서는 고쳐 줄 것이 없습니다.)
+   */
+  it("corrects a linked-to Episode's shape when the listing lands, instead of keeping the frozen default", async () => {
+    renderScreen({
+      projects: [],
+      episodes: [libraryEpisode({ aspectRatio: "16:9" })],
+      longSettings: "fails",
+      initialProjectId: "long",
+      initialEpisodeNumber: 1,
+    });
+    await screen.findByTestId("post-checks");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("post-check-shape").textContent).toContain("가로 영상");
+    });
     expect(screen.queryByTestId("post-rotate")).toBeNull();
   });
 
