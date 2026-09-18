@@ -16,6 +16,7 @@ import {
 import { isSha256Hex } from "@ai-animation-studio/shared";
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
+import { PROJECT_LOCKED_MESSAGE } from "./projectLockedError.js";
 
 export class StoryPromptApiError extends Error {
   readonly code: string;
@@ -36,7 +37,7 @@ const SAFE_ERRORS: Record<string, string> = {
   // differently depending on which button the person pressed. And the sentence is doing one specific job: the
   // generic fallback says "잠시 후 다시 시도해 주세요", and pressing a paid button again while its first press
   // still holds the lock is the double submission the lock exists to prevent.
-  PROJECT_LOCKED: "이 프로젝트에서 다른 작업이 진행 중입니다. 다시 누르지 마세요 — 그 작업이 끝나면 자동으로 반영됩니다.",
+  PROJECT_LOCKED: PROJECT_LOCKED_MESSAGE,
   STORY_PROMPT_STALE: "Story 프롬프트가 그 사이에 변경되었습니다. 미리보기를 다시 불러와 주세요.",
   [BUDGET_LEDGER_UNREADABLE]: BUDGET_LEDGER_UNREADABLE_MESSAGE,
   STORY_BUDGET_EXCEEDED: `이번 달 OpenAI 예산을 초과하여 요청을 보내지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,

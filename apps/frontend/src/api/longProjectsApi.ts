@@ -106,6 +106,7 @@ import { imageFailureMessage, mergeClipsInvalidMessage, mergeFailureMessage, nar
 import { BUDGET_LEDGER_UNREADABLE, BUDGET_LEDGER_UNREADABLE_MESSAGE } from "./budgetLedgerError.js";
 import { isSceneFailureMap } from "./contractGuards.js";
 import { SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
+import { PROJECT_LOCKED_MESSAGE } from "./projectLockedError.js";
 
 export class LongProjectsApiError extends Error {
   readonly code: string;
@@ -179,7 +180,7 @@ const SAFE_ERRORS: Record<string, string> = {
   // keeps one frontend entry per code). It used to name the Episode, so approving a project outline answered
   // "이 에피소드를 처리하는 중" — a sentence about something the user had not touched. A message shared by two
   // subjects must not name either.
-  PROJECT_LOCKED: "이 프로젝트에서 다른 작업이 진행 중입니다. 다시 누르지 마세요 — 그 작업이 끝나면 자동으로 반영됩니다.",
+  PROJECT_LOCKED: PROJECT_LOCKED_MESSAGE,
   // The screen's `changeable` flag normally keeps this out of sight. It still has to say something true,
   // because there is one way to reach it: two windows open, a script generated in one, then a save from the
   // other — which was showing an editable form from before the script existed. So the message states what
