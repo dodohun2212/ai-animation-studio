@@ -618,13 +618,17 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           카탈로그에는 다섯 회사의 모델 스무 개가 있어서, 「Runway 크레딧이 부족합니다」만으로는
                           **무엇을 바꿔야 하는지**가 안 나옵니다. 사람이 손댈 수 있는 건 모델이고, 그 이름이 여기 없으면
                           설정 화면에서 스무 줄을 직접 맞춰 봐야 합니다.
-                          🟠 이 작업의 모델이지 지금 설정값이 아닙니다 — 도중에 설정을 바꿔도 실패한 클립이 무엇으로
-                          나갔는지는 변하지 않습니다(견적·장부가 같은 기준을 씁니다).
+                          🔴 그리고 **여기서는 바꿀 수 없다**고 말해야 합니다. 첫 판은 「API 설정에서 고르실 수
+                          있습니다」였는데, 그건 이 카드 아래에서 거짓입니다 — `regenerate` 가 기록을 `...record` 로
+                          되살려 `model` 을 그대로 두고, 견적·문·요청 전부 그 기록을 읽습니다. 시키는 대로 설정을
+                          바꾸고 「다시 시도」를 누르면 **같은 모델로 또 실패하고 또 청구됩니다.** 실패 카드 아래에서
+                          그건 D-010 과 같은 방향이라, 문장이 할 수 있는 일이 아니라 **일어날 일**을 말합니다
+                          (Cowork Round 922).
                           🟠 `videoModelOption` 이 아니라 `.find` 입니다: 모르는 이름에 화면이 통째로 죽는 것보다
                           이름 한 줄을 안 보여 주는 쪽이 낫습니다(`VideoPromptPreviewScreen` 과 같은 판단). */}
                       {failedModelLabel && (
                         <p data-testid={`failed-scene-model-${sceneNumber}`} className="text-xs text-rose-200/80">
-                          이 장면은 <span className="text-rose-100">{failedModelLabel}</span> 로 만들고 있었습니다. 다른 모델로 바꾸시려면 API 설정에서 고르실 수 있습니다.
+                          이 장면은 <span className="text-rose-100">{failedModelLabel}</span> 로 만들고 있었습니다. 이 작업은 이 모델로 굳어 있어, 설정에서 바꾸셔도 여기 「다시 시도」는 같은 모델로 나갑니다 — 바꾼 모델은 다음에 새로 만드는 영상부터 쓰입니다.
                         </p>
                       )}
                       {cannotRetry && (

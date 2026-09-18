@@ -615,6 +615,40 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
     expect(review.reviews.map((item) => item.model)).toEqual(Array(6).fill("h3_max_480p"));
   });
 
+  /*
+   * 🔴 A retry of a failed scene goes out on the job's model, whatever the setting says now — and the screen's
+   * failure line has to say so rather than offering the settings page.
+   *
+   * The first version of that line read 「다른 모델로 바꾸시려면 API 설정에서 고르실 수 있습니다」, which is
+   * false under a failure card: `regenerate` revives the record with `...record`, so `model` survives, and the
+   * quote, the budget gate and the request all read it back. Following that advice means changing the setting,
+   * pressing 다시 시도, and being charged again for the same model that just failed — the D-010 direction
+   * (Cowork Round 922). Nothing pinned this, so nothing would have caught the sentence coming back.
+   */
+  it("sends a retry on the job's model even after the setting is changed to another one", async () => {
+    const deps = await setupWithConnectedRunway({ model: "h3_max_768p" });
+    const workflow = newWorkflow(deps);
+    const fetchMock = runwayFetchMock({ failTaskId: "task-1" });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
+
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    expect(await workflow.getProgress("video_workflow", deps.accepted.jobId)).toMatchObject({ status: "failed", failedSceneNumbers: [1] });
+
+    // The person reads the failure, changes the model in settings, and presses 다시 시도.
+    await deps.providerSettings.saveVideoModel({ model: "gen4_turbo" });
+    await workflow.regenerate("video_workflow", deps.accepted.jobId, [1], "no lettering in the final beat");
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const progress = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+
+    const submitted = fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/v1/image_to_video")).map((call) => JSON.parse(String((call[1] as RequestInit).body)) as Record<string, unknown>);
+    for (const body of submitted) expect(body).toMatchObject({ model: "h3_max", resolution: "768p" });
+    // And the screen is told the same thing, so its sentence can say the retry will not switch models.
+    expect(progress.model).toBe("h3_max_768p");
+  });
+
   it("reports each scene's real recorded cost in the review response, accumulating across a regeneration", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
