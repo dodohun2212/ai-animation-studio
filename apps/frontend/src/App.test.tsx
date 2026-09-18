@@ -463,6 +463,33 @@ describe("App", () => {
     return fetchMock;
   };
 
+  /**
+   * 🔴 뉴스 릴은 카드 한 장으로 끝나므로, 자기 만들기 화면을 따로 두지 않고 **대조를 통과한 요약을 명언
+   * 카드 화면에 넘깁니다.** 그 넘김이 끊기면 사람은 방금 확인받은 문장을 카드 화면에서 **다시 손으로
+   * 옮겨 적게** 되고, 옮겨 적는 순간 대조는 아무 의미가 없어집니다(옮기다 틀려도 아무도 안 봅니다).
+   *
+   * 출처도 같이 가야 합니다 — 남의 기사를 줄인 글에서 출처가 빠지면 우리 글인 척하는 것입니다.
+   */
+  it("carries a checked news summary — and its source — into the card screen", async () => {
+    stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
+    render(<App />);
+    window.location.hash = "#/newsReel";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+
+    const article = "국회는 2026년 9월 17일 후속 법률 51건을 통과시켰다.";
+    fireEvent.change(await screen.findByTestId("news-article"), { target: { value: article } });
+    fireEvent.change(screen.getByTestId("news-summary"), { target: { value: "국회가 법안 51건을 통과시켰다." } });
+    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "서울경제" } });
+    fireEvent.change(screen.getByTestId("news-published"), { target: { value: "2026-09-17" } });
+    fireEvent.change(screen.getByTestId("news-url"), { target: { value: "https://example.test/a" } });
+
+    fireEvent.click(screen.getByTestId("news-use-summary"));
+
+    const quote = await screen.findByTestId("photo-card-quote");
+    expect((quote as HTMLTextAreaElement).value).toContain("51건");
+    expect(screen.getByTestId("photo-card-source-note").textContent).toContain("서울경제");
+  });
+
   it("gives a 명언 카드 its own two steps instead of the story pipeline", async () => {
     stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
     render(<App />);

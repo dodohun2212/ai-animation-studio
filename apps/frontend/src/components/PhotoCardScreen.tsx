@@ -23,6 +23,19 @@ interface Props {
    * and an optional callback would let a caller render rows that go nowhere.
    */
   onOpenCard: (projectId: string) => void;
+  /**
+   * 뉴스 화면이 넘겨준, **대조를 통과한** 요약. 없으면 빈 칸으로 시작합니다.
+   *
+   * 🔴 한 번만 채웁니다 — 넘어온 뒤 사람이 고친 글을 다시 덮으면, 고친 것이 말없이 사라집니다.
+   */
+  initialQuote?: string;
+  /**
+   * 출처 한 줄(언론사 · 발행일 · 링크). 요약과 **같이** 와야 합니다.
+   *
+   * 🔴 남의 기사를 줄여 만든 카드에서 출처가 빠지면 그건 우리 글인 척하는 것입니다. 그래서 이 화면은
+   * 받은 줄을 보여 주고, 캡션에 그대로 들어간다고 말합니다.
+   */
+  initialCaptionNote?: string;
 }
 
 type DisplayError = { code: string; message: string };
@@ -51,12 +64,12 @@ const outlineButton =
  * the line. This screen is that front door and nothing more; it hands the finished card to the merge screen,
  * which is where music and its credit line already live and where they will keep living.
  */
-export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
+export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, initialCaptionNote }: Props) {
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [listError, setListError] = useState<DisplayError | null>(null);
   const [assetId, setAssetId] = useState("");
   const [projectId, setProjectId] = useState("");
-  const [quote, setQuote] = useState("");
+  const [quote, setQuote] = useState(initialQuote ?? "");
   const [seconds, setSeconds] = useState<PhotoCardDurationSeconds>(PHOTO_CARD_DURATIONS[0]);
   // Was a `vertical` boolean (9:16 vs 16:9 only) — item 6 gave `AspectRatio` two more members (1:1, then 4:5),
   // and a boolean has no way to hold a third or fourth value. Carrying the real `AspectRatio` here, the same
@@ -238,6 +251,19 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
           <p className={`text-xs tabular-nums ${trimmedQuote.length > PHOTO_CARD_QUOTE_MAX_LENGTH ? "text-rose-400" : "text-slate-500"}`} data-testid="photo-card-quote-count">
             {trimmedQuote.length} / {PHOTO_CARD_QUOTE_MAX_LENGTH}자
           </p>
+          {/*
+            🔴 뉴스 화면에서 넘어온 카드에만 뜹니다. 남의 기사를 줄여 만든 글에서 출처가 빠지면 그건 우리
+            글인 척하는 것이라, **어디서 왔는지를 이 화면이 계속 들고 있어야** 합니다 — 넘어온 뒤 이 화면에서
+            글을 고치는 동안에도요.
+            🟠 그리고 대조는 **넘어온 그 문장**에 대해 통과한 것입니다. 여기서 글을 고치면 그 통과는 고친
+            문장에 대해서는 아무 말도 하지 않습니다. 그 말을 안 하면 사람은 초록이 따라온다고 읽습니다.
+          */}
+          {initialCaptionNote && (
+            <div className="mt-2 space-y-1 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2" data-testid="photo-card-source-note">
+              <p className="text-xs text-slate-300">출처 · {initialCaptionNote}</p>
+              <p className="text-xs text-slate-500">캡션에 이 줄을 같이 넣어 주세요. 여기서 문장을 고치시면 원문 대조는 다시 하셔야 합니다.</p>
+            </div>
+          )}
 
           <label className="block text-sm text-slate-300">
             길이

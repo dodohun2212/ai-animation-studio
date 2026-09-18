@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { checkNewsSummary, type NewsClaimCheck } from "@ai-animation-studio/shared";
+import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, type NewsClaimCheck } from "@ai-animation-studio/shared";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSectionRoomy as cardSection, primaryButton } from "./ui/surfaces.js";
 
@@ -159,7 +159,7 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         {/* 🔴 이 검사의 한계를 화면이 직접 말합니다. 안 적으면 초록 한 줄이 「사실 확인 끝」으로 읽히고,
             그건 이 화면이 막으려던 것보다 더 나쁜 오해입니다. */}
         <p className="mt-3 text-xs text-slate-500" data-testid="news-check-limit">
-          이 대조는 <strong className="text-slate-400">기사에 없는 숫자·날짜·인용문</strong>만 잡습니다. 기사에 있는 값을 엉뚱한 곳에 붙였거나 뜻을 뒤집은 것은 못 잡습니다 — 올리기 전에 기사와 한 번 읽어 봐 주세요.
+          {NEWS_CHECK_SCOPE_NOTICE}
         </p>
       </section>
 

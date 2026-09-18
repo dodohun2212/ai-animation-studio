@@ -13,6 +13,7 @@ import { ProviderSettingsScreen } from "./components/ProviderSettingsScreen.js";
 import { AssetLibraryScreen } from "./components/AssetLibraryScreen.js";
 import { VideoLibraryScreen } from "./components/VideoLibraryScreen.js";
 import { PhotoCardScreen } from "./components/PhotoCardScreen.js";
+import { NewsReelScreen } from "./components/NewsReelScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
 import { MappingReviewScreen } from "./components/MappingReviewScreen.js";
@@ -63,6 +64,7 @@ type Screen =
   | { name: "videoLibrary" }
   | { name: "audioLibrary" }
   | { name: "photoCard" }
+  | { name: "newsReel" }
   | { name: "instagramPost"; initialProjectId?: string; initialEpisodeNumber?: number }
   | { name: "archive" }
   | { name: "workflowGuide" }
@@ -97,7 +99,7 @@ type Screen =
 type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber";
 const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
-  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [],
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], newsReel: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -173,7 +175,7 @@ const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "imageGeneration", "narrationReview", "sceneEdit", "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
-type NavIconName = "home" | "long" | "library" | "quote" | "film" | "music" | "share" | "archive" | "workflow" | "settings";
+type NavIconName = "home" | "long" | "library" | "quote" | "news" | "film" | "music" | "share" | "archive" | "workflow" | "settings";
 
 function NavIcon({ name }: { name: NavIconName }) {
   const shared = {
@@ -192,6 +194,14 @@ function NavIcon({ name }: { name: NavIconName }) {
         <svg {...shared}>
           <path d="M3 11.5 12 4l9 7.5" />
           <path d="M5.5 10v9a1 1 0 0 0 1 1H9a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h2.5a1 1 0 0 0 1-1v-9" />
+        </svg>
+      );
+    case "news":
+      return (
+        <svg {...shared}>
+          <path d="M4 5h12a1 1 0 0 1 1 1v12a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2z" />
+          <path d="M17 9h2a1 1 0 0 1 1 1v8" />
+          <path d="M7 9h6M7 12.5h6M7 16h4" />
         </svg>
       );
     case "long":
@@ -267,13 +277,14 @@ function NavIcon({ name }: { name: NavIconName }) {
   }
 }
 
-type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
+type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "newsReel" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
 
 function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "assets") return "assets";
   if (name === "videoLibrary") return "videoLibrary";
   if (name === "audioLibrary") return "audioLibrary";
   if (name === "photoCard") return "photoCard";
+  if (name === "newsReel") return "newsReel";
   if (name === "instagramPost") return "instagramPost";
   if (name === "archive") return "archive";
   if (name === "workflowGuide") return "workflowGuide";
@@ -293,6 +304,7 @@ function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: 
     { key: "videoLibrary", icon: "film", label: "영상 보관함", target: { name: "videoLibrary" } },
     { key: "audioLibrary", icon: "music", label: "음원 보관함", target: { name: "audioLibrary" } },
     { key: "photoCard", icon: "quote", label: "명언 카드", target: { name: "photoCard" } },
+    { key: "newsReel", icon: "news", label: "뉴스 릴", target: { name: "newsReel" } },
     { key: "instagramPost", icon: "share", label: "게시물 준비", target: { name: "instagramPost" } },
     // Not "보관함": three entries above it are libraries and this one is not — it is where a project goes to be recovered or destroyed.
     { key: "archive", icon: "archive", label: "보관한 프로젝트", target: { name: "archive" } },
@@ -590,6 +602,14 @@ export function App() {
    * to its normal form, and the next pass finds the two equal).
    */
   const [screen, setScreen] = useState<Screen>(() => screenFromHash(window.location.hash));
+  /**
+   * 뉴스 화면이 대조를 통과한 요약을 카드 화면에 건네는 자리.
+   *
+   * 🔴 주소(해시)에 싣지 않습니다. 요약은 길고 줄바꿈이 있고, 무엇보다 **대조를 통과했다는 사실이 같이
+   * 다니지 않습니다** — 주소는 누구나 손으로 고칠 수 있어서, 거기 실으면 검사를 건너뛴 문장이 카드 화면에
+   * 도착할 수 있습니다. 새로고침하면 사라지는 것이 맞습니다: 그때는 뉴스 화면에서 다시 대조해야 합니다.
+   */
+  const [newsHandoff, setNewsHandoff] = useState<{ quote: string; sourceLine: string } | null>(null);
   const shortProjectShell = useShortProjectShell(screen);
   /**
    * A story-only screen opened on a 명언 카드.
@@ -886,6 +906,20 @@ export function App() {
                 onBack={() => setScreen({ name: "list" })}
                 onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
                 onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
+                initialQuote={newsHandoff?.quote}
+                initialCaptionNote={newsHandoff?.sourceLine}
+              />
+            )}
+            {/* 뉴스 릴은 카드 한 장으로 끝납니다 — 그래서 자기 만들기 화면을 따로 두지 않고, 대조를 통과한
+                요약을 명언 카드 화면에 넘겨 줍니다. 릴을 만드는 길이 둘이 되면 자막·음악·출처가 두 곳에서
+                갈립니다. */}
+            {screen.name === "newsReel" && (
+              <NewsReelScreen
+                onBack={() => setScreen({ name: "list" })}
+                onUseSummary={(quote, sourceLine) => {
+                  setNewsHandoff({ quote, sourceLine });
+                  setScreen({ name: "photoCard" });
+                }}
               />
             )}
             {screen.name === "instagramPost" && <InstagramPostScreen initialProjectId={screen.initialProjectId} initialEpisodeNumber={screen.initialEpisodeNumber} onBack={() => setScreen({ name: "list" })} />}

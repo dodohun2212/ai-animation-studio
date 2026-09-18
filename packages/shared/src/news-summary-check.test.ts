@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assertNewsSummaryCheck } from "./api.js";
 
-import { checkNewsSummary } from "./news-summary-check.js";
+import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary } from "./news-summary-check.js";
 
 const ARTICLE = [
   "9월 14일 오전 9시부터 시청 앞 도로가 통제된다. 통제는 4시간 동안 이어지며, 우회로는 2개가 마련된다.",
@@ -180,5 +180,21 @@ describe("news claim check — the shapes a quotation and a unit can take", () =
    */
   it("is a floor, not a guarantee: a real figure attached to the wrong thing still passes", () => {
     expect(checkNewsSummary("납품대금 지급 기한이 51일로 줄었다.", ARTICLE_2).missing).toEqual([]);
+  });
+
+  /**
+   * 🔴 The sentence that has to sit beside the pair above, and it has gone missing once already — it lived in
+   * `newsApi.ts`, went out with it in Round 910, and for a day the checker's own comment named a constant that
+   * did not exist. A guard costs one assertion; the thing it prevents is a green result that reads as "this
+   * summary is true" over a check that never looked at meaning.
+   *
+   * It is checked for what it *admits*, not for exact words — the wording may improve, but it stops being this
+   * sentence if it no longer names what cannot be caught.
+   */
+  it("keeps a scope notice that says what the check cannot catch", () => {
+    expect(NEWS_CHECK_SCOPE_NOTICE).toContain("숫자");
+    expect(NEWS_CHECK_SCOPE_NOTICE).toContain("날짜");
+    expect(NEWS_CHECK_SCOPE_NOTICE).toContain("인용");
+    expect(NEWS_CHECK_SCOPE_NOTICE).toContain("못 잡습니다");
   });
 });

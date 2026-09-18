@@ -23,6 +23,22 @@ import type { NewsClaimCheck, NewsClaimKind, NewsSummaryCheck } from "./api.js";
  * when nothing is missing. This is the floor, not the ceiling.
  */
 
+/**
+ * The sentence a screen shows beside any check result — **including when nothing is missing.**
+ *
+ * 🔴 Not decoration, and not optional. A green result with no sentence beside it reads as "this summary is
+ * true", which is a guarantee nothing here gives: the pair named "floor, not a guarantee" holds a case where a
+ * real figure attached to the wrong thing passes. The wording names that failure specifically rather than
+ * hedging in the abstract, and ends with the one thing the person can actually do about it.
+ *
+ * It lives beside the checker, in one place, so the words cannot drift between the screens that show a check.
+ * 🟠 It went missing once: it was written in `newsApi.ts`, which came back out when the client landed ahead of
+ * its server (Round 910), and for a day the comment above pointed at a constant that did not exist (Cowork
+ * Round 913 found that). The wording below is theirs — it says what cannot be caught, not merely what was.
+ */
+export const NEWS_CHECK_SCOPE_NOTICE =
+  "이 대조는 기사에 없는 숫자·날짜·인용문만 잡습니다. 기사에 있는 값을 엉뚱한 곳에 붙였거나 뜻을 뒤집은 것은 못 잡습니다 — 올리기 전에 기사와 한 번 읽어 봐 주세요.";
+
 /** Spaces, including the wide ones Korean text picks up from the web, are never the difference between two claims. */
 const collapseSpace = (value: string): string => value.replace(/[\s ​]+/g, " ").trim();
 

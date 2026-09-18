@@ -12,6 +12,9 @@ describe("screen addresses", () => {
   it("round-trips every screen shape it can carry", () => {
     const screens = [
       { name: "list" },
+      // 🔴 새 화면이 주소를 못 타면 새로고침에서 사라집니다 — 그리고 `SCREEN_PARAMS` 가 총합 맵이라 칸을
+      // 안 넣으면 컴파일이 막지만, **넣어 놓고 왕복이 깨지는 것**은 컴파일이 안 잡습니다(Cowork Round 913).
+      { name: "newsReel" },
       { name: "assets", initialQuery: "이배드" },
       { name: "detail", projectId: "12" },
       { name: "videoWorkflow", projectId: "12", jobId: "JOB-1" },
