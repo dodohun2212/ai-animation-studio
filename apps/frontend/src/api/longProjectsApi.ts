@@ -666,7 +666,11 @@ function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgre
     && Array.isArray(value.sceneNumbers) && value.sceneNumbers.every(isSceneNumber)
     && isNonEmptyString(value.jobId) && (VIDEO_JOB_STATUSES as readonly string[]).includes(value.status as string)
     && (value.currentSceneNumber === undefined || isSceneNumber(value.currentSceneNumber)) && Array.isArray(value.completedSceneNumbers) && value.completedSceneNumbers.every(isSceneNumber)
-    && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors) && isSceneFailureMap(value.sceneFailures);
+    && Array.isArray(value.failedSceneNumbers) && value.failedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode) && isSceneErrorMap(value.sceneErrors) && isSceneFailureMap(value.sceneFailures)
+    /* Checked against the contract's own list, the same as the short side's progress guard. This is what the
+       failure card names — and what lets it say the setting will not move this job's retry — so a response that
+       cannot say which model the job ran is one this screen must not draw. */
+    && (VIDEO_MODELS as readonly string[]).includes(value.model as string);
 }
 /**
  * `paidProvider` again, and this is the response whose comment says why it is here at all: the screen shows a

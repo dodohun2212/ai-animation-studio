@@ -8,7 +8,7 @@ const episode = (status: LongEpisodeStatus): LongEpisodeDetail => ({ episodeNumb
 const preview = { confirmationId: "confirm", model: "gen4_turbo", ratio: "720:1280", durationSecondsPerScene: 5, executionMode: "sequential", estimatedCostUsd: 1.5, scenes: [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, prompt: `prompt ${sceneNumber}`, estimatedCostUsd: .25 })) };
 // paidProvider is required and stated, never inferred: a run whose cost line is missing is not a free run. The
 // fixture said nothing, which is exactly the shape the client now refuses.
-const progress = (status: "created" | "running" | "succeeded" | "interrupted", completed: number[] = []): LongEpisodeVideoProgress => ({ paidProvider: false, jobId: "job", status, completedSceneNumbers: completed, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode(status === "succeeded" ? "videos_review" : "videos_generating") });
+const progress = (status: "created" | "running" | "succeeded" | "interrupted", completed: number[] = []): LongEpisodeVideoProgress => ({ paidProvider: false, jobId: "job", model: "gen4_turbo", status, completedSceneNumbers: completed, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode(status === "succeeded" ? "videos_review" : "videos_generating") });
 /**
  * Assertions here name the request they mean instead of counting to it.
  *
@@ -234,10 +234,10 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
   it("offers a retry for a scene Runway reported failed, only submitting after explicit confirmation, and shows an actionable reason", async () => {
     const failedJob = {
-      paidProvider: false, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2, 3], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+      paidProvider: false, jobId: "job", model: "gen4_turbo", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2, 3], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
       sceneErrors: { 2: "authentication", 3: "Runway rejected the prompt: explicit content detected" },
     };
-    const retriedJob = { jobId: "job", status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") };
+    const retriedJob = { jobId: "job", model: "gen4_turbo", status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") };
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: null },
       "GET /videos/preview": preview,
@@ -274,13 +274,13 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   it("sends the typed direction with a failed scene's retry", async () => {
     const failedJob = {
       paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
-      sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+      model: "gen4_turbo", sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
       sceneErrors: { 2: "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" },
     };
     const fetchMock = stubFetchByRoute({
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": failedJob,
-      "POST /videos/generations/job/scenes/2/regenerate": { jobId: "job", status: "running", completedSceneNumbers: [1], failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
+      "POST /videos/generations/job/scenes/2/regenerate": { jobId: "job", model: "gen4_turbo", status: "running", completedSceneNumbers: [1], failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating") },
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
@@ -538,12 +538,12 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": {
         paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
-        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        model: "gen4_turbo", sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
         sceneErrors: { 2: "timeout" },
       },
       "POST /videos/generations/job/recovery": {
         paidProvider: true, jobId: "job", status: "running", completedSceneNumbers: [1, 2], failedSceneNumbers: [],
-        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        model: "gen4_turbo", sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
         recoveredSceneNumbers: [2], unrecoverableScenes: [],
       },
       ...sceneVersionRoutes(),
@@ -643,7 +643,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": {
         paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
-        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        model: "gen4_turbo", sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
         sceneErrors: { 2: "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" },
       },
     }));
@@ -667,7 +667,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
    */
   const failedWith = (failure: Record<string, unknown>) => ({
     paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
-    sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+    model: "gen4_turbo", sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
     sceneErrors: { 2: "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" },
     sceneFailures: { 2: failure },
   });
@@ -769,7 +769,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": {
         paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
-        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        model: "gen4_turbo", sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
         sceneErrors: { 2: "submit_interrupted" },
         sceneFailures: { 2: { category: "submit_interrupted", billedOnFailure: true } },
       },
@@ -792,7 +792,7 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
       "GET /videos/generations/current": { jobId: "job" },
       "GET /videos/generations/job": {
         paidProvider: true, jobId: "job", status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
-        sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
+        model: "gen4_turbo", sceneNumbers: [1, 2, 3, 4, 5, 6], episode: episode("videos_generating"),
         sceneErrors: { 2: "An unexpected error occurred." },
       },
     }));

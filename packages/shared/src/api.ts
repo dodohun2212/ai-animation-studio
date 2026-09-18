@@ -910,6 +910,16 @@ export interface LongEpisodeVideoProgress {
   /** Same meaning and scope as GenerationProgressResponse.sceneNumbers (see that field's doc comment) — lets the Frontend render the full scene set without a local scene-count constant. */
   sceneNumbers: SceneNumber[];
   episode: LongEpisodeDetail;
+  /**
+   * Same meaning and scope as GenerationProgressResponse.model (see that field's doc comment): **the job's own**
+   * model, read from its records rather than today's setting.
+   *
+   * Here because the two pipelines' failure cards are the same card. The short side names the model that failed
+   * and says the setting will not move this job's retry; an Episode failing the same way with the model left
+   * out would be the same code answered two different amounts, which is what putting `runwaySceneError` in one
+   * place was for. `episode-videos.service.ts`'s `progressFor` already computes this for its own estimate.
+   */
+  model: VideoModel;
   /** Same meaning and scope as GenerationProgressResponse.sceneErrors (see that field's doc comment). */
   sceneErrors?: Record<SceneNumber, string>;
   /** The same failures, with the provider's code, what to do about it, and whether it was charged — see SceneFailure. `sceneErrors` stays until every screen reads this instead. */
