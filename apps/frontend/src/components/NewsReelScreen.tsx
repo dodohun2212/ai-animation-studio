@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { checkNewsSummary, type UnverifiedClaim } from "../utils/newsSummaryCheck.js";
+import { checkNewsSummary, type NewsClaimCheck } from "@ai-animation-studio/shared";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSectionRoomy as cardSection, primaryButton } from "./ui/surfaces.js";
 
@@ -20,7 +20,7 @@ const field = "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-
 const label = "block text-sm text-slate-300";
 
 /** 화면이 못 찾은 것을 무엇이라 부를지 — 사람이 고칠 자리를 가리키는 말로. */
-const CLAIM_LABEL: Record<UnverifiedClaim["kind"], string> = {
+const CLAIM_LABEL: Record<NewsClaimCheck["kind"], string> = {
   number: "숫자",
   date: "날짜",
   quote: "따옴표 안의 말",
@@ -53,11 +53,11 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   /* 글자를 칠 때마다 다시 봅니다 — 순수 함수라 서버도 돈도 안 듭니다. 「확인」 버튼을 따로 두면 사람이
      누르지 않은 채로 넘어갈 수 있고, 그러면 막는 장치가 있으나 마나입니다. */
   const check = useMemo(
-    () => (ready ? checkNewsSummary(trimmedSummary, trimmedArticle) : { unverified: [], checked: 0 }),
+    () => (ready ? checkNewsSummary(trimmedSummary, trimmedArticle) : { claims: [], missing: [] }),
     [ready, trimmedSummary, trimmedArticle],
   );
 
-  const blocked = check.unverified.length > 0;
+  const blocked = check.missing.length > 0;
   const sourceLine = [outlet.trim(), publishedAt.trim(), sourceUrl.trim()].filter((part) => part.length > 0).join(" · ");
 
   return (
@@ -127,10 +127,10 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         {ready && blocked && (
           <div className="mt-3 space-y-2 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3" data-testid="news-check-failed">
             <p className="text-sm font-semibold text-rose-200">
-              요약에 기사에서 찾을 수 없는 것이 {check.unverified.length}개 있습니다.
+              요약에 기사에서 찾을 수 없는 것이 {check.missing.length}개 있습니다.
             </p>
             <ul className="space-y-1">
-              {check.unverified.map((claim) => (
+              {check.missing.map((claim) => (
                 <li key={`${claim.kind}:${claim.text}`} className="text-sm text-rose-200" data-testid={`news-unverified-${claim.kind}`}>
                   {CLAIM_LABEL[claim.kind]} <strong className="font-semibold">{claim.text}</strong> — 기사 본문에 없습니다.
                 </li>
@@ -142,15 +142,15 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
           </div>
         )}
 
-        {ready && !blocked && check.checked > 0 && (
+        {ready && !blocked && check.claims.length > 0 && (
           <p className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300" data-testid="news-check-passed">
-            요약의 숫자·날짜·인용문 {check.checked}개를 기사 본문에서 찾았습니다.
+            요약의 숫자·날짜·인용문 {check.claims.length}개를 기사 본문에서 찾았습니다.
           </p>
         )}
 
         {/* 🔴 「검사할 게 없었다」와 「통과했다」는 다른 사실입니다. 숫자도 날짜도 따옴표도 없는 요약은 이
             검사가 아무것도 보지 못한 것이고, 초록으로 칠하면 보지 않은 것을 봤다고 말하는 셈입니다. */}
-        {ready && !blocked && check.checked === 0 && (
+        {ready && !blocked && check.claims.length === 0 && (
           <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300" data-testid="news-check-empty">
             이 요약에는 대조할 숫자·날짜·인용문이 없습니다. 막지는 않지만, <strong>확인된 것도 없습니다.</strong>
           </p>

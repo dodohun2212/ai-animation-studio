@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { assertNewsSummaryCheck } from "@ai-animation-studio/shared";
+import { assertNewsSummaryCheck } from "./api.js";
 
-import { checkNewsSummary } from "./news-claim-check.js";
+import { checkNewsSummary } from "./news-summary-check.js";
 
 const ARTICLE = [
   "9월 14일 오전 9시부터 시청 앞 도로가 통제된다. 통제는 4시간 동안 이어지며, 우회로는 2개가 마련된다.",
@@ -27,7 +27,7 @@ describe("news claim check", () => {
    */
   it("catches a figure the article never gave", () => {
     const check = checkNewsSummary("지난해 행사에는 12,000명이 모였다.", ARTICLE);
-    expect(texts(check.missing)).toEqual(["12,000"]);
+    expect(texts(check.missing)).toEqual(["12,000명"]);
   });
 
   /** A quotation is the easiest thing to invent and the most damaging, so it must match word for word. */
@@ -57,7 +57,7 @@ describe("news claim check", () => {
    */
   it("refuses a Korean-unit figure rather than guessing it into digits", () => {
     const check = checkNewsSummary("지난해 행사에는 4천 명이 모였다.", ARTICLE);
-    expect(texts(check.missing)).toEqual(["4천"]);
+    expect(texts(check.missing)).toEqual(["4천 명"]);
   });
 
   /**
@@ -67,8 +67,8 @@ describe("news claim check", () => {
    * matches only where no digit runs up against it.
    */
   it("does not pass a figure just because a larger one starts with it", () => {
-    expect(texts(checkNewsSummary("40명이 모였다.", ARTICLE).missing)).toEqual(["40"]);
-    expect(texts(checkNewsSummary("400명이 모였다.", ARTICLE).missing)).toEqual(["400"]);
+    expect(texts(checkNewsSummary("40명이 모였다.", ARTICLE).missing)).toEqual(["40명"]);
+    expect(texts(checkNewsSummary("400명이 모였다.", ARTICLE).missing)).toEqual(["400명"]);
     // And the real one still passes, so the guard is not simply refusing everything.
     expect(checkNewsSummary("4,000명이 모였다.", ARTICLE).missing).toEqual([]);
   });
@@ -78,8 +78,8 @@ describe("news claim check", () => {
    * the article's `3.5`, so a summary that invented a bare 3 passed. The decimal point is a boundary too.
    */
   it("does not let a whole number pass on the strength of a decimal", () => {
-    expect(texts(checkNewsSummary("3명이 왔다.", "3.5% 올랐다.").missing)).toEqual(["3"]);
-    expect(texts(checkNewsSummary("35명이 왔다.", "3.5% 올랐다.").missing)).toEqual(["35"]);
+    expect(texts(checkNewsSummary("3명이 왔다.", "3.5% 올랐다.").missing)).toEqual(["3명"]);
+    expect(texts(checkNewsSummary("35명이 왔다.", "3.5% 올랐다.").missing)).toEqual(["35명"]);
   });
 
   /** `10월2일` and `10월 2일` are one date written twice — spaces come out of both sides before comparing. */
@@ -103,7 +103,7 @@ describe("news claim check", () => {
   /** Saying the same figure twice is one claim about the world; two rows would read as two separate failures. */
   it("reports a repeated span once", () => {
     const check = checkNewsSummary("12,000명이 모였다. 정말 12,000명이다.", ARTICLE);
-    expect(texts(check.missing)).toEqual(["12,000"]);
+    expect(texts(check.missing)).toEqual(["12,000명"]);
   });
 
   /** Empty quote marks are punctuation. A claim with no text would be a pass nobody earned. */
@@ -132,5 +132,53 @@ describe("news claim check", () => {
     ]) {
       expect(() => assertNewsSummaryCheck(checkNewsSummary(summary, ARTICLE))).not.toThrow();
     }
+  });
+});
+
+/**
+ * Cowork's fixture and the three cases theirs held that this one did not (Round 911). Kept when the two checkers
+ * merged: a case someone thought of is the expensive part, and dropping it to save a file is how the merge
+ * would have cost more than the duplicate did.
+ */
+const ARTICLE_2 = [
+  "국회는 2026년 9월 17일 검찰청 폐지에 따른 후속 법률 51건을 통과시켰다.",
+  "개정법은 10월 2일부터 시행된다. 검사의 직접 수사권은 사법경찰로 넘어간다.",
+  "납품대금 지급 기한은 직접 구매의 경우 60일에서 35일로 줄었다.",
+  "야당은 \"시행 2주를 앞두고 한꺼번에 밀어붙이는 것을 개혁이라 할 수 있느냐\"고 비판했다.",
+].join("\n");
+
+describe("news claim check — the shapes a quotation and a unit can take", () => {
+  /** Quotation marks are not meaning: 「」 and "" are one pair written two ways. */
+  it("reads corner brackets and straight quotes as the same quotation", () => {
+    const summary = "야당은 「시행 2주를 앞두고 한꺼번에 밀어붙이는 것을 개혁이라 할 수 있느냐」고 비판했다.";
+    expect(checkNewsSummary(summary, ARTICLE_2).missing).toEqual([]);
+  });
+
+  /**
+   * A counter is not part of the figure. The article says 51건 and the summary says 51개 — the number is the
+   * same and it is there. Refusing this would redden correct summaries, and a check people stop believing is a
+   * check that gets switched off.
+   */
+  it("does not refuse a figure because its counter was reworded", () => {
+    expect(checkNewsSummary("법안 51개가 통과됐다.", ARTICLE_2).missing).toEqual([]);
+  });
+
+  /**
+   * 🔴 The counter comes out of the *search* and stays in the *text*, and both halves matter. Cowork's screen
+   * pair caught the second one: a refusal that names `53` when the person typed `53건` cannot be found in their
+   * own summary, so the one actionable thing a refusal offers is gone.
+   */
+  it("shows the span as written while searching only for the figure", () => {
+    const { missing } = checkNewsSummary("법안 53건이 통과됐다.", ARTICLE_2);
+    expect(missing.map((claim) => claim.text)).toEqual(["53건"]);
+  });
+
+  /**
+   * 🟠 The limit, pinned in code rather than only in a comment. `51` and `일` are both in the article, but never
+   * joined — and this passes. That is why nothing may print 「확인됐습니다」 over a green result, and why the
+   * contract has no `verified` field. Whoever reads this later should find the ceiling here, not infer one.
+   */
+  it("is a floor, not a guarantee: a real figure attached to the wrong thing still passes", () => {
+    expect(checkNewsSummary("납품대금 지급 기한이 51일로 줄었다.", ARTICLE_2).missing).toEqual([]);
   });
 });
