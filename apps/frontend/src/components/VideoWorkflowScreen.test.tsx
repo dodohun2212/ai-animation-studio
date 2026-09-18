@@ -395,6 +395,33 @@ describe("VideoWorkflowScreen", () => {
   });
 
   /**
+   * 🔴 이 줄의 뒷문장이 한 번 틀렸던 자리입니다 — 그리고 틀린 방향이 돈 쪽이었습니다.
+   *
+   * 처음 문구는 「다른 모델로 바꾸시려면 API 설정에서 고르실 수 있습니다」였습니다. 실패 카드 바로 아래에
+   * 「다시 시도」가 있으니 그 조언의 자연스러운 다음 동작은 **설정을 바꾸고 다시 시도**인데, 작업은 확인된
+   * 모델을 그대로 지닙니다(`regenerate` 가 `model` 을 안 덮고, 견적·예산 문도 기록을 읽습니다). 그래서 사람은
+   * 바꿨다고 믿은 채 **같은 모델로 같은 실패를 한 번 더 삽니다.** D-010 과 같은 방향입니다.
+   *
+   * 🟠 그래서 짝이 「굳어 있다」는 **주장**을 봅니다. 모델 이름만 보는 위 짝은 이 문장이 무슨 조언을 하든
+   * 초록이었습니다 — 이름이 맞는 것과 다음 행동을 옳게 가리키는 것은 다른 일입니다.
+   */
+  it("says the setting will not change this job's model, instead of inviting a retry that changes nothing", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
+      ...failedWith({ category: "quota_or_permission", billedOnFailure: false }),
+      sceneErrors: { 2: "quota_or_permission" },
+      model: "seedance2_720p",
+    })));
+
+    await screen.findByTestId("failed-scenes-section");
+    const line = screen.getByTestId("failed-scene-model-2").textContent ?? "";
+
+    expect(line).toContain("같은 모델로 나갑니다");
+    expect(line).toContain("다음에 새로 만드는 영상부터");
+    // 되돌아올 문장을 박습니다: 「설정에서 고르실 수 있습니다」로 끝나면 이 작업에 대해 거짓입니다.
+    expect(line).not.toContain("바꾸시려면");
+  });
+
+  /**
    * 🔴 One failure, two sentences, saying the opposite.
    *
    * A Runway task failure's category is the provider's own English sentence, so the category table missed it
