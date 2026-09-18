@@ -121,14 +121,21 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
  *
  * Plain substring search passes `40` because the article says `4,000` — `4000` contains `40`. That is a false
  * pass, the one direction this file must never take: an invented figure waved through because a bigger real one
- * happens to start with the same digits. So a number is matched only where a digit does not run up against it
- * on either side. Dates and quotations are compared as whole strings and do not have this problem.
+ * happens to start with the same digits. So a number is matched only where a digit does not run up against it.
+ *
+ * 🔴 **The decimal point is a boundary too** (Cowork Round 911 found this one in here). With only `\d` on each
+ * side, a summary saying `3` passed an article that says `3.5` — same false pass, one character along. And a
+ * date is compared with its spaces squeezed out on both sides, because `10월2일` and `10월 2일` are one date
+ * written twice; digits welded to 년·월·일 leave no room for a coincidental match.
  */
+const squeeze = (value: string): string => value.replace(/\s+/g, "");
+
 const foundIn = (haystack: string, needle: string, kind: NewsClaimKind): boolean => {
+  if (kind === "date") return squeeze(haystack).includes(squeeze(needle));
   if (kind !== "number") return collapseSpace(haystack).includes(collapseSpace(needle));
   const text = normaliseNumber(needle);
   if (!text) return false;
-  return new RegExp(`(?<!\\d)${escapeRegExp(text)}(?!\\d)`).test(normaliseNumber(haystack));
+  return new RegExp(`(?<![\\d.])${escapeRegExp(text)}(?![\\d.])`).test(normaliseNumber(haystack));
 };
 
 /**

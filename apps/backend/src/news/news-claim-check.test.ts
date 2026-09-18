@@ -73,6 +73,21 @@ describe("news claim check", () => {
     expect(checkNewsSummary("4,000명이 모였다.", ARTICLE).missing).toEqual([]);
   });
 
+  /**
+   * 🔴 The same false pass one character along, found by Cowork reading this file (Round 911). `3` sat inside
+   * the article's `3.5`, so a summary that invented a bare 3 passed. The decimal point is a boundary too.
+   */
+  it("does not let a whole number pass on the strength of a decimal", () => {
+    expect(texts(checkNewsSummary("3명이 왔다.", "3.5% 올랐다.").missing)).toEqual(["3"]);
+    expect(texts(checkNewsSummary("35명이 왔다.", "3.5% 올랐다.").missing)).toEqual(["35"]);
+  });
+
+  /** `10월2일` and `10월 2일` are one date written twice — spaces come out of both sides before comparing. */
+  it("reads a date the same with or without its spaces", () => {
+    expect(checkNewsSummary("10월2일에 연다.", "10월 2일에 연다.").missing).toEqual([]);
+    expect(checkNewsSummary("10월 2일에 연다.", "10월2일에 연다.").missing).toEqual([]);
+  });
+
   /** A date is checked whole: `14` turning up somewhere says nothing about whether the 14th was in the article. */
   it("does not let a date pass because its digits appear separately", () => {
     const check = checkNewsSummary("행사는 2026년 4월 9일에 열린다.", "2026년에 열리며 4개 구역, 9개 부스가 선다.");
