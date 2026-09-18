@@ -225,6 +225,10 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       jobId, status, ...(current ? { currentSceneNumber: current } : {}), completedSceneNumbers, failedSceneNumbers,
       sceneNumbers: records.map((record) => record.scene_number),
       aspectRatio: shortProjectAspectRatio(project),
+      // The job's own model, the same way the estimate and the ledger above read it (`recordedVideoModel`): a
+      // retry resumes this job, and the job was confirmed under its model rather than whatever the setting says
+      // now. The screen's failure line names it, so a failed clip says which model to change.
+      model: recordedVideoModel(records[0]?.model),
       ...(Object.keys(sceneErrors).length > 0 ? { sceneErrors } : {}),
       ...(Object.keys(sceneFailures).length > 0 ? { sceneFailures } : {}),
       ...(retryEstimate ? { retryEstimate } : {}),

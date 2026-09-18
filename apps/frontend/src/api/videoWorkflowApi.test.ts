@@ -42,6 +42,7 @@ function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): Gene
     // Required, not optional — see the guard's own comment (Cowork Round 865/867). Defaulted here so
     // existing tests that don't care about aspect ratio don't all need to state it.
     aspectRatio: "9:16",
+    model: "gen4_turbo",
     ...overrides,
   };
 }
@@ -228,6 +229,22 @@ describe("videoWorkflowApi", () => {
     await expect(getVideoProgress("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...makeProgress(), aspectRatio: "3:2" })));
+    await expect(getVideoProgress("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  /**
+   * 🔴 The same treatment as `aspectRatio` above, for the same reason: this is the field the failure line names.
+   * With twenty models from five makers in the catalogue, a response that cannot say which model this job used
+   * leaves the screen printing 「Runway 크레딧이 부족합니다」 with nothing saying *which model* to change — right
+   * about the billing, useless about the failure. Checked against the contract's list, so an id the app cannot
+   * resolve is malformed rather than a blank line where the name belongs.
+   */
+  it("rejects a progress response missing or with an unknown video model as malformed", async () => {
+    const { model: _omit, ...withoutModel } = makeProgress();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, withoutModel)));
+    await expect(getVideoProgress("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { ...makeProgress(), model: "kling_v9" })));
     await expect(getVideoProgress("sample_project", "job_1")).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 

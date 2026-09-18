@@ -2193,6 +2193,21 @@ export interface GenerationProgressResponse {
    */
   aspectRatio: AspectRatio;
   /**
+   * The model this job's clips are being made with — **the job's own**, from its records, not today's setting.
+   *
+   * 🔴 Here for the same reason `aspectRatio` is (Cowork Round 865): a screen that shows a whole generation must
+   * not have to wait for the review to learn what the generation *is*. Until now the failure line on this screen
+   * could only say 「Runway …」, because Runway is where the key and the billing live — true, and useless when the
+   * catalogue holds twenty models from MiniMax, Alibaba, ByteDance, Google and xAI. A failed Seedance clip told
+   * the person to top up their Runway credits without ever naming Seedance, so nothing on screen said **which
+   * model to change**, which is the one thing they can act on.
+   *
+   * The job's model rather than the current setting, for the reason the estimate and the ledger already read it
+   * that way (`local-video-workflow.service.ts:178`): a retry resumes *this* job, confirmed under its own model,
+   * and switching the setting mid-job must not rewrite what the failed scene was sent to.
+   */
+  model: VideoModel;
+  /**
    * A short, stable failure code per currently-failed scene (present only for scenes in `failedSceneNumbers`).
    * For a Runway execution, this is one of RunwayErrorCategory ("authentication" | "permission" | "rate_limit" |
    * "invalid_request" | "server" | "network" | "unknown") when the failure happened submitting or checking the

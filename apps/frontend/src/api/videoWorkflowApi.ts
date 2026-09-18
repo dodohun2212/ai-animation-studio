@@ -1,4 +1,5 @@
 import { VIDEO_JOB_STATUSES,
+  VIDEO_MODELS,
   SCENE_REVIEW_STATUSES,
   API_ROUTES,
   MAX_SCENE_COUNT,
@@ -136,7 +137,13 @@ function isGenerationProgressResponse(value: unknown): value is GenerationProgre
     // Required, not optional — a project's shape cannot change once it has pictures, so this is always known.
     // A missing/invalid value here used to fall back to a hardcoded portrait box for the whole run, which is
     // what a landscape project's generation screen showed throughout (Cowork Round 865/867).
-    isAspectRatio(value.aspectRatio)
+    isAspectRatio(value.aspectRatio) &&
+    /* 🔴 Required for the same reason as `aspectRatio` above, and checked against the contract's own list
+       rather than merely typed as a string. This is what the failure line names when a clip fails: with twenty
+       models in the catalogue from five makers, 「Runway 크레딧이 부족합니다」 alone never says *which model*
+       to change — true about the billing, useless about the failure. A response that cannot say which model
+       this job used is one this screen must not draw, because the sentence it would print is the old one. */
+    (VIDEO_MODELS as readonly string[]).includes(value.model as string)
   );
 }
 

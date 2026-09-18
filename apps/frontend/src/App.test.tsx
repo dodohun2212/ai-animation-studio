@@ -663,6 +663,9 @@ describe("App", () => {
           paidProvider: false,
           // Required alongside paidProvider for the same reason (Cowork Round 867/870) — the project is 9:16 here.
           aspectRatio: "9:16",
+          // Required for the same reason again (Round 918): the failure line names the model, so a response
+          // that cannot say which one this job used is malformed rather than a blank where the name belongs.
+          model: "gen4_turbo",
           jobId: "job_42",
           status: "succeeded",
           completedSceneNumbers: [1, 2, 3, 4, 5, 6],
@@ -732,7 +735,7 @@ describe("App", () => {
         return jsonResponse(200, { jobId: "job_42", acceptedSceneNumbers: [1, 2, 3, 4, 5, 6] });
       }
       if (url === "/projects/sample_project/videos/generations/job_42" && method === "GET") {
-        return jsonResponse(200, { paidProvider: false, aspectRatio: "9:16", jobId: "job_42", status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6], failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6] });
+        return jsonResponse(200, { paidProvider: false, aspectRatio: "9:16", model: "gen4_turbo", jobId: "job_42", status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6], failedSceneNumbers: [], sceneNumbers: [1, 2, 3, 4, 5, 6] });
       }
       if (url === "/projects/sample_project/videos/generations/job_42/review" && method === "GET") {
         return jsonResponse(200, { project, reviews });

@@ -22,6 +22,7 @@ function makeProgress(overrides: Partial<GenerationProgressResponse> = {}): Gene
     // Required, not optional — see the guard's own comment (Cowork Round 865/867). Defaulted here so
     // existing tests that don't care about aspect ratio don't all need to state it.
     aspectRatio: "9:16",
+    model: "gen4_turbo",
     ...overrides,
   };
 }
@@ -368,6 +369,29 @@ describe("VideoWorkflowScreen", () => {
     paidProvider: true, status: "failed", completedSceneNumbers: [1], failedSceneNumbers: [2],
     sceneErrors: { 2: "An unexpected error occurred. (Runway code: INTERNAL.BAD_OUTPUT.CODE01)" } as never,
     sceneFailures: { 2: failure } as never,
+  });
+
+  /**
+   * 🔴 「Runway 크레딧이 부족합니다」는 맞는 말이면서 쓸모가 없습니다.
+   *
+   * 키도 과금도 충전도 Runway 것이라 그 문장은 참인데, 카탈로그에는 다섯 회사의 모델 스무 개가 있고 사람이
+   * 손댈 수 있는 건 **모델**입니다. 이름이 없으면 설정 화면에서 스무 줄을 직접 맞춰 봐야 무엇을 바꿀지 압니다.
+   * 🟠 그리고 **이 작업의 모델**이지 지금 설정값이 아닙니다 — 견적·장부가 이미 그 기준을 쓰고 있고(작업은
+   * 자기 모델로 확정됐으며 재시도는 그 작업을 잇습니다), 화면만 다른 기준을 쓰면 세 곳이 갈립니다.
+   */
+  it("names the model this job was running, beside the provider sentence", async () => {
+    /* `failedWith` 는 sceneErrors 에 Runway 의 영문 원문을 넣습니다(그게 이 화면이 원래 겪던 모양입니다).
+       여기서는 분류 코드가 문장을 정하는 경로를 봐야 해서 그 칸을 크레딧 코드로 바꿉니다. */
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
+      ...failedWith({ category: "quota_or_permission", billedOnFailure: false }),
+      sceneErrors: { 2: "quota_or_permission" },
+      model: "seedance2_720p",
+    })));
+
+    await screen.findByTestId("failed-scenes-section");
+    expect(screen.getByTestId("failed-scene-reason-2").textContent).toContain("Runway 크레딧이 부족합니다");
+    // 그 문장 옆에 무엇이 실패했는지가 있어야 사람이 바꿀 것을 찾습니다.
+    expect(screen.getByTestId("failed-scene-model-2").textContent).toContain("Seedance 2.0 (720p)");
   });
 
   /**

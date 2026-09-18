@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
 import type { GenerationProgressResponse, RecoverVideosResponse, Scene, SceneNumber, VideoReview, SceneStaleness } from "@ai-animation-studio/shared";
 
 import {
@@ -585,6 +586,9 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                    * `sceneFailures` cannot become a claim.
                    */
                   const failure = progress.sceneFailures?.[sceneNumber];
+                  /* 한 작업의 클립은 전부 같은 모델로 나가므로 장면마다 다르지 않습니다 — 그래도 실패한 줄
+                     옆에서 읽혀야 뜻이 있어서 여기서 꺼냅니다. */
+                  const failedModelLabel = VIDEO_MODEL_OPTIONS.find((option) => option.id === progress.model)?.label;
                   const mustChangeInput = failure?.remedy === "change_input";
                   const cannotRetry = failure?.remedy === "not_retryable";
                   return (
@@ -610,6 +614,19 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       <p data-testid={`failed-scene-reason-${sceneNumber}`} className="text-xs text-rose-300">
                         {sceneErrorMessage(progress.sceneErrors?.[sceneNumber], failure?.providerCode)}
                       </p>
+                      {/* 🔴 어느 모델이 실패했는지. 문장들은 키와 과금이 있는 곳(Runway)을 말하는데 — 그건 맞습니다 —
+                          카탈로그에는 다섯 회사의 모델 스무 개가 있어서, 「Runway 크레딧이 부족합니다」만으로는
+                          **무엇을 바꿔야 하는지**가 안 나옵니다. 사람이 손댈 수 있는 건 모델이고, 그 이름이 여기 없으면
+                          설정 화면에서 스무 줄을 직접 맞춰 봐야 합니다.
+                          🟠 이 작업의 모델이지 지금 설정값이 아닙니다 — 도중에 설정을 바꿔도 실패한 클립이 무엇으로
+                          나갔는지는 변하지 않습니다(견적·장부가 같은 기준을 씁니다).
+                          🟠 `videoModelOption` 이 아니라 `.find` 입니다: 모르는 이름에 화면이 통째로 죽는 것보다
+                          이름 한 줄을 안 보여 주는 쪽이 낫습니다(`VideoPromptPreviewScreen` 과 같은 판단). */}
+                      {failedModelLabel && (
+                        <p data-testid={`failed-scene-model-${sceneNumber}`} className="text-xs text-rose-200/80">
+                          이 장면은 <span className="text-rose-100">{failedModelLabel}</span> 로 만들고 있었습니다. 다른 모델로 바꾸시려면 API 설정에서 고르실 수 있습니다.
+                        </p>
+                      )}
                       {cannotRetry && (
                         <p data-testid={`failed-scene-not-retryable-${sceneNumber}`} className="text-xs text-rose-200">
                           {sceneRemedyAdvice(failure?.remedy)}
