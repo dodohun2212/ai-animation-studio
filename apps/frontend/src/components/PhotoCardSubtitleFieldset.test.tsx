@@ -408,6 +408,55 @@ describe("PhotoCardSubtitleFieldset", () => {
     expect(screen.getByTestId("photo-card-subtitle-colors-unavailable")).toBeTruthy();
   });
 
+  /**
+   * 🔴 슬라이더를 움직인 뒤 **되돌릴 길**. 「기본값으로」는 공장 기본값이라, 이미 만들어 둔 카드에서는
+   * 세 번째 자리입니다 — 시작한 곳도 아니고 아래 영상의 값도 아닙니다. 그래서 살짝 움직여 본 사람에게
+   * 되돌릴 방법이 새로고침밖에 없었고, 그 상태의 미리보기는 완성된 영상과 다르게 보이면서 **왜 다른지는
+   * 말하지 않았습니다.** 캡틴D 가 그걸 버그로 보셨고, 버그가 아니라 되돌릴 길이 없던 것이었습니다.
+   *
+   * 🟠 이 짝은 한 번 사라졌습니다 — 커밋이 mtime 으로 거절된 뒤 새 판 위에 컴포넌트만 다시 얹고 짝 파일은
+   * 디스크 판으로 덮어썼습니다(CLI Round 908~910 이 「(나) 짝 넷이 안 왔다」로 세 번 알려 줬습니다).
+   * 거절을 푼 것과 **변경을 다시 얹은 것**은 다른 일입니다.
+   */
+  it("offers the way back to the values the finished video was burned with", () => {
+    const saved = { scale: 0.031, center: 0.5 };
+    const onChange = vi.fn();
+    render(
+      <PhotoCardSubtitleFieldset
+        projectId="card_1" quote={TWO_PART} aspectRatio="9:16"
+        layout={{ scale: 0.040, center: 0.59 }} savedLayout={saved} onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("photo-card-subtitle-restore"));
+    expect(onChange).toHaveBeenCalledWith(saved);
+    // 🔴 공장 기본값이 아닙니다 — 그걸 돌려주면 세 번째 자리로 보내는 셈입니다.
+    expect(onChange).not.toHaveBeenCalledWith(DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT);
+  });
+
+  it("hides that way back when the sliders already sit on the saved values", () => {
+    const saved = { scale: 0.031, center: 0.5 };
+    render(
+      <PhotoCardSubtitleFieldset
+        projectId="card_1" quote={TWO_PART} aspectRatio="9:16"
+        layout={{ ...saved }} savedLayout={saved} onChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("photo-card-subtitle-restore")).toBeNull();
+  });
+
+  /** 아직 한 번도 만들지 않은 카드에는 「지금 영상」이 없습니다 — 돌아갈 곳이 없으니 버튼도 없습니다. */
+  it("offers no way back on a card that has never been merged", () => {
+    render(
+      <PhotoCardSubtitleFieldset
+        projectId="card_1" quote={TWO_PART} aspectRatio="9:16"
+        layout={{ scale: 0.040, center: 0.59 }} onChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("photo-card-subtitle-restore")).toBeNull();
+    expect(screen.getByTestId("photo-card-subtitle-reset")).toBeTruthy();
+  });
+
   it("asks for the weights the two subtitle files actually are", () => {
     renderFieldset(TWO_PART);
     const nodes = Array.from(screen.getByTestId("photo-card-subtitle-preview").querySelectorAll("div")) as unknown as HTMLElement[];
