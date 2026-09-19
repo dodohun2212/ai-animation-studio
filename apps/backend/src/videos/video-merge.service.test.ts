@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_SCENE_SUBTITLE_LAYOUT, SCENE_SUBTITLE_CENTER, WorkflowState } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_DURATIONS, SCENE_SUBTITLE_CENTER, WorkflowState } from "@ai-animation-studio/shared";
 
 import { MediaToolError, type MediaCommandRunner } from "./ffmpeg-merge.service.js";
 import { createStoredProject } from "../projects/project.mapper.js";
@@ -996,16 +996,54 @@ describe("a photo card's subtitle colours, for the preview", () => {
     };
   }
 
-  async function card() {
+  /** `pictures` and `seconds` are what the photo-card service writes for a card of that many pictures. */
+  async function card(pictures = 1, seconds?: number) {
     const { projectsRoot, projects } = await setup();
     const project = await projects.findById("video_merge");
-    await projects.save({ ...project, scenes: [{ number: 1, narration: "첫 줄\n둘째 줄" }], lore_context: { ...project.lore_context, photo_card: true, scene_count: 1, subtitles_enabled: true, subtitle_center: 0.5 } });
+    const scenes = Array.from({ length: pictures }, (_, index) => ({ number: index + 1, narration: "첫 줄\n둘째 줄" }));
+    await projects.save({ ...project, scenes, lore_context: { ...project.lore_context, photo_card: true, scene_count: pictures, subtitles_enabled: true, subtitle_center: 0.5, ...(seconds === undefined ? {} : { clip_duration_seconds: seconds }) } });
     await fs.mkdir(path.join(projectsRoot, "video_merge", "images"), { recursive: true });
-    await fs.writeFile(path.join(projectsRoot, "video_merge", "images", "scene1.png"), Buffer.from("png"));
+    for (const scene of scenes) await fs.writeFile(path.join(projectsRoot, "video_merge", "images", `scene${scene.number}.png`), Buffer.from("png"));
     return { projectsRoot, projects };
   }
 
   const bandTop = (call: string[]) => Number(/crop=\d+:\d+:\d+:(\d+),scale=48:16/.exec(call[call.indexOf("-vf") + 1]!)?.[1]);
+
+  /**
+   * 🔴 **The arithmetic the screen is about to promise, measured at the only place it becomes true.**
+   *
+   * Cowork's picker (Round 960 §3②) will say "사진 3장 × 10초 = 30초" out loud, so the reel has to actually be
+   * that long. Nothing was holding it: the card's stored `clip_duration_seconds` travels through
+   * `toShortProjectSettings` into `stillDurationSeconds`, and replacing that whole expression with a constant
+   * `7` left all 614 tests in `videos/` and `projects/` green. The engine's own pairs hand it
+   * `stillDurationSeconds: 5` by hand and check what it does with a 5 — the right thing for them, and it means
+   * the number arriving from the card was never looked at. Same seam as Round 951.
+   *
+   * 🟠 `-t` immediately before `-i <picture>` is measured rather than a stand-in, because that is literally how
+   * long ffmpeg holds the still. Both allowed durations are run so a hard-coded constant cannot pass.
+   *
+   * 🔴 And two silent fallbacks sit on the path, each currently harmless only because another file happens to
+   * agree: `toShortProjectSettings` drops to `DEFAULT_CLIP_DURATION_SECONDS` when the stored duration fails
+   * `isClipDurationSeconds` (PHOTO_CARD_DURATIONS [5,10] ⊂ CLIP_DURATION_LIMITS [1,30] — narrow the limits and
+   * a 5-second card silently becomes the default length), and to `DEFAULT_SCENE_COUNT` when the scene count
+   * fails its check (held only by `minimumSceneCountFor` returning 1 for cards). Neither would throw. The
+   * screen would keep saying 30초 over a file that is not.
+   */
+  it("holds each picture for the length the card was made with, once per picture", async () => {
+    for (const chosen of PHOTO_CARD_DURATIONS) {
+      const { projectsRoot, projects } = await card(3, chosen);
+      const calls: string[][] = [];
+      await new LocalVideoMergeService(projects, projectsRoot, sampling(calls)).merge("video_merge");
+
+      // The encode of a still is the call that loops an image: `-loop 1 -framerate 30 -t <seconds> -i <picture>`.
+      const held = calls
+        .filter((args) => args[0] === "ffmpeg" && args.includes("-loop") && args.some((arg) => /scene\d\.png$/.test(arg)))
+        .map((args) => args[args.indexOf("-t") + 1]);
+
+      expect(held, `${chosen}초 카드`).toEqual([String(chosen), String(chosen), String(chosen)]);
+    }
+  });
+
 
   it("answers the colours as CSS, from the band at the card's own centre or the one asked for", async () => {
     const { projectsRoot, projects } = await card();
