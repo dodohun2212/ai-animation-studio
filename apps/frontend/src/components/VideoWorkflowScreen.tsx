@@ -520,7 +520,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
               `status === "failed"` hid this whole section — and every failure reason in it — exactly when the job
               had both stopped and failed. */}
           {progress.failedSceneNumbers.length > 0 && (
-            <div className="space-y-3 rounded-2xl border border-rose-400/30 bg-rose-950/10 p-5" data-testid="failed-scenes-section">
+            <div className="space-y-3 rounded-lg border border-rose-400/30 bg-rose-950/10 p-5" data-testid="failed-scenes-section">
               <p className="text-sm font-semibold text-rose-300">
                 {canRestart
                   ? "일부 장면 생성에 실패했습니다. 아래 \"이어서 생성\"으로 재개한 뒤 다시 시도할 수 있습니다."

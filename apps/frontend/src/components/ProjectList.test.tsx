@@ -235,6 +235,45 @@ describe("ProjectList", () => {
       expect(Number.parseFloat(lateLine.style.bottom)).toBeLessThan(Number.parseFloat(earlyLine.style.bottom));
     });
 
+    /**
+     * 🔴 이 짝이 지키는 건 **돈**입니다.
+     *
+     * 거름망 네 칸은 이미 받아 둔 목록을 걸러 보는 것뿐입니다. 「진행 중만 보기」가 새 요청이 되는 순간
+     * 목록 화면이 돈 쓰는 화면이 되고, 그건 눌러 보기 전까지 아무도 모릅니다. 호출 수를 세는 것이
+     * 그 차이를 화면 밖에서 볼 수 있게 만드는 유일한 방법입니다.
+     */
+    it("거름망을 눌러도 서버를 다시 부르지 않는다", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { projects: [
+        makeProject({ id: "a", workflowState: WorkflowState.Completed }),
+        makeProject({ id: "b", workflowState: WorkflowState.GeneratingVideos }),
+      ] }));
+      vi.stubGlobal("fetch", fetchMock);
+      render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+      await screen.findAllByTestId("project-frame");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByTestId("project-filter-done"));
+      expect(screen.getAllByTestId("project-frame")).toHaveLength(1);
+      fireEvent.click(screen.getByTestId("project-filter-developing"));
+      expect(screen.getAllByTestId("project-frame")).toHaveLength(1);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * 🟠 「하나도 없음」과 「걸러서 없음」은 **다른 말**입니다. 앞은 만들라는 뜻이고 뒤는 거름망을 풀라는
+     * 뜻인데, 같은 문장을 쓰면 사람이 이미 있는 프로젝트를 다시 만듭니다.
+     */
+    it("걸러서 비었을 때는 「없습니다」가 아니라 「이 조건에」라고 말한다", async () => {
+      renderWith([makeProject({ id: "a", workflowState: WorkflowState.Completed })]);
+      await screen.findByTestId("project-frame");
+
+      fireEvent.click(screen.getByTestId("project-filter-stopped"));
+
+      expect(screen.getByTestId("project-filter-empty")).toBeTruthy();
+      expect(screen.queryByText("아직 생성된 프로젝트가 없습니다.")).toBeNull();
+    });
+
     it("멈춘 것은 색이 빠지고 가로지르는 선이 생긴다 — 진행 중과 다른 모양", async () => {
       renderWith([makeProject({ id: "x", workflowState: WorkflowState.Failed })]);
       const frame = await screen.findByTestId("project-frame");

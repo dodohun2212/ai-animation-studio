@@ -58,8 +58,8 @@ function LongProjectThumbnail() {
     <svg viewBox="0 0 48 48" aria-hidden="true" className="h-9 w-9">
       <defs>
         <linearGradient id="longProjectThumbGradient" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#c4b5fd" />
-          <stop offset="100%" stopColor="#f0abfc" />
+          <stop offset="0%" stopColor="#cba878" />
+          <stop offset="100%" stopColor="#e8e2d6" />
         </linearGradient>
       </defs>
       <path
@@ -106,7 +106,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
         </h2>
         <button
           type="button"
-          className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+          className="flex items-center gap-1.5 rounded bg-bone px-4 py-2 text-sm font-semibold text-ground"
           onClick={onCreateNew}
         >
           <PlusIcon />
@@ -131,7 +131,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
             <li key={project.id}>
               <button
                 type="button"
-                className={`flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3 text-left text-slate-100 transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 ${riseInCard}`}
+                className={`flex w-full items-center gap-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3 text-left text-slate-100 transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 ${riseInCard}`}
                 style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
                 onClick={() => onOpenProject(project.id)}
               >

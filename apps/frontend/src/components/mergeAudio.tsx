@@ -156,7 +156,7 @@ export function MergeAudioFieldset({ idPrefix, tracks, narrationAvailable, mode,
   useEffect(() => { onStartSecondsChange(0); onVolumePercentChange(null); setStartRefusal(null); }, [trackId]);
 
   return (
-    <fieldset data-testid={`${idPrefix}-settings`} className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+    <fieldset data-testid={`${idPrefix}-settings`} className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
       <legend className="px-1 text-sm font-semibold text-slate-100">오디오</legend>
       {AUDIO_MODES.map((option) => {
         // Only offered when it can actually be produced. Both narration modes need generated narration audio —

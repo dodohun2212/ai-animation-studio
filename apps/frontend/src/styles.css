@@ -10,17 +10,112 @@
   --color-gold-ink: #2b1d09;
 
   /*
-   * 새 바탕색(2026-09-19 UI 재구성). 지금까지는 `bg-slate-950`(#020617) 위에 34px 흰 격자가 두 축으로
-   * 깔려 있었고, 눈이 아프다는 말의 대부분이 그 격자였다. #020617 은 파랑 쪽으로 기운 먹색이라 화면의
-   * 보라 포인트가 그 위에서 차가운 쪽으로 갈라져 보이기도 했다 — 바탕을 보라 쪽으로 아주 살짝 기울인
-   * 먹색으로 바꾸면 같은 보라가 고른 색으로 읽힌다.
+   * 작업대 팔레트(2026-09-19). 지금까지 바탕은 `bg-slate-950`(#020617) — **파랑 쪽으로 기운 먹색**이었고,
+   * 그 위에 34px 흰 격자가 두 축으로 깔려 있었습니다. 차가운 바탕 + 격자 + 보라 형광이 「2015년쯤
+   * 대시보드」로 읽히던 조합입니다.
    *
-   * 🔴 새 색은 세 개뿐이고 전부 바탕용이다. 글자·상태 색은 기존 팔레트(§2.1) 그대로 둔다 — 여기서 글자
-   * 색까지 바꾸면 60개 화면이 한꺼번에 검증 대상이 되고, 그건 한 라운드에 되돌릴 수 없는 크기다.
+   * 새 바탕은 **따뜻한 검정**이고 글자는 **뼈색**입니다. 순백 대신 뼈색을 쓰는 이유: 어두운 바탕 위의
+   * 순백(#FFFFFF)은 대비가 너무 세서 글자가 번져 보이고 오래 보면 눈이 아픕니다. 인쇄물에서 검정 종이에
+   * 흰 잉크를 안 쓰고 미색을 쓰는 것과 같은 이유입니다.
+   *
+   * 🔴 여기 있는 건 **바탕과 글자 색뿐**입니다. 상태 색(초록·호박·장미)은 기존 팔레트(§2.1) 그대로입니다 —
+   * 상태의 문법을 같이 건드리면 화면 60개가 한꺼번에 검증 대상이 되고, 그건 한 라운드로 되돌릴 수 없는
+   * 크기입니다.
    */
-  --color-ground: #0c0b11;
-  --color-ground-raised: #15131f;
-  --color-ground-edge: #1f1c2c;
+  --color-ground: #09080a;
+  --color-ground-raised: #131110;
+  --color-ground-edge: #1f1c19;
+  --color-line: #191715;
+  --color-line-strong: #242019;
+
+  /* 글자 세 단계. 뼈색 → 흐린 뼈색 → 거의 안 보이는 뼈색. 라틴 소문자 라벨이 이 제일 흐린 단계에 놓입니다. */
+  --color-bone: #e8e2d6;
+  --color-bone-dim: #8a8279;
+  --color-bone-faint: #5a534a;
+
+  /*
+   * 프리즘 스펙트럼 — 앱 이름이 「빛을 가르는 것」이라 무지개를 **딱 두 군데**만 씁니다: 워드마크 밑줄과
+   * 진행 중 프레임의 수면선. 세 번째 자리가 생기면 그건 포인트가 아니라 팔레트가 된 것입니다.
+   */
+  --spectrum: linear-gradient(90deg, #e86f5a, #e0a85c, #d8d07a, #7fc49a, #6fa8d8, #8c8ce0);
+
+  /*
+   * ─────────────────────────────────────────────────────────────────────────────────────────────
+   * 🔴 앱 전체를 한 번에 옮기는 **단 하나의 손잡이**. 여기 아래는 새 색이 아니라, 이미 화면 60개가
+   * 쓰고 있는 이름(`slate-900`, `violet-500` …)이 가리키는 **값을 바꾼 것**입니다.
+   *
+   * 왜 이렇게 하는가: 화면마다 `bg-slate-900` 을 손으로 고치면 파일 60개를 만져야 하고, 그 중 하나를
+   * 빠뜨리면 **그 화면만 파란 섬으로 남습니다.** 실제로 2차까지의 상태가 그랬습니다 — 목록은 따뜻한
+   * 검정인데 API 설정 화면은 여전히 남색이었습니다. 이름을 그대로 두고 값만 옮기면 빠뜨릴 화면이
+   * 없습니다. 되돌리는 것도 이 블록을 지우는 한 번입니다.
+   *
+   * 🟠 **`slate` 라는 이름은 이제 정확하지 않습니다.** 알면서 둡니다 — 이름을 바꾸는 건 파일 60개를
+   * 고치는 그 작업이고, 그걸 피하려고 이 방법을 쓰는 것이니까요. 대신 새로 쓰는 코드는 위의
+   * `bone`/`ground`/`line` 을 씁니다. slate 는 **아직 안 옮긴 화면이 지나가는 다리**입니다.
+   * ─────────────────────────────────────────────────────────────────────────────────────────────
+   */
+
+  /* 중립 — 파란 먹색 → 따뜻한 먹색. 밝기 순서는 원래 그대로라 대비 관계가 뒤집히지 않습니다. */
+  --color-slate-50: #f6f2ea;
+  --color-slate-100: #e8e2d6;
+  --color-slate-200: #d2cbbd;
+  --color-slate-300: #b8b0a4;
+  --color-slate-400: #8a8279;
+  --color-slate-500: #6b645c;
+  --color-slate-600: #5a534a;
+  --color-slate-700: #3a352f;
+  --color-slate-800: #241f1a;
+  --color-slate-900: #131110;
+  --color-slate-950: #09080a;
+
+  /*
+   * 강조 — 형광 보라·자홍 → **구리색**. 어두운 화면에서 보라 형광은 스스로 빛나 보여서, 정작 빛나야
+   * 하는 사진보다 먼저 눈에 들어왔습니다. 구리는 따뜻한 검정과 같은 온도라 앞으로 튀어나오지 않고,
+   * 그러면서도 뼈색 글자와 구분됩니다.
+   *
+   * 🟠 상태 색(초록·호박·장미·하늘)은 **건드리지 않습니다.** 저건 「예쁜 색」이 아니라 뜻이 정해진
+   * 문법이고, 값을 옮기면 「실패」가 다른 뜻이 됩니다.
+   */
+  --color-violet-200: #ecdcc6;
+  --color-violet-300: #ddc39f;
+  --color-violet-400: #cba878;
+  --color-violet-500: #b08a55;
+  --color-violet-600: #96713f;
+  --color-violet-700: #6f5430;
+  --color-violet-800: #4a3921;
+  --color-violet-900: #2e2415;
+  --color-fuchsia-300: #e3c5a4;
+  --color-fuchsia-400: #d3a87c;
+  --color-fuchsia-500: #bd8b58;
+  --color-purple-400: #cba878;
+  --color-purple-500: #b08a55;
+
+  /*
+   * 상태 넷 — **뜻은 그대로, 온도만** 프리즘 쪽으로 옮깁니다.
+   *
+   * 🔴 여기서 바꾸는 건 초록이 초록인지가 아니라 **어느 초록인지**입니다. 기본 `emerald-300`(#6ee7b7)은
+   * 형광에 가까워서, 따뜻한 검정 위에서는 스스로 빛나 보입니다 — API 설정 화면을 열었을 때 제일 먼저
+   * 보이는 게 「키 저장됨」 초록 글씨였습니다. 그건 알아 두면 좋은 사실이지 그 화면의 주인공이 아닙니다.
+   *
+   * 새 값 넷은 워드마크 밑줄에 쓰는 **스펙트럼에서 그대로 꺼낸 색**입니다(#7fc49a · #e0a85c · #b0707c ·
+   * #6fa8d8). 상태 색이 앱의 무지개와 같은 데서 나오면, 화면에 색이 늘어나는 게 아니라 **같은 빛이 갈린
+   * 것**으로 읽힙니다.
+   *
+   * 🟠 밝기 순서와 역할은 손대지 않았습니다 — 초록=끝남, 호박=진행 중, 장미=실패, 하늘=알아 둘 것(§2.1).
+   * 값만 옮기는 것이지 문법을 옮기는 게 아닙니다.
+   */
+  --color-emerald-300: #7fc49a;
+  --color-emerald-400: #6db489;
+  --color-emerald-500: #4e9a72;
+  --color-amber-300: #e0a85c;
+  --color-amber-400: #d4954a;
+  --color-amber-500: #c08234;
+  --color-rose-300: #c48e97;
+  --color-rose-400: #b0707c;
+  --color-rose-500: #9a5a66;
+  --color-sky-300: #8fbedd;
+  --color-sky-400: #6fa8d8;
+  --color-sky-500: #5a8fc0;
 }
 
 @keyframes rise-in {
@@ -137,10 +232,51 @@
 }
 
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: "Noto Sans KR", Inter, ui-sans-serif, system-ui, sans-serif;
   color-scheme: dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+/*
+ * 이 화면의 「전시 도록」 느낌을 만드는 두 글자 역할.
+ *
+ * 🔴 **새 글꼴 파일을 받지 않습니다.** 라틴 표제용으로 Syne 를 쓰자고 적었다가 접었습니다 — 받아야
+ * 라이선스(OFL.txt)를 읽을 수 있는데, 확인하기 전에는 받으면 안 됩니다. 순서가 잘못된 계획이었습니다.
+ * 대신 **이미 있는 것으로 같은 일**을 합니다: 큰 숫자는 굵게 + 자간을 죄고, 작은 라틴 라벨은 대문자 +
+ * 자간을 벌립니다. 도록의 인상은 글꼴 이름이 아니라 그 두 가지 대비에서 나옵니다.
+ *
+ * 🟠 Syne 를 쓰고 싶어지면: `fonts/` 에 파일과 `OFL.txt` 가 함께 들어온 뒤에 `--font-display` 한 줄만
+ * 바꾸면 됩니다. 쓰는 자리는 전부 이 변수를 지나갑니다.
+ */
+.type-display {
+  font-family: var(--font-display, "Noto Sans KR", Inter, ui-sans-serif, sans-serif);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 라틴 소문자 라벨 — 도록의 색인 머리말. 이 앱에서 대문자·넓은 자간은 여기에만 씁니다. */
+.type-index {
+  font-family: var(--font-display, "Noto Sans KR", Inter, ui-sans-serif, sans-serif);
+  font-weight: 700;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* 숫자·ID·시각 — 자리 폭이 고정된 글자. 받는 것 없이 기기에 이미 있는 것만 씁니다. */
+.type-mono {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 제목 두 줄까지만 — 세 줄째부터 프레임 격자의 줄 높이가 어긋납니다. */
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /*
@@ -155,12 +291,14 @@ select {
 
 select option,
 select optgroup {
-  background-color: #0f172a;
-  color: #f1f5f9;
+  background-color: #131110;
+  color: #e8e2d6;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--color-ground);
+  color: var(--color-bone);
 }

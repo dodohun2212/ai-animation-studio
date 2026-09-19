@@ -1102,7 +1102,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
       )}
       {state.settings && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-        <form className="grid gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
+        <form className="grid gap-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
           <Field label="프로젝트 이름" value={state.settings.projectName} onChange={(value) => setField("projectName", value)} />
           <Field label="영상 주제" value={state.settings.topic} onChange={(value) => setField("topic", value)} />
           <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
@@ -1382,7 +1382,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             {state.loading ? "저장 중…" : "설정 저장"}
           </button>
         </form>
-        <aside aria-label="대본 프롬프트 실시간 미리보기" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4 lg:sticky lg:top-4">
+        <aside aria-label="대본 프롬프트 실시간 미리보기" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4 lg:sticky lg:top-4">
           <button type="button" className={smallOutlineButton} onClick={() => setPromptPreviewOpen((open) => !open)}>
             {promptPreviewOpen ? "프롬프트 미리보기 닫기" : "프롬프트 미리보기 보기"}
           </button>

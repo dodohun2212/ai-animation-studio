@@ -169,7 +169,7 @@ export function SceneSubtitleFieldset({ previewImageUrl, scenes, aspectRatio, la
   }
 
   return (
-    <section aria-label="장면 자막 위치와 크기" className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
+    <section aria-label="장면 자막 위치와 크기" className="space-y-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
       <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
         <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
         장면 자막

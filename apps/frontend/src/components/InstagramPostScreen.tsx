@@ -1071,7 +1071,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                       </button>
                       <button
                         type="button"
-                        className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                        className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                         data-testid="post-rotate-confirm-button"
                         disabled={rotating}
                         onClick={() => void rotateFinal()}
@@ -1227,7 +1227,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
               <button
                 type="button"
                 data-testid="post-copy"
-                className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                 onClick={() => void copyCaption()}
                 disabled={copyBlocked || !caption}
               >
@@ -1317,7 +1317,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                       </button>
                       <button
                         type="button"
-                        className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                        className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                         data-testid="post-forget-confirm-button"
                         disabled={forgetting}
                         onClick={() => void forgetPost()}
@@ -1341,7 +1341,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                   <button
                     type="button"
                     data-testid="post-publish-button"
-                    className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                    className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                     disabled={publishBlocked || publishing}
                     onClick={() => {
                       setPublishError(null);
@@ -1429,7 +1429,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                       </button>
                       <button
                         type="button"
-                        className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                        className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                         data-testid="post-publish-confirm-button"
                         disabled={publishing}
                         onClick={() => void publish()}

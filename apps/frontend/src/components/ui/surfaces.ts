@@ -12,29 +12,45 @@
  * colour, and no fourth glow beyond the three §2.5 allows.
  */
 
-/** A card. The default: a heading and a few rows. */
+/**
+ * A card. The default: a heading and a few rows.
+ *
+ * 🟠 2026-09-19: 파랑 쪽 먹색 그라데이션(`slate-900`)에서 **따뜻한 검정 한 겹**으로 바꿨습니다. 그라데이션은
+ * 카드 하나를 볼 때는 예뻤지만, 카드가 여섯 장 쌓이면 여섯 번의 밝기 변화가 화면을 줄무늬로 만들었습니다.
+ * 카드를 구분하는 일은 **선**이 합니다 — 그게 선이 하는 일입니다.
+ */
 export const cardSection =
-  "space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5";
+  "space-y-3 rounded-lg border border-line bg-ground-raised p-5";
 
 /** A card whose rows are controls rather than text, and so need more air between them. */
 export const cardSectionWide =
-  "space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5";
+  "space-y-4 rounded-lg border border-line bg-ground-raised p-5";
 
 /** A card that is the whole screen's subject — used where one card carries the screen. */
 export const cardSectionRoomy =
-  "space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6";
+  "space-y-4 rounded-lg border border-line bg-ground-raised p-6";
 
 /** The ordinary button: everything that is not the one thing the screen wants you to press. */
 export const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition-[color,background-color,border-color,transform] hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/5 disabled:opacity-50 disabled:hover:translate-y-0";
+  "rounded border border-line-strong px-4 py-2 text-sm text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50";
 
-/** The one call to action per screen, carrying §2.5's glow-cta. */
+/**
+ * The one call to action per screen.
+ *
+ * 🔴 2026-09-19: 보라→자홍 그라데이션에 형광 그림자까지 얹혀 있던 버튼을 **뼈색 판에 검은 글자**로
+ * 바꿨습니다. 어두운 화면에서 제일 강한 대비는 색이 아니라 **밝기의 반전**이고, 반전은 화면에 딱 하나만
+ * 있을 수 있어서 「이 화면의 한 가지 행동」이라는 뜻이 저절로 지켜집니다. 형광 그림자는 색을 하나 더 쓰면
+ * 쓸수록 약해지는 종류의 강조였습니다.
+ *
+ * 🟠 눌리는 느낌은 뜨는 것(`-translate-y`)이 아니라 **살짝 어두워지는 것**으로 바꿨습니다. 목록 화면에서
+ * 마우스만 지나가도 버튼이 떠오르면, 가만히 있어야 할 도록 위에서 그것만 계속 움직입니다.
+ */
 export const primaryButton =
-  "rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] transition-[opacity,transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-8px_rgba(236,72,153,0.55)] disabled:opacity-50 disabled:hover:translate-y-0";
+  "rounded bg-bone px-4 py-2 text-sm font-semibold text-ground transition-colors hover:bg-[#cfc8bb] disabled:opacity-40";
 
 /** A second, weaker call to action — an alternative to the primary, not an ordinary control. */
 export const secondaryButton =
-  "rounded-full border border-violet-400/30 px-4 py-2 text-sm text-violet-300 transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-violet-500/10";
+  "rounded border border-bone-faint/60 px-4 py-2 text-sm text-bone transition-colors hover:bg-ground-raised";
 
 /**
  * The gold accent — 디자인 톤 B의 유일한 포인트 색. §2.1의 보라·핑크와 부딪히지 않도록, 화면 하나에 한
@@ -71,3 +87,14 @@ export const pulseDot =
  * user's own doing, and folding their own choices out of sight is a different and worse problem.
  */
 export const scrollList = "max-h-64 space-y-1 overflow-y-auto pr-1";
+
+
+/**
+ * `riseInCard` 의 **빛 없는 판**. 도착은 같은 순서로 하되, 그 뒤로는 아무것도 움직이지 않습니다.
+ *
+ * 🔴 콘택트 시트에는 `effect-card` 의 스치는 빛을 쓰지 않습니다. 프레임 안에 있는 것이 **실제 사진**이라,
+ * 그 위로 흰 띠가 지나가면 사진에 그런 빛이 있는 것처럼 보입니다. 화면이 내용에 대해 거짓말을 하는 쪽이라
+ * 값이 마이너스입니다. 빈 카드 위의 빛과 사진 위의 빛은 다른 물건입니다.
+ */
+export const riseIn =
+  "opacity-0 [animation:rise-in_0.45s_ease_forwards] motion-reduce:opacity-100 motion-reduce:[animation:none]";

@@ -470,7 +470,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
         <p className="mt-2">직접 연결한 것은 연결하는 순간 확정됩니다 — 다시 승인할 필요 없습니다.</p>
       </details>
 
-      <section aria-label="참고 이미지 연결 추가" className="space-y-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.06] p-5">
+      <section aria-label="참고 이미지 연결 추가" className="space-y-3 rounded-lg border border-violet-400/25 bg-violet-500/[0.06] p-5">
         <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
           <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
           참고 이미지 연결하기
@@ -620,7 +620,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
         )}
       </section>
 
-      <section aria-label="검토 상태" className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
+      <section aria-label="검토 상태" className="space-y-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
         {reviewLoading && !review && <Spinner label="검토 상태를 불러오는 중..." />}
         {reviewError && (
           <p role="alert" data-testid="review-error" data-error-code={reviewError.code} className="text-sm text-rose-400">{reviewError.message}</p>
@@ -688,7 +688,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
           <button
             type="button"
             data-testid="approve-review-button"
-            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+            className="rounded bg-bone px-3.5 py-1.5 text-xs font-semibold text-ground disabled:opacity-50"
             onClick={() => void approve()}
             disabled={approvePending || !review}
           >
@@ -790,7 +790,7 @@ export function MappingReviewScreen({ api, onBack, onOpenImageGeneration }: Prop
             const decisionBusyNow = decisionPendingIds.has(mapping.mappingId);
             const snapshotBusyNow = snapshotPendingIds.has(mapping.mappingId);
             return (
-              <li key={mapping.mappingId} className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+              <li key={mapping.mappingId} className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
                 {asset ? (
                   <div className="flex items-baseline gap-2">
                     {asset.imageAvailable && asset.contentUrl && (

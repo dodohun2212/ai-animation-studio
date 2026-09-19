@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { WorkflowState, type ProjectSummary } from "@ai-animation-studio/shared";
 
 import { listProjects, toDisplayError } from "../api/projectsApi.js";
@@ -8,7 +8,7 @@ import { Spinner } from "./Spinner.js";
 import { progressPercent } from "./WorkflowProgressBar.js";
 import { CoverThumb } from "./ui/CoverThumb.js";
 import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
-import { riseInCard } from "./ui/surfaces.js";
+import { primaryButton, riseIn } from "./ui/surfaces.js";
 
 interface ProjectListProps {
   refreshToken: number;
@@ -46,12 +46,12 @@ interface ListState {
  * 문법은 한 군데(§2.1)에서만 정해져야 하고, 여기서 두 번째 표를 쓰면 이 목록만 「실패」를 다른 색으로 말하기
  * 시작합니다. 톤이 바뀌면 모양도 같이 바뀝니다.
  *
- * done      — 다 만들어진 그림. 아무것도 덮지 않는다.
- * developing— 아래쪽이 아직 안 현상된 그림 + 현상된 데까지를 긋는 수면선.
- * waiting   — 색이 조금 빠진 그림. 지금 아무 일도 일어나지 않고 있다는 뜻.
- * stopped   — 색이 다 빠진 그림 + 가로지르는 가는 붉은 선.
+ * done       — 다 만들어진 그림. 아무것도 덮지 않는다.
+ * developing — 아래쪽이 아직 안 현상된 그림 + 현상된 데까지를 긋는 수면선.
+ * waiting    — 색이 조금 빠진 그림. 지금 아무 일도 일어나지 않고 있다는 뜻.
+ * stopped    — 색이 다 빠진 그림 + 가로지르는 가는 붉은 선.
  */
-type FrameShape = "done" | "developing" | "waiting" | "stopped";
+export type FrameShape = "done" | "developing" | "waiting" | "stopped";
 
 export function frameShape(state: WorkflowState): FrameShape {
   switch (workflowStateTone(state)) {
@@ -71,20 +71,33 @@ export function frameShape(state: WorkflowState): FrameShape {
 const SHAPE_FILTER: Record<FrameShape, string> = {
   done: "",
   developing: "",
-  waiting: "[filter:saturate(0.5)]",
-  stopped: "[filter:grayscale(1)_brightness(0.7)]",
+  waiting: "[filter:saturate(0.45)]",
+  stopped: "[filter:grayscale(1)_brightness(0.62)]",
 };
 
 const SHAPE_TEXT: Record<FrameShape, string> = {
-  done: "text-emerald-300",
-  developing: "text-amber-300",
-  waiting: "text-slate-400",
-  stopped: "text-rose-400",
+  done: "text-bone-dim",
+  developing: "text-amber-300/90",
+  waiting: "text-bone-dim",
+  stopped: "text-rose-300/85",
 };
+
+/**
+ * 도록의 색인 줄 — 전체 / 진행 중 / 완료 / 멈춤.
+ *
+ * 🔴 이 네 칸은 **서버를 한 번도 부르지 않습니다.** 이미 받아 둔 목록을 걸러 보는 것뿐이라 호출도 돈도
+ * 0입니다. 「진행 중만 보기」가 새 요청이 되는 순간 목록 화면이 돈 쓰는 화면이 됩니다.
+ */
+const FILTERS: { key: "all" | FrameShape; label: string }[] = [
+  { key: "all", label: "전체" },
+  { key: "developing", label: "진행 중" },
+  { key: "done", label: "완료" },
+  { key: "stopped", label: "멈춤" },
+];
 
 function PlusIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="h-4 w-4 flex-shrink-0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0">
       <path d="M12 5v14M5 12h14" />
     </svg>
   );
@@ -97,6 +110,10 @@ function PlusIcon() {
  * 보라색 막대가 그려졌습니다 — 화면에서 제일 진한 색이 정보를 하나도 싣지 않은 자리에 쓰이고, 목록 전체가
  * 그 줄무늬로 덮였습니다. 진행 중인 것의 「어디까지 왔나」는 이제 **수면선의 높이**가 말합니다: 같은 숫자를
  * 쓰지만(`progressPercent`) 끝난 프레임에는 그릴 선이 없습니다.
+ *
+ * 🟠 왼쪽 위의 번호는 **자리 번호**입니다(01, 02 …). 도록에서 도판에 번호를 매기는 것과 같은 이유로 붙어
+ * 있습니다: 「세 번째 거」라고 말할 수 있게 하는 것. 프로젝트의 속성이 아니라 지금 이 시트에서의 자리라,
+ * 거르거나 순서가 바뀌면 같이 바뀝니다.
  */
 function ProjectFrame({ project, index, onOpen }: { project: ProjectSummary; index: number; onOpen: () => void }) {
   const shape = frameShape(project.workflowState);
@@ -105,70 +122,81 @@ function ProjectFrame({ project, index, onOpen }: { project: ProjectSummary; ind
   const undeveloped = 100 - percent;
   return (
     <button
-        type="button"
-        data-testid="project-frame"
-        data-shape={shape}
-        className={`group flex w-full flex-col gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 ${riseInCard}`}
-        style={{ animationDelay: `${Math.min(index, 11) * 45}ms` }}
-        onClick={onOpen}
-      >
-        <span className="relative block overflow-hidden rounded-xl border border-white/10 transition-colors group-hover:border-violet-400/50">
-          {/*
-            * 9:16 — 만드는 것과 같은 비율.
-            *
-            * 🔴 전에는 64px 정사각 썸네일이었습니다. 이 앱이 내놓는 건 전부 세로 릴인데 목록만 정사각이라,
-            * 목록을 봐서는 결과물이 어떤 모양인지 알 수 없었습니다. 프레임을 결과물과 같은 비율로 두면
-            * 목록 자체가 콘택트 시트가 됩니다 — 편집자가 실제로 소재를 보는 방식입니다.
-            */}
-          <CoverThumb bare src={sceneImageContentUrl(project.id, 1)} className={`aspect-[9/16] w-full ${SHAPE_FILTER[shape]}`} />
+      type="button"
+      data-testid="project-frame"
+      data-shape={shape}
+      className={`group flex w-full flex-col gap-3 text-left focus-visible:outline-none ${riseIn}`}
+      style={{ animationDelay: `${Math.min(index, 11) * 40}ms` }}
+      onClick={onOpen}
+    >
+      <span className="relative block overflow-hidden rounded-sm bg-ground-raised ring-1 ring-transparent transition-[box-shadow] group-hover:ring-bone-faint group-focus-visible:ring-bone">
+        {/*
+          * 9:16 — 만드는 것과 같은 비율.
+          *
+          * 🔴 전에는 64px 정사각 썸네일이었습니다. 이 앱이 내놓는 건 전부 세로 릴인데 목록만 정사각이라,
+          * 목록을 봐서는 결과물이 어떤 모양인지 알 수 없었습니다. 프레임을 결과물과 같은 비율로 두면
+          * 목록 자체가 콘택트 시트가 됩니다 — 편집자가 실제로 소재를 보는 방식입니다.
+          */}
+        <CoverThumb bare src={sceneImageContentUrl(project.id, 1)} className={`aspect-[9/16] w-full ${SHAPE_FILTER[shape]}`} />
 
-          {shape === "developing" && (
-            <>
-              <span
-                aria-hidden="true"
-                data-testid="project-frame-undeveloped"
-                className="pointer-events-none absolute inset-x-0 bottom-0 bg-ground/85"
-                style={{ height: `${undeveloped}%` }}
-              />
-              <span
-                aria-hidden="true"
-                data-testid="project-frame-waterline"
-                className="waterline pointer-events-none absolute inset-x-0 h-px"
-                style={{ bottom: `${undeveloped}%`, background: "linear-gradient(90deg, #f0abfc, #a78bfa 50%, #60a5fa)" }}
-              />
-            </>
-          )}
+        {/*
+          * 자리 번호 밑의 얇은 그늘. 🟠 시안의 프레임은 손으로 칠한 어두운 그라데이션이라 흰 숫자가 그냥
+          * 읽혔는데, 실제 사진은 **위쪽이 하늘인 경우가 대부분**이라 숫자가 사라졌습니다. 그늘은 숫자가
+          * 닿는 데까지만 있고, 사진의 나머지는 건드리지 않습니다.
+          */}
+        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/45 to-transparent" />
+        <span aria-hidden="true" className="type-mono pointer-events-none absolute left-2.5 top-2 text-[10px] tracking-[0.06em] text-white/80">
+          {String(index + 1).padStart(2, "0")}
+        </span>
 
-          {shape === "stopped" && (
+        {shape === "developing" && (
+          <>
             <span
               aria-hidden="true"
-              data-testid="project-frame-cut"
-              className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-rose-400/70"
+              data-testid="project-frame-undeveloped"
+              className="pointer-events-none absolute inset-x-0 bottom-0 bg-ground/[0.86]"
+              style={{ height: `${undeveloped}%` }}
             />
-          )}
-        </span>
+            <span
+              aria-hidden="true"
+              data-testid="project-frame-waterline"
+              className="waterline pointer-events-none absolute inset-x-0 h-[1.5px]"
+              style={{ bottom: `${undeveloped}%`, background: "var(--spectrum)" }}
+            />
+          </>
+        )}
 
-        <span className="block min-w-0 px-0.5">
-          {/* The topic is what the user recognizes a project by; the generated id is the machine
-              handle and belongs underneath it, not as the headline. */}
-          <span className="block truncate text-sm font-semibold text-slate-100">{project.topic || project.id}</span>
-          <span className="mt-0.5 block truncate font-mono text-[11px] text-slate-500">{project.id}</span>
-          <span className="mt-1 flex items-baseline gap-2">
-            {/* 🟠 상태는 프레임이 말하지만, 글자로도 반드시 한 번 말합니다 — 색만으로 상태를 말하지 않는다는 §6. */}
-            <span className={`truncate text-xs font-semibold ${SHAPE_TEXT[shape]}`}>
-              {workflowStateLabel(project.workflowState)}
-            </span>
-            <span className="ml-auto flex-shrink-0 text-[11px] tabular-nums text-slate-500" title={project.updatedAt}>
-              {formatDateTime(project.updatedAt)}
-            </span>
+        {shape === "stopped" && (
+          <span
+            aria-hidden="true"
+            data-testid="project-frame-cut"
+            className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-rose-300/70"
+          />
+        )}
+      </span>
+
+      <span className="block min-w-0">
+        {/* The topic is what the user recognizes a project by; the generated id is the machine
+            handle and belongs underneath it, not as the headline. */}
+        <span className="clamp-2 block text-[12.5px] font-medium leading-[1.4] text-bone">{project.topic || project.id}</span>
+        <span className="type-mono mt-1 block truncate text-[10.5px] text-bone-faint">{project.id}</span>
+        <span className="mt-1.5 flex items-baseline gap-2">
+          {/* 🟠 상태는 프레임이 말하지만, 글자로도 반드시 한 번 말합니다 — 색만으로 상태를 말하지 않는다는 §6. */}
+          <span className={`truncate text-[11px] ${SHAPE_TEXT[shape]}`}>
+            {workflowStateLabel(project.workflowState)}
+          </span>
+          <span className="type-mono ml-auto flex-shrink-0 text-[10.5px] text-bone-faint" title={project.updatedAt}>
+            {formatDateTime(project.updatedAt)}
           </span>
         </span>
+      </span>
     </button>
   );
 }
 
 export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: ProjectListProps) {
   const [state, setState] = useState<ListState>({ projects: null, error: null, loading: true });
+  const [filter, setFilter] = useState<"all" | FrameShape>("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -203,40 +231,84 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
    * 🔴 The other half of this is PhotoCardScreen's own list. Filtering here without that would not tidy the
    * cards away — it would make finished work unreachable. The two ship together.
    */
-  const projects = (state.projects ?? []).filter((project) => project.photoCard !== true);
+  const projects = useMemo(
+    () => (state.projects ?? []).filter((project) => project.photoCard !== true),
+    [state.projects],
+  );
+  const shown = useMemo(
+    () => (filter === "all" ? projects : projects.filter((project) => frameShape(project.workflowState) === filter)),
+    [projects, filter],
+  );
   const waitingCount = waitingForVideoCount(projects);
 
   return (
-    <section className="mt-8">
-      <header className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-          <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-          단기 프로젝트
-        </h2>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
-          onClick={onCreateNew}
-        >
+    <section>
+      {/*
+        * 머리글 — 숫자를 **뱃지가 아니라 표본으로** 세웁니다.
+        *
+        * 🔴 화면에서 제일 큰 글자가 「AI Animation Studio」였습니다. 앱 이름은 왼쪽 워드마크가 늘 말하고
+        * 있고, 이 화면을 열었을 때 제일 먼저 알아야 하는 건 **몇 개가 있느냐**입니다. 숫자를 표제 크기로
+        * 세우는 건 장식이 아니라 그 순서를 그대로 옮긴 것입니다.
+        */}
+      <header className="flex items-end gap-5">
+        <div className="flex items-baseline gap-4">
+          <span data-testid="project-count" className="type-display text-[58px] leading-[0.82] text-bone">
+            {shown.length}
+          </span>
+          <div className="flex flex-col gap-0.5 pb-0.5">
+            <span aria-hidden="true" className="type-index text-bone-faint">Short works</span>
+            <h1 className="text-[17px] font-medium tracking-[-0.01em] text-bone-dim">단기 프로젝트</h1>
+          </div>
+        </div>
+        <button type="button" className={`${primaryButton} ml-auto flex items-center gap-1.5 text-[13px]`} onClick={onCreateNew}>
           <PlusIcon />
           새 프로젝트
         </button>
       </header>
 
-      {state.projects === null && state.loading && <Spinner label="불러오는 중..." className="mt-4" />}
+      {/* 색인 줄. 서버를 부르지 않는 거름망 네 개와, 지금 정렬이 무엇인지 말하는 한 줄. */}
+      <div className="mt-6 flex items-center gap-5 border-b border-line pb-2.5">
+        {FILTERS.map((option) => {
+          const active = filter === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              data-testid={`project-filter-${option.key}`}
+              aria-pressed={active}
+              className={`text-[12px] transition-colors ${active ? "font-medium text-bone" : "text-bone-faint hover:text-bone-dim"}`}
+              onClick={() => setFilter(option.key)}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+        <span aria-hidden="true" className="type-index ml-auto text-bone-faint/80">Recent first</span>
+      </div>
+
+      {state.projects === null && state.loading && <Spinner label="불러오는 중..." className="mt-6" />}
 
       {state.error && (
-        <p className="mt-4 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
+        <p className="mt-6 text-sm text-rose-400" role="alert" data-error-code={state.error.code}>
           {state.error.message}
         </p>
       )}
 
       {state.projects !== null && projects.length === 0 && (
-        <p className="mt-4 text-slate-400">아직 생성된 프로젝트가 없습니다.</p>
+        <p className="mt-6 text-bone-dim">아직 생성된 프로젝트가 없습니다.</p>
       )}
-      {state.projects !== null && projects.length > 0 && (
-        <ul className="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4">
-          {projects.map((project, index) => (
+      {/*
+        * 🟠 「하나도 없음」과 「걸러서 없음」은 다른 말입니다. 전자는 만들라는 뜻이고 후자는 거름망을
+        * 풀라는 뜻인데, 같은 문장을 쓰면 사람이 없는 프로젝트를 다시 만듭니다.
+        */}
+      {state.projects !== null && projects.length > 0 && shown.length === 0 && (
+        <p className="mt-6 text-bone-dim" data-testid="project-filter-empty">
+          이 조건에 해당하는 프로젝트가 없습니다.
+        </p>
+      )}
+      {shown.length > 0 && (
+        <ul className="mt-6 grid grid-cols-2 gap-x-8 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+          {shown.map((project, index) => (
             <li key={project.id}>
               <ProjectFrame project={project} index={index} onOpen={() => onOpenProject(project.id)} />
             </li>
@@ -247,11 +319,11 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
       {state.projects !== null && (
         <p
           data-testid="dashboard-summary"
-          className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-white/10 pt-3 text-xs text-slate-400"
+          className="mt-9 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line pt-3 text-[11px] text-bone-faint"
         >
-          <span className="tabular-nums">단기 프로젝트 {projects.length}개</span>
-          <span aria-hidden="true" className="text-slate-600">·</span>
-          <span className={`tabular-nums ${waitingCount > 0 ? "text-amber-300" : ""}`} data-testid="dashboard-waiting-count">
+          <span className="type-mono">단기 프로젝트 {projects.length}개</span>
+          <span aria-hidden="true">·</span>
+          <span className={`type-mono ${waitingCount > 0 ? "text-amber-300/90" : ""}`} data-testid="dashboard-waiting-count">
             영상 생성 확인 대기 {waitingCount}개
           </span>
         </p>

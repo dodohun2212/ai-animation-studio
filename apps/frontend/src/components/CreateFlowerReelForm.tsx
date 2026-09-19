@@ -450,7 +450,7 @@ export function CreateFlowerReelForm({ onCreated, onCancel }: Props) {
           type="submit"
           data-testid="flower-submit"
           disabled={!ready || submitting}
-          className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+          className="rounded bg-bone px-5 py-2.5 text-sm font-semibold text-ground disabled:opacity-50"
         >
           {submitting ? "만드는 중..." : created !== null ? "서식 값 다시 저장" : "꽃말 릴스 만들기"}
         </button>

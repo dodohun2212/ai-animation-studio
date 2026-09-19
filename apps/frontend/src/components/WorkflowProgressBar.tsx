@@ -70,7 +70,7 @@ export function WorkflowProgressBar({ state, className = "" }: { state: Workflow
       className={`h-1.5 w-full overflow-hidden rounded-full bg-white/[0.07] ${className}`.trim()}
     >
       <div
-        className={`h-full rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.6)] ${live ? "bar-live" : ""}`}
+        className={`h-full rounded-full bg-violet-400 ${live ? "bar-live" : ""}`}
         style={{ width: `${percent}%` }}
       />
     </div>

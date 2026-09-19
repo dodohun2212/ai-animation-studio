@@ -28,8 +28,8 @@ function BrandGlyph() {
     <svg viewBox="0 0 48 48" aria-hidden="true" className="h-1/2 w-1/2">
       <defs>
         <linearGradient id="coverThumbGradient" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#c4b5fd" />
-          <stop offset="100%" stopColor="#f0abfc" />
+          <stop offset="0%" stopColor="#cba878" />
+          <stop offset="100%" stopColor="#e8e2d6" />
         </linearGradient>
       </defs>
       <path

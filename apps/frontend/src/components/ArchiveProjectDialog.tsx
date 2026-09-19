@@ -52,7 +52,7 @@ export function ArchiveProjectDialog({ confirmationText, projectKind, onCancel, 
   }
 
   return (
-    <section className="mt-6 rounded-2xl border border-rose-400/30 bg-rose-950/20 p-5" aria-label={`${projectKind === "short" ? "단편" : "장기"} 프로젝트 보관 확인`}>
+    <section className="mt-6 rounded-lg border border-rose-400/30 bg-rose-950/20 p-5" aria-label={`${projectKind === "short" ? "단편" : "장기"} 프로젝트 보관 확인`}>
       <h3 className="font-semibold text-rose-200">프로젝트 보관하기</h3>
       <p className="mt-2 text-sm text-slate-300">
         이 프로젝트를 보관함으로 옮깁니다(나중에 다시 꺼낼 수 있어요). 계속하려면 정확한 {projectKind === "short" ? "주제" : "제목"}을 입력하세요:

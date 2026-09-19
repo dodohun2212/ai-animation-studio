@@ -150,7 +150,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         className="mt-8"
       />
     <form
-      className="mt-5 grid gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2"
+      className="mt-5 grid gap-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2"
       onSubmit={handleSubmit}
       noValidate
     >
@@ -305,7 +305,7 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
       <div className="flex gap-3 pt-1 md:col-span-2">
         <button
           type="submit"
-          className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+          className="rounded bg-bone px-5 py-2.5 text-sm font-semibold text-ground disabled:opacity-50"
           disabled={submitting}
         >
           {submitting ? "생성 중..." : "장기 프로젝트 생성"}

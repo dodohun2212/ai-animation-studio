@@ -93,10 +93,21 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the studio name", async () => {
+  /**
+   * 🟠 **This pair was not deleted, it was moved.** It used to say two things — the app names itself, and the
+   * app boots far enough to show an empty list — and the first stopped being true when the wordmark left the
+   * header for the rail (Cowork Round 951). What stopped being true is *where* the app says its name and
+   * whether that is a heading, not *whether* it says it.
+   *
+   * So the name is still asserted, at the wordmark, and the heading role is not: every screen carries its own
+   * `<h1>`, and repeating the app's name as a second one put two headings on every page. Splitting the check
+   * in two also keeps the second half honest — "the list loaded" is what actually proves the app booted, and
+   * it was riding along behind a heading assertion that could have carried it.
+   */
+  it("names itself at the wordmark, and boots far enough to show the empty list", async () => {
     vi.stubGlobal("fetch", createFakeBackend());
     render(<App />);
-    expect(screen.getByRole("heading", { name: "AI Animation Studio" })).toBeTruthy();
+    expect(screen.getByText("PRISMFORGE")).toBeTruthy();
     await screen.findByText("아직 생성된 프로젝트가 없습니다.");
   });
 
@@ -995,16 +1006,20 @@ describe("App", () => {
    * 줄짜리 CSS 라, 「배경이 허전한데」 하면서 다시 붙이기 딱 좋습니다.
    */
   describe("UI 재구성 — 되살아나면 안 되는 것들", () => {
-    it("앱 배경에 반복 격자가 없다", async () => {
+    it("앱 배경이 완전한 평면이다 — 격자도, 빛무리도 없다", async () => {
       vi.stubGlobal("fetch", createFakeBackend());
       const { container } = render(<App />);
       await screen.findByText("아직 생성된 프로젝트가 없습니다.");
 
       const root = container.firstElementChild as HTMLElement;
-      // 🔴 34px 흰 선이 두 축으로 앱 전체에 깔려 있었습니다. 정보는 0이고, 글자 뒤에서 계속 떨렸습니다.
-      expect(root.style.backgroundImage).not.toContain("repeating-linear-gradient");
-      // 🟠 빛 자체를 금지하는 짝이 아닙니다 — 하나는 남아 있어야 배경이 완전한 평면이 되지 않습니다.
-      expect(root.style.backgroundImage).toContain("radial-gradient");
+      /*
+       * 🔴 34px 흰 선이 두 축으로 앱 전체에 깔려 있었습니다. 정보는 0이고, 글자 뒤에서 계속 떨렸습니다.
+       *
+       * 🟠 그리고 1차에서 잠깐 남겨 뒀던 보라 빛무리도 없습니다. 「하나쯤은 있어야 평면이 아니다」라고
+       * 남겼는데, 따뜻한 검정 위의 차가운 보라 빛이 화면에서 제일 먼저 보였습니다. 이 화면에서 제일 먼저
+       * 보여야 하는 건 작업물입니다 — 배경은 비어 있는 게 아니라 **비워 둔** 것입니다.
+       */
+      expect(root.style.backgroundImage).toBe("");
     });
 
     it("목록 화면에 장식 그림이 없고, 그걸 피하려던 여백도 없다", async () => {

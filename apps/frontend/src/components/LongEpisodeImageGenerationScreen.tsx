@@ -491,7 +491,7 @@ export function LongEpisodeImageGenerationScreen({ projectId, episodeNumber, onB
           video step is exactly when "what did scene 3 look like" gets asked. A stage is not a reason to hide
           what that stage produced. */}
       {episode && !isBefore(episode.status, "images_ready") && !reviewable && sceneNumbers.length > 0 && (
-        <section aria-label="만든 장면 이미지" data-testid="episode-image-gallery" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+        <section aria-label="만든 장면 이미지" data-testid="episode-image-gallery" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
             <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
             만든 장면 이미지

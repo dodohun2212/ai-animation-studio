@@ -45,21 +45,16 @@ interface Props {
  * design system does not have. One component is how the next screen inherits the decision instead of the
  * paste.
  *
- * The frame is what is new: a hairline that catches the light along the top edge and one soft glow behind the
- * corner, so the title sits on a surface rather than on the page background. Both are decorative and both are
- * `aria-hidden` — nothing here is announced twice.
+ * 🔴 2026-09-19: **상자를 걷어냈습니다.** 이 머리글은 둥근 판 + 위쪽 하이라이트 + 구석의 빛무리로 되어
+ * 있었는데, 그 판 안에 든 게 제목 한 줄과 돌아가기 링크뿐인 화면이 많아서 **화면 위쪽 6분의 1이 빈 상자**
+ * 였습니다. 제목이 무언가 위에 얹혀 있다는 느낌은 판이 아니라 **밑줄 하나**로 충분합니다.
+ *
+ * 🟠 제목 앞의 빛나는 점도 뺐습니다. 이 앱에서 무지개를 쓰는 자리는 **두 군데뿐**입니다 — 워드마크 밑줄과
+ * 진행 중 프레임의 수면선. 화면마다 하나씩 더 켜지면 그건 포인트가 아니라 팔레트가 된 것입니다.
  */
 export function ScreenHeader({ title, eyebrow, description, onBack, backLabel = "프로젝트로 돌아가기", leading, meta, actions, className = "" }: Props) {
   return (
-    <header className={`relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 ${className}`}>
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-400/60 to-transparent"
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-violet-500/10 blur-2xl"
-      />
+    <header className={`relative border-b border-line pb-5 ${className}`}>
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start">
         {leading}
         <div className="min-w-0 flex-1 space-y-1.5">
@@ -72,19 +67,13 @@ export function ScreenHeader({ title, eyebrow, description, onBack, backLabel = 
              * character — ten of the twenty-one screens silently lost the arrow. A decoration that every
              * caller has to remember is a decoration half of them will not.
              */
-            <button type="button" className="text-xs text-slate-400 hover:text-slate-300" onClick={onBack}>
+            <button type="button" className="text-xs text-bone-dim transition-colors hover:text-bone" onClick={onBack}>
               <span aria-hidden="true">←</span> {backLabel}
             </button>
           )}
-          {eyebrow && <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{eyebrow}</p>}
-          <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-slate-100">
-            <span
-              aria-hidden="true"
-              className="h-2 w-2 flex-shrink-0 rounded-full bg-gradient-to-br from-violet-300 to-pink-300 shadow-[0_0_6px_rgba(216,180,254,0.7)]"
-            />
-            {title}
-          </h1>
-          {description && <p className="max-w-2xl text-sm leading-relaxed text-slate-400">{description}</p>}
+          {eyebrow && <p className="type-index text-bone-faint">{eyebrow}</p>}
+          <h1 className="text-2xl font-semibold tracking-[-0.015em] text-bone">{title}</h1>
+          {description && <p className="max-w-2xl text-sm leading-relaxed text-bone-dim">{description}</p>}
           {meta && <div className="pt-1">{meta}</div>}
         </div>
       </div>

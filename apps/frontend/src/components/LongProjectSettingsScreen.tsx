@@ -147,7 +147,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           Grouping does not hide anything; it stops the rarely-touched half from being in the way of the part
           someone came to change. */}
       {state.settings && (
-        <form className="grid gap-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
+        <form className="grid gap-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
           <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
           <Field label="제목" value={state.settings.title} onChange={(value) => setField("title", value)} />
           <Field label="한 줄 줄거리" value={state.settings.logline} onChange={(value) => setField("logline", value)} />
@@ -354,7 +354,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           <button
             type="submit"
             disabled={state.loading}
-            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50 md:col-span-2"
+            className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50 md:col-span-2"
           >
             {state.loading ? "저장 중…" : "설정 저장"}
           </button>

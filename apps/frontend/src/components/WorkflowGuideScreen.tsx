@@ -83,7 +83,7 @@ function StageCard({
     <section
       data-testid={testId}
       aria-label={title}
-      className={`space-y-3 rounded-2xl border ${style.border} bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5`}
+      className={`space-y-3 rounded-lg border ${style.border} bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5`}
     >
       <header className="flex flex-wrap items-center gap-2.5">
         <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${style.chip}`}>{step}단계</span>
@@ -292,7 +292,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         ))}
       </div>
 
-      <section aria-label="전체 흐름 그림" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+      <section aria-label="전체 흐름 그림" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
         <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
           <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
           {projectKind === "short" ? "단기 프로젝트 — 영상 하나" : "장기 프로젝트 — 여러 회차"}
@@ -309,7 +309,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
       </section>
 
       {projectKind === "long" && (
-        <section aria-label="장기 프로젝트 계산" data-testid="workflow-guide-long" className="space-y-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.07] p-5">
+        <section aria-label="장기 프로젝트 계산" data-testid="workflow-guide-long" className="space-y-3 rounded-lg border border-violet-400/25 bg-violet-500/[0.07] p-5">
           <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
             <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
             회차 수를 곱하면 이렇게 됩니다
@@ -357,7 +357,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         </section>
       )}
 
-      <section aria-label="계산 조건" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+      <section aria-label="계산 조건" className="space-y-3 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
         <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
           <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
           계산 조건{projectKind === "long" ? " (회차 하나 기준)" : ""}
@@ -462,7 +462,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
       <section
         aria-label="전체 요약"
         data-testid="workflow-guide-summary"
-        className="grid gap-3 rounded-2xl border border-violet-400/25 bg-violet-500/[0.07] p-5 sm:grid-cols-2"
+        className="grid gap-3 rounded-lg border border-violet-400/25 bg-violet-500/[0.07] p-5 sm:grid-cols-2"
       >
         <div>
           <p className="text-xs text-slate-400">AI 호출 총 횟수{projectKind === "long" ? " (회차 하나)" : ""}</p>
@@ -586,7 +586,7 @@ export function WorkflowGuideScreen({ onBack }: Props) {
         </>
       )}
 
-      <section aria-label="알아두면 좋은 것" className="space-y-2.5 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+      <section aria-label="알아두면 좋은 것" className="space-y-2.5 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
         <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
           <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
           알아두면 좋은 것

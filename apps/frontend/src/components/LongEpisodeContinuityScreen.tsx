@@ -257,7 +257,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
         </div>
       )}
       {saved !== undefined && (
-        <div data-testid="continuity-save-success" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/5 p-5">
+        <div data-testid="continuity-save-success" className="space-y-2 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-5">
           <p className="text-sm text-emerald-400">{saved ? `에피소드 ${saved.episodeNumber}(으)로 이어서 진행할 수 있습니다 (${longEpisodeStatusLabel(saved.status)}).` : "마지막 에피소드였습니다. 다음 에피소드가 없습니다."}</p>
           {saved && onOpenNextEpisode && <button type="button" data-testid="continuity-open-next-episode" className={outlineButton} onClick={() => onOpenNextEpisode(projectId, saved.episodeNumber)}>에피소드 {saved.episodeNumber} 열기</button>}
         </div>

@@ -46,7 +46,7 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
   }
   const inputId = `${status.provider}-credential`;
   return (
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+    <div className="rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
       <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
         <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
         {label}
@@ -75,7 +75,7 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
           disabled={disabled || pending}
         />
         {fieldError && <p role="alert" className="text-sm text-rose-400">{fieldError}</p>}
-        <button type="submit" disabled={disabled || pending} className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50">저장</button>
+        <button type="submit" disabled={disabled || pending} className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50">저장</button>
       </form>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button type="button" className={outlineButton} disabled={disabled || pending || !status.connected} onClick={() => void run(() => disconnectProvider(status.provider))}>이 앱에서 사용 안 함</button>

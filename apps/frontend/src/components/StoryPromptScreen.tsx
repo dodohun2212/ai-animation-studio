@@ -254,7 +254,7 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
         <button
           type="button"
           data-testid={testId}
-          className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+          className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground"
           onClick={() => onOpenMappingReview(projectId)}
         >
           다음: 참고 이미지 연결
@@ -285,7 +285,7 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
           STORY_GENERATION_NOT_ALLOWED, so offering them is offering a dead end. What the person actually wants
           at this point is to read what was written and move on, so that is what the screen becomes. */}
       {alreadyGenerated && existing && (
-        <div data-testid="story-already-generated" className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
+        <div data-testid="story-already-generated" className="space-y-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
           {/* Two different situations, and the difference is whether paid images exist yet. Before any image,
               rewriting the Story costs nothing but the new Story itself. After, the images would describe a
               story that no longer exists — so that door is closed and the screen says why. */}
@@ -372,7 +372,7 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
       )}
 
       {preview && !alreadyGenerated && (
-        <div className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
+        <div className="space-y-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
           {/* `castCount` counts the cast, not letters. Under its old contract name `characterCount` this was
               rendered as "글자 수", telling 캡틴D the prompt was 0 글자 with a full prompt sitting directly
               underneath — on a flower reel, which deliberately has no people, 0 was the right answer to a
@@ -406,7 +406,7 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
             </button>
             <button
               type="button"
-              className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+              className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
               onClick={openConfirmation}
               disabled={approvePending || confirmOpen}
             >
@@ -459,7 +459,7 @@ export function StoryPromptScreen({ projectId, onBack, onOpenMappingReview, onOp
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                  className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                   onClick={() => void confirmApproval()}
                   disabled={approvePending}
                 >

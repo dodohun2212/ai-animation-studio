@@ -475,7 +475,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
 
           포토카드는 틀에 맞춰 그려지므로 선택이 아무것도 바꾸지 않고, 서버도 거절합니다 — 그래서 숨깁니다. */}
       {(!result || remaking) && !photoCard && (
-        <fieldset data-testid="merge-frame-fit" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+        <fieldset data-testid="merge-frame-fit" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-100">화면 맞춤</legend>
           {FRAME_FITS.map((value) => (
             <label key={value} className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
@@ -516,7 +516,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           자막은 돌리기 전에 입혀서, 돌아간 채로도 똑바로 읽힌다. 16:9 가 아니면 서버가 거절하므로(계약 주석)
           그 모양일 때만 보여준다. */}
       {(!result || remaking) && rotatable && (
-        <fieldset data-testid="merge-rotate" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+        <fieldset data-testid="merge-rotate" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-100">화면 회전</legend>
           <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
             <input
@@ -542,7 +542,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           아니면 무음으로 새로 붙입니다. 소리 되는 모델을 일부러 골라 더 내고 그 소리를 버리는 일이 여기서
           보이지 않으면, 사람은 그걸 영원히 모릅니다. (선택지 자체는 소리 묶음에서 생깁니다.) */}
       {(!result || remaking) && !photoCard && audibleClips > 0 && (
-        <fieldset data-testid="merge-clip-audio" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+        <fieldset data-testid="merge-clip-audio" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-100">영상 소리</legend>
           {/* 설명이 먼저, 칸이 뒤 — 이 줄은 잰 사실입니다(`VideoReview.clip.hasAudio`). 소리가 들어 있는 클립이
               하나도 없으면 이 칸 자체가 없습니다: 아무것도 못 하는 칸은 눌러 보게 만듭니다. */}
@@ -591,7 +591,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         <div className="space-y-3">
           <button
             type="button"
-            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+            className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
             data-testid="open-merge-confirm-button"
             onClick={openConfirmation}
             disabled={confirmOpen || pending || blocked || modeUnready}
@@ -645,7 +645,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                  className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                   data-testid="confirm-merge-button"
                   onClick={() => void confirmMerge()}
                   disabled={pending}
@@ -701,7 +701,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       )}
 
       {result && (
-        <div data-testid="merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+        <div data-testid="merge-success" className="space-y-3 rounded-lg border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <p className="text-sm font-semibold text-emerald-400">
             최종 영상 병합이 완료되었습니다. 이 단계에서는 유료 요청이 전송되지 않았습니다.
           </p>

@@ -283,7 +283,7 @@ export function LongProjectDetail({
            * the reader should meet it before the fields, not after scrolling past them.
            */}
           {state.project.warnings?.length ? (
-            <ul data-testid="long-project-warnings" className="space-y-1 rounded-2xl border border-amber-400/30 bg-amber-500/5 p-4">
+            <ul data-testid="long-project-warnings" className="space-y-1 rounded-lg border border-amber-400/30 bg-amber-500/5 p-4">
               {state.project.warnings.map((warning) => (
                 <li key={warning} className="text-sm text-amber-300">{warning}</li>
               ))}
@@ -293,14 +293,14 @@ export function LongProjectDetail({
               without scrolling. What is left is what the header does not say. */}
           <MetaGrid
             columns={2}
-            className="rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6"
+            className="rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6"
             items={[
               { label: "ID", value: <span className="break-all">{state.project.id}</span> },
               { label: "장르", value: state.project.settings.genre || "—" },
             ]}
           />
           {/* Episode 수 moved into this panel as "전체 에피소드" rather than being listed twice. */}
-          <dl data-testid="episode-stage-summary" className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 text-slate-100 sm:grid-cols-3">
+          <dl data-testid="episode-stage-summary" className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 text-slate-100 sm:grid-cols-3">
             {episodeStageCounts(state.project.episodes).map((entry) => (
               <div key={entry.label} data-testid={`episode-stage-${entry.label}`}>
                 <dt className="text-xs uppercase tracking-wide text-slate-400">{entry.label}</dt>
@@ -310,7 +310,7 @@ export function LongProjectDetail({
               </div>
             ))}
           </dl>
-          <div data-testid="episode-list" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
+          <div data-testid="episode-list" className="space-y-3 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
             <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
               <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
               에피소드 타임라인
@@ -488,7 +488,7 @@ export function LongProjectDetail({
 
           {/* The shelf the archive confirmation has been promising. Until this existed that sentence pointed at
               nothing — the data and the routes were both there, and only the way back was missing. */}
-          <details data-testid="episode-archives" className="rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55" onToggle={(event) => { if ((event.currentTarget as HTMLDetailsElement).open) loadArchives(); }}>
+          <details data-testid="episode-archives" className="rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55" onToggle={(event) => { if ((event.currentTarget as HTMLDetailsElement).open) loadArchives(); }}>
             <summary data-testid="episode-archives-summary" className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-100">보관한 회차</summary>
             <div className="space-y-3 px-5 pb-5">
 

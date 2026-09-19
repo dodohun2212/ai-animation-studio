@@ -49,7 +49,7 @@ export function StepRibbon({ steps, currentIndex = -1, className = "" }: Props) 
         const done = state === "done";
         const current = state === "current";
         const tone = current
-          ? "border-violet-400/50 bg-violet-500/15 text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+          ? "border-violet-400/50 bg-violet-500/15 text-bone"
           : done
             ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
             : "border-white/10 bg-slate-950/40 text-slate-400";

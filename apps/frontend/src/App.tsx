@@ -320,9 +320,10 @@ interface NavItem {
  * 순서의 근거: 매일 여는 것(만들기) → 만들 때 꺼내 쓰는 것(보관함) → 다 만든 뒤 한 번(내보내기) →
  * 어쩌다 한 번(관리). 위에서 아래로 갈수록 여는 횟수가 줄어듭니다.
  */
-const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+const NAV_GROUPS: { title: string; index: string; items: NavItem[] }[] = [
   {
     title: "만들기",
+    index: "Forge",
     items: [
       { key: "short", icon: "home", label: "단기 프로젝트", target: { name: "list" } },
       { key: "long", icon: "long", label: "장기 프로젝트", target: { name: "longList" } },
@@ -332,6 +333,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "보관함",
+    index: "Stock",
     items: [
       { key: "assets", icon: "library", label: "이미지", fullLabel: "이미지 보관함", target: { name: "assets" } },
       { key: "videoLibrary", icon: "film", label: "영상", fullLabel: "영상 보관함", target: { name: "videoLibrary" } },
@@ -340,12 +342,14 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "내보내기",
+    index: "Release",
     items: [
       { key: "instagramPost", icon: "share", label: "게시물 준비", target: { name: "instagramPost" } },
     ],
   },
   {
     title: "관리",
+    index: "Workshop",
     items: [
       { key: "archive", icon: "archive", label: "보관한 프로젝트", target: { name: "archive" } },
       { key: "workflowGuide", icon: "workflow", label: "작업 워크플로우", target: { name: "workflowGuide" } },
@@ -358,14 +362,17 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
 function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: (screen: Screen) => void }) {
   const section = navSectionFor(current);
   return (
-    <nav aria-label="주 메뉴" className="mt-7 flex flex-col gap-6 border-b border-white/10 pb-6">
+    <nav aria-label="주 메뉴" className="mt-8 flex flex-col gap-7">
       {NAV_GROUPS.map((group) => (
-        <div key={group.title} className="flex flex-col gap-0.5">
-          <p
-            data-testid={`nav-group-${group.title}`}
-            className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500"
-          >
-            {group.title}
+        <div key={group.title} className="flex flex-col gap-[3px]">
+          {/*
+            * 묶음 머리말은 **라틴 소문자 라벨**입니다 — 도록의 색인 머리말처럼 읽히라고. 한국어 이름은
+            * 화면에서 빠지지만 **없어지지는 않습니다**: `sr-only` 로 남아서 스크린리더는 「만들기」를
+            * 읽습니다. 장식이 정보를 먹지 않게 하는 값은 이 한 줄입니다.
+            */}
+          <p data-testid={`nav-group-${group.title}`} className="type-index px-2.5 pb-2 text-bone-faint">
+            <span className="sr-only">{group.title}</span>
+            <span aria-hidden="true">{group.index}</span>
           </p>
           {group.items.map((item) => {
             const active = section === item.key;
@@ -375,10 +382,10 @@ function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: 
                 type="button"
                 aria-current={active ? "page" : undefined}
                 aria-label={item.fullLabel}
-                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors ${
+                className={`flex h-[31px] items-center gap-2.5 rounded px-2.5 text-left text-[13px] transition-colors ${
                   active
-                    ? "bg-violet-500/15 text-white shadow-[inset_2px_0_0_#8b5cf6]"
-                    : "text-slate-300 hover:bg-white/5 hover:text-white"
+                    ? "bg-ground-raised font-medium text-bone"
+                    : "text-bone-dim hover:bg-ground-raised/60 hover:text-bone"
                 }`}
                 onClick={() => onNavigate(item.target)}
               >
@@ -631,7 +638,7 @@ function PhotoCardStepNotice({ projectId, onOpenMerge }: { projectId: string; on
       <button
         type="button"
         data-testid="photo-card-step-skipped-merge"
-        className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)]"
+        className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground"
         onClick={onOpenMerge}
       >
         자막·음악 정하러 가기
@@ -643,17 +650,23 @@ function PhotoCardStepNotice({ projectId, onOpenMerge }: { projectId: string; on
 
 function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
   return (
-    <aside className="flex w-64 flex-shrink-0 flex-col overflow-y-auto border-r border-white/5 bg-ground-raised px-5 py-8">
-      {/* 워드마크 밑의 스펙트럼 한 줄 — 앱 이름이 프리즘(빛을 가름)이라 그 한 번만 무지개를 씁니다.
-          다른 데서 또 쓰고 싶어지면 그건 포인트가 아니라 팔레트가 된 것입니다. */}
-      <p className="px-2.5 text-xs font-semibold uppercase tracking-[0.24em] text-slate-200">
-        Prism Forge
-      </p>
-      <span
-        aria-hidden="true"
-        className="mx-2.5 mt-2 h-px w-16 rounded-full"
-        style={{ background: "linear-gradient(90deg, #f0abfc, #a78bfa 45%, #60a5fa)" }}
-      />
+    /*
+     * 세로 막대 하나. 🔴 카드가 아니라 **가장자리**입니다 — 전에는 메뉴 전체가 다른 색 판때기 위에
+     * 얹혀 있어서, 화면에서 제일 먼저 보이는 게 메뉴 상자였습니다. 판때기를 걷고 선 하나만 남기면
+     * 먼저 보이는 것이 **작업물**이 됩니다. 폭도 256px → 208px.
+     */
+    <aside className="flex w-52 flex-shrink-0 flex-col overflow-y-auto border-r border-line px-3 py-7">
+      <div className="px-2.5 pb-1">
+        {/* 워드마크를 두 줄로 쪼갠 것 자체가 프리즘입니다 — 한 줄이 갈라져 둘이 됩니다. */}
+        <p className="type-display text-[15px] leading-[1.05] text-bone">
+          PRISM<br />FORGE
+        </p>
+        {/*
+          * 스펙트럼을 쓰는 **첫 번째이자 두 자리 중 하나**. 나머지 하나는 진행 중 프레임의 수면선입니다.
+          * 세 번째가 생기면 그건 포인트가 아니라 팔레트가 된 것입니다.
+          */}
+        <span aria-hidden="true" className="mt-2 block h-0.5 w-10" style={{ background: "var(--spectrum)" }} />
+      </div>
       <NavBar current={screen.name} onNavigate={onNavigate} />
       <LongWorkspaceNav screen={screen} onNavigate={onNavigate} />
     </aside>
@@ -757,23 +770,19 @@ export function App() {
   }
 
   /*
-   * 🔴 반복 격자 두 겹을 걷어냈습니다(2026-09-19). 34px 흰 선이 두 축으로 **앱 전체에** 깔려 있었고, 글자
-   * 뒤에서 계속 떨렸습니다 — 「눈이 아프다」는 말의 대부분이 이것이었습니다. 격자는 정보를 하나도 싣고 있지
-   * 않았습니다: 어떤 화면에서도 저 선에 맞춰 놓인 것이 없었습니다.
+   * 🔴 배경에서 걷어낸 것 둘, 그리고 **되돌려 놓지 않은 것 하나.**
    *
-   * 빛은 하나만 남기고, 그것도 **글자가 오지 않는 위쪽 구석**으로 옮겼습니다. 원래 왼쪽 위(8%)에 있던 큰
-   * 빛은 h1 과 좌측 메뉴 바로 뒤라 글자의 대비를 갉아먹고 있었습니다.
+   * 걷어낸 것: 34px 흰 격자 두 축(앱 전체에 깔려 글자 뒤에서 계속 떨렸고, 정보는 0이었습니다)과, 그 뒤에
+   * 잠깐 남겨 뒀던 보라 빛무리 하나.
+   *
+   * 🟠 빛무리는 1차에서 「하나쯤은 있어야 평면이 아니다」라고 남겼는데, 실제로 그려 놓고 보니 **따뜻한
+   * 검정 위의 차가운 보라 빛**이 화면에서 제일 먼저 보였습니다. 이 화면에서 제일 먼저 보여야 하는 건
+   * 작업물입니다. 배경은 **완전한 평면**이고, 그게 도록의 바탕입니다 — 비어 있는 게 아니라 비워 둔 것.
    */
   return (
-    <div
-      className="flex min-h-screen bg-ground text-slate-100"
-      style={{
-        backgroundImage:
-          "radial-gradient(900px 520px at 88% -16%, rgba(139,92,246,0.13), transparent 70%)",
-      }}
-    >
+    <div className="flex min-h-screen bg-ground text-bone">
       <Sidebar screen={screen} onNavigate={setScreen} />
-      <main className="relative flex-1 overflow-y-auto px-12 py-12">
+      <main className="relative flex-1 overflow-y-auto px-11 pb-14 pt-8">
         <ShortProjectPipeline screen={screen} onNavigate={setScreen} shell={shortProjectShell} />
         {/*
           * 🔴 목록 화면의 장식 그림 두 장(heroRing · heroLandscape)을 뺐습니다(2026-09-19).
@@ -786,21 +795,31 @@ export function App() {
           * 목록 자체가 이제 9:16 프레임 시트라 **프로젝트 그림들이 그 자리를 채웁니다.** 장식 그림보다 그게
           * 이 앱을 더 잘 설명합니다: 여기서 만드는 건 세로 영상이고, 화면에 깔린 게 실제로 만든 것들입니다.
           */}
-        <div className="relative mx-auto max-w-4xl">
-          {/* The studio banner is the entry screens' hero, matching §5.1's rule for the hero images. Deep
-              screens carry their own <h1> title, so repeating this here would both push the actual work
-              down the page and put a second <h1> on every screen. */}
-          {isEntryScreen && (
-            <>
-              <h1 className="bg-gradient-to-r from-violet-200 via-violet-300 to-pink-300 bg-clip-text text-4xl font-semibold text-transparent">
-                AI Animation Studio
-              </h1>
-            </>
+        {/*
+          * 🟠 목록 화면은 **좁은 칸을 쓰지 않습니다.** 896px(`max-w-4xl`) 은 글을 읽는 폭이고, 콘택트 시트는
+          * 훑는 화면이라 한 줄에 몇 장이 들어오느냐가 전부입니다. 같은 폭에서 프레임을 늘리면 세로로만
+          * 길어져서 스크롤이 두 배가 됩니다.
+          */}
+        <div className={`relative mx-auto ${screen.name === "list" ? "max-w-[1480px]" : "max-w-4xl"}`}>
+          {/*
+            * 🔴 「AI Animation Studio」 그라데이션 배너를 목록 화면에서 뺐습니다.
+            *
+            * 두 가지가 겹쳐 있었습니다: 한 화면에 `h1`(앱 이름) 과 `h2`(단기 프로젝트) 가 둘 다 있어서 화면의
+            * 제목이 **작업과 무관한 쪽**이었고, 앱 이름은 이미 왼쪽 워드마크가 늘 말하고 있습니다. 목록의
+            * 제목은 이제 목록 자신이 답니다 — 세어 놓은 숫자와 함께.
+            *
+            * 장기 목록은 아직 이 배너를 씁니다. 그쪽은 한 줄이 회차 여러 개를 대표해서 같은 머리말이 같은
+            * 뜻을 갖는지부터 다릅니다 — 캡틴D께서 단기 쪽을 보신 뒤에 정하는 게 맞습니다.
+            */}
+          {isEntryScreen && screen.name !== "list" && (
+            <h1 className="bg-gradient-to-r from-violet-200 via-violet-300 to-pink-300 bg-clip-text text-4xl font-semibold text-transparent">
+              AI Animation Studio
+            </h1>
           )}
 
           {/* 🔴 `pt-24` 가 여기 있었습니다 — 위 hero 그림을 피하려고 목록을 96px 아래로 민 것. 그림이 없으니
               밀 이유도 없습니다. 목록 화면만 다른 여백을 갖던 분기도 같이 사라집니다. */}
-          <div className="mt-8">
+          <div className={screen.name === "list" ? "" : "mt-8"}>
             {screen.name === "list" && (
               <ProjectList
                 refreshToken={listRefreshToken}

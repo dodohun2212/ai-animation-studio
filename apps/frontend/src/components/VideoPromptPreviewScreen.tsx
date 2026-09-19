@@ -230,7 +230,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
               <section
                 aria-label="이 요청이 쓸 영상 모델"
                 data-testid="preview-summary"
-                className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
+                className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
               >
                 <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
                   <span className="text-xs text-slate-500">이 요청이 쓸 영상 AI</span>
@@ -291,7 +291,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
             <section
               aria-label="이 모델과 지금 설정"
               data-testid="setup-issues"
-              className={`space-y-2 rounded-2xl border p-4 ${blocked ? "border-rose-400/40 bg-rose-950/20" : "border-amber-400/30 bg-amber-500/[0.06]"}`}
+              className={`space-y-2 rounded-lg border p-4 ${blocked ? "border-rose-400/40 bg-rose-950/20" : "border-amber-400/30 bg-amber-500/[0.06]"}`}
             >
               <h3 className={`text-sm font-semibold ${blocked ? "text-rose-300" : "text-amber-300"}`}>
                 {blocked ? "이대로는 전송되지 않습니다" : "이 설정으로 보내면 이렇게 됩니다"}
@@ -336,7 +336,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 <li
                   key={preview.sceneNumber}
                   data-testid={`preview-${preview.sceneNumber}`}
-                  className="space-y-1.5 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
+                  className="space-y-1.5 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-slate-100">{preview.sceneNumber}번 장면</span>
@@ -436,7 +436,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
           </ul>
           <section
             aria-label="비용 및 예산 확인"
-            className={`space-y-1.5 rounded-2xl border p-4 ${overBudget ? "border-rose-400/40 bg-rose-950/20" : "border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55"}`}
+            className={`space-y-1.5 rounded-lg border p-4 ${overBudget ? "border-rose-400/40 bg-rose-950/20" : "border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55"}`}
           >
             <p className="text-sm font-semibold text-slate-100" data-testid="total-cost">
               총 예상 비용: ${totalCostUsd.toFixed(2)}
@@ -463,7 +463,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
             <div className="flex gap-3">
               <button
                 type="button"
-                className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                 data-testid="open-confirm-button"
                 onClick={openConfirmation}
                 disabled={confirmOpen || submitPending || hasBlockingPromptError || blocked || !confirmationId}
@@ -536,7 +536,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                  className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                   data-testid="confirm-submit-button"
                   onClick={() => void confirmSubmission()}
                   disabled={submitPending}
@@ -554,7 +554,7 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
           )}
 
           {submitted && (
-            <div data-testid="submit-success" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+            <div data-testid="submit-success" className="space-y-2 rounded-lg border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
               <p className="text-sm font-semibold text-emerald-400">
                 영상 생성 작업이 접수되었습니다. 진행 상황은 다음 화면에서 확인할 수 있습니다.
               </p>

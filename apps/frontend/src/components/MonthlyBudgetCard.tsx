@@ -61,7 +61,7 @@ export function MonthlyBudgetCard({ budgets, onBudgetChange }: Props) {
   }
 
   return (
-    <section aria-label="이번 달 예산" data-testid="monthly-budget-card" className="space-y-3 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+    <section aria-label="이번 달 예산" data-testid="monthly-budget-card" className="space-y-3 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
       <div>
         <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
           <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />

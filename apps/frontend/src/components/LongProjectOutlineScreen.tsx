@@ -191,7 +191,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
       )}
 
       {preview && (
-        <div className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+        <div className="space-y-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <p className="text-sm text-slate-400">에피소드 수: {preview.episodeCount}</p>
           <label className="block text-sm text-slate-300" htmlFor="outline-prompt">
             스토리 개요 프롬프트
@@ -218,7 +218,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
             </button>
             <button
               type="button"
-              className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+              className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
               onClick={openConfirmation}
               disabled={approvePending || confirmOpen}
             >
@@ -288,7 +288,7 @@ export function LongProjectOutlineScreen({ projectId, onBack }: Props) {
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                  className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                   onClick={() => void confirmApproval()}
                   disabled={approvePending}
                 >

@@ -184,7 +184,7 @@ export function SceneEditScreen({ projectId, onBack }: Props) {
             <section
               aria-label="저장 결과"
               data-testid="scene-edit-saved"
-              className="space-y-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.07] p-4"
+              className="space-y-2 rounded-lg border border-emerald-400/30 bg-emerald-500/[0.07] p-4"
             >
               <p className="text-sm font-semibold text-emerald-300">{savedSceneNumber}번 장면을 저장했습니다.</p>
               {staleness.imageStale.length === 0 &&

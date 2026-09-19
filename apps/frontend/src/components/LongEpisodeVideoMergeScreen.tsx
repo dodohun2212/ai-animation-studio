@@ -278,7 +278,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
           시계 방향으로 90도 돌려 잘리는 부분도 띠도 없이 정확히 9:16 릴로 만든다. 자막은 돌리기 전에 입혀서
           돌아간 채로도 똑바로 읽힌다. 16:9 가 아니면 서버가 거절하므로(계약 주석) 그 모양일 때만 보여준다. */}
       {!result && !alreadyMerged && rotatable && (
-        <fieldset data-testid="episode-merge-rotate" className="space-y-2 rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
+        <fieldset data-testid="episode-merge-rotate" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-100">화면 회전</legend>
           <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
             <input
@@ -328,7 +328,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         <div className="space-y-3">
           <button
             type="button"
-            className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+            className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
             data-testid="episode-open-merge-confirm"
             disabled={confirmationOpen || pending || blocked || modeUnready}
             onClick={openConfirmation}
@@ -362,7 +362,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] disabled:opacity-50"
+                  className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
                   data-testid="episode-confirm-merge"
                   disabled={pending}
                   onClick={() => void confirm()}
@@ -380,7 +380,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         </p>
       )}
       {(result || alreadyMerged) && (
-        <div data-testid="episode-merge-success" className="space-y-3 rounded-2xl border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
+        <div data-testid="episode-merge-success" className="space-y-3 rounded-lg border border-emerald-400/30 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
           <p className="text-sm font-semibold text-emerald-400">에피소드 최종 영상이 완성되었습니다.</p>
           {unplayable ? (
             <p data-testid="episode-final-video-missing" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-200">
