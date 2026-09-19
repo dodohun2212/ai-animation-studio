@@ -147,6 +147,64 @@ export interface NewsFetchDeps {
   fetch?: typeof globalThis.fetch;
   maxRedirects?: number;
   maxBytes?: number;
+  timeoutMs?: number;
+}
+
+/**
+ * How long the whole fetch may take, redirects included.
+ *
+ * 🔴 **A host that accepts the connection and then says nothing is the cheapest attack on this route, and
+ * without a deadline it works.** Nothing else here helps: the allowlist has already passed, the redirect
+ * counter never advances because no response arrives, and the size cap has nothing to count. The request
+ * simply waits, holding a handler, for as long as the other end cares to keep the socket open.
+ *
+ * One deadline for the whole chain rather than one per hop — five hops at ten seconds each is fifty seconds,
+ * which is a timeout only in the sense that it eventually stops.
+ */
+export const NEWS_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * Read the body, stopping at `maxBytes` instead of discovering afterwards that it was too big.
+ *
+ * 🔴 **This corrects what I shipped.** The cap used to be applied to the finished string, under a comment
+ * saying a body is only bounded once it is in hand — which is not true, and the untrue part is the whole
+ * point: `await response.text()` reads **everything** first. A cap that fires after the bytes are already in
+ * this process's memory is not a cap, it is a report. The address is a person's input, so a response that
+ * never ends is something to plan for rather than something to be surprised by.
+ *
+ * `Content-Length` is checked first because it is free, and **not trusted**, because it is the other end's
+ * claim about itself. The running total is what actually decides; the header only saves us from starting.
+ *
+ * 🟠 Bytes, not characters, which is what the constant's name always said. `"가"` is three bytes of UTF-8 and
+ * one character, so the old check let a Korean page reach three times the stated ceiling.
+ */
+async function readBounded(response: Response, maxBytes: number, host: string): Promise<string> {
+  const tooBig = () => new NewsSourceRefusedError("unsupported_address", host);
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) throw tooBig();
+
+  const stream = response.body;
+  if (!stream) return "";
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      // Cancel rather than break: the socket should stop sending, not finish into a buffer nobody reads.
+      if (total > maxBytes) { await reader.cancel().catch(() => undefined); throw tooBig(); }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const joined = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) { joined.set(chunk, at); at += chunk.byteLength; }
+  return new TextDecoder("utf-8").decode(joined);
 }
 
 /**
@@ -162,16 +220,16 @@ export async function fetchNewsArticle(raw: string, deps: NewsFetchDeps = {}): P
   const maxRedirects = deps.maxRedirects ?? NEWS_MAX_REDIRECTS;
   const maxBytes = deps.maxBytes ?? NEWS_ARTICLE_MAX_BYTES;
 
+  // One signal for the chain, created before the first hop, so redirects spend the same budget rather than
+  // each getting a fresh one.
+  const signal = AbortSignal.timeout(deps.timeoutMs ?? NEWS_FETCH_TIMEOUT_MS);
+
   let url = assertAllowedNewsUrl(raw);
   for (let hop = 0; hop <= maxRedirects; hop++) {
-    const response = await call(url.toString(), { redirect: "manual", headers: { Accept: "text/html" } });
+    const response = await call(url.toString(), { redirect: "manual", headers: { Accept: "text/html" }, signal });
     const location = response.status >= 300 && response.status < 400 ? response.headers.get("location") : null;
     if (!location) {
-      const body = await response.text();
-      // Checked after reading because a body is only bounded once it is in hand; the cap exists so an endless
-      // or enormous response cannot become this process's memory problem.
-      if (body.length > maxBytes) throw new NewsSourceRefusedError("unsupported_address", url.hostname);
-      return { finalUrl: url.toString(), body };
+      return { finalUrl: url.toString(), body: await readBounded(response, maxBytes, url.hostname) };
     }
     // Relative redirects are ordinary; resolving against the current URL is what a browser does, and the
     // result goes through the same door as the first address.

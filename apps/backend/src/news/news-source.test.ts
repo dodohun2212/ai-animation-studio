@@ -243,3 +243,101 @@ describe("news article fetch", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe("news article fetch, when the other end does not cooperate", () => {
+  /**
+   * 🔴 **A host that accepts the connection and then says nothing is the cheapest attack on this route.**
+   * Nothing else in this file helps: the allowlist has already passed, the redirect counter never advances
+   * because no response arrives, and the size cap has nothing to count. The request just waits, holding a
+   * handler, for as long as the other end cares to keep the socket open.
+   *
+   * The fake honours the signal the way a real fetch does, so what this pins is that a signal is passed at all
+   * — which is the entire mechanism, and is otherwise unobservable through a stub.
+   */
+  it("gives up on a host that accepts the connection and never answers", async () => {
+    const call = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+    })) as unknown as typeof globalThis.fetch;
+
+    await expect(fetchNewsArticle("https://www.yna.co.kr/slow", { fetch: call, timeoutMs: 30 })).rejects.toThrow();
+  });
+
+  /**
+   * 🔴 One deadline for the whole chain, not one per hop. Five hops at ten seconds each is fifty seconds, which
+   * is a timeout only in the sense that it eventually stops — and a redirector that answers slowly but does
+   * answer would keep resetting a per-hop budget forever.
+   */
+  it("spends one deadline across the redirects rather than restarting it at each one", async () => {
+    const signals: Array<AbortSignal | undefined> = [];
+    const call = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      signals.push(init?.signal ?? undefined);
+      return signals.length < 3
+        ? new Response(null, { status: 302, headers: { location: `https://www.yna.co.kr/hop${signals.length}` } })
+        : new Response("본문", { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+
+    await fetchNewsArticle("https://www.yna.co.kr/start", { fetch: call });
+    expect(signals).toHaveLength(3);
+    expect(signals[0]).toBeDefined();
+    expect(signals[1]).toBe(signals[0]);
+    expect(signals[2]).toBe(signals[0]);
+  });
+
+  /**
+   * 🔴 **The cap has to stop the read, not report on it afterwards.** This used to be applied to the finished
+   * string — `await response.text()` reads everything first, so the bytes were already in this process before
+   * anything objected. A cap that fires after the harm is a report. The proof is that the stream is cancelled:
+   * a body that never ends cannot be measured by finishing it.
+   */
+  it("stops reading at the cap instead of finishing the body first", async () => {
+    let cancelled = false;
+    let produced = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) { produced += 1024; controller.enqueue(new Uint8Array(1024)); },
+      cancel() { cancelled = true; },
+    });
+    const call = vi.fn(async () => new Response(endless, { status: 200 })) as unknown as typeof globalThis.fetch;
+
+    expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/endless", { fetch: call, maxBytes: 4096 })))
+      .toBe("unsupported_address");
+    expect(cancelled).toBe(true);
+    // And it stopped near the cap rather than somewhere far past it.
+    expect(produced).toBeLessThan(4096 * 4);
+  });
+
+  /**
+   * The other end's own claim is checked first because it is free.
+   *
+   * 🟠 Asserted by its consequence rather than by "nothing was read": whether a `ReadableStream` is pulled on
+   * construction is the platform's business, not this function's, and a pair that watched for it would be
+   * pinning someone else's implementation. What is ours is the decision — this body is **well under** the cap,
+   * so a version that only counted real bytes would accept it. It is refused, which is the header check.
+   */
+  it("refuses on a declared length over the cap, even though the body itself is small", async () => {
+    const call = vi.fn(async () => new Response("짧다", { status: 200, headers: { "content-length": "999999" } })) as unknown as typeof globalThis.fetch;
+
+    expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/huge", { fetch: call, maxBytes: 1024 })))
+      .toBe("unsupported_address");
+  });
+
+  /**
+   * 🟠 A lying `Content-Length` changes nothing, because the running total is what decides. The header only
+   * ever saves us from starting.
+   */
+  it("is not fooled by a content-length that understates the body", async () => {
+    const call = vi.fn(async () => new Response("가".repeat(5000), { status: 200, headers: { "content-length": "10" } })) as unknown as typeof globalThis.fetch;
+    expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/liar", { fetch: call, maxBytes: 1024 })))
+      .toBe("unsupported_address");
+  });
+
+  /**
+   * 🟠 Bytes, not characters — which is what the constant's name always said. `"가"` is one character and three
+   * bytes of UTF-8, so the old length check let a Korean page through at three times the stated ceiling.
+   */
+  it("counts bytes, so a Korean page cannot reach three times the ceiling", async () => {
+    // 1000 characters, 3000 bytes: under the cap by the old measure, over it by the real one.
+    const call = vi.fn(async () => new Response("가".repeat(1000), { status: 200 })) as unknown as typeof globalThis.fetch;
+    expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/korean", { fetch: call, maxBytes: 2000 })))
+      .toBe("unsupported_address");
+  });
+});
