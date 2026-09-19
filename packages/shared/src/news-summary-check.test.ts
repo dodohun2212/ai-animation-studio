@@ -198,3 +198,59 @@ describe("news claim check — the shapes a quotation and a unit can take", () =
     expect(NEWS_CHECK_SCOPE_NOTICE).toContain("못 잡습니다");
   });
 });
+
+describe("what a check is a statement about", () => {
+  const ARTICLE = "통계청은 3.2%라고 밝혔다. 이 수치는 10월 2일 발표됐다.";
+  const SUMMARY = "물가는 3.2% 둔화됐고 10월 2일 발표됐다.";
+
+  /**
+   * 🔴 **A check is anchored to the article it was run against, and that is not obvious enough to leave
+   * unsaid.** Two places compute one: the server, when the summary is made, and the screen, every time the
+   * boxes change. Cowork's screen deliberately draws only the second (Round 944 §3), on what turned out to be
+   * a mistaken premise — "same function, same inputs, same answer". It is the right decision for a different
+   * reason, and these pairs are that reason, moved next to the function it is a property of.
+   *
+   * At the moment a summary arrives the two agree, so nothing here contradicts the screen's behaviour today.
+   * What these pin is that they **stop** agreeing the instant the article changes — because then they are
+   * answers to two different questions, and only one of them is about what a person is looking at.
+   */
+  it("is true of the article it was given, so shortening the article can uncover a claim", () => {
+    const asSent = checkNewsSummary(SUMMARY, ARTICLE);
+    expect(asSent.missing).toHaveLength(0);
+
+    const shortened = checkNewsSummary(SUMMARY, "통계청은 3.2%라고 밝혔다.");
+    expect(shortened.missing.map((claim) => claim.text)).toEqual(["10월 2일"]);
+  });
+
+  /** 🔴 The worst shape of it: correcting a typo in the article turns a checked figure into an invented one. */
+  it("turns a figure invented once the article stops saying it", () => {
+    const corrected = checkNewsSummary(SUMMARY, "통계청은 3.5%라고 밝혔다. 이 수치는 10월 2일 발표됐다.");
+    expect(corrected.missing.map((claim) => claim.text)).toEqual(["3.2%"]);
+  });
+
+  /** And adding to the article only ever widens what can be found — the safe direction, and still a change. */
+  it("can only gain ground when the article grows", () => {
+    const fuller = checkNewsSummary(SUMMARY, `${ARTICLE} 장관은 7.8%도 언급했다.`);
+    expect(fuller.missing).toHaveLength(0);
+  });
+
+  /**
+   * 🟠 The one difference between the two callers that is **not** a divergence: the server checks the summary
+   * as the provider wrote it, the screen checks it trimmed. Measured over the shapes where ends could matter —
+   * a trailing newline, leading spaces, tabs on both sides, an invented figure, a date last, a quote last —
+   * and it changes nothing, which is why the two agree at arrival.
+   */
+  it("does not care about whitespace at the ends of a summary", () => {
+    const body = `${ARTICLE} 장관은 "재정 건전성은 지킨다"고 말했다.`;
+    for (const raw of [
+      "물가는 3.2% 둔화됐다.\n",
+      "   물가는 3.2% 둔화됐다.",
+      "\t\n 물가는 3.2% 둔화됐다. \n\t",
+      "물가는 7.8% 올랐다.\n",
+      "발표는 10월 2일이다.\n",
+      '장관은 "재정 건전성은 지킨다"\n',
+    ]) {
+      expect(checkNewsSummary(raw, body), raw).toEqual(checkNewsSummary(raw.trim(), body));
+    }
+  });
+});
