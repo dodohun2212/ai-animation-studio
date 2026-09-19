@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NEWS_SUMMARY_MAX_CHARS, isCreateNewsSummaryResponse, isNewsFetchArticleResponse, isNewsReelSetupResponse } from "@ai-animation-studio/shared";
 
+import { NEWS_SOURCE_HOSTS } from "./news-source.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { NewsCallQuota } from "./news-call-quota.js";
 import { NewsController } from "./news.controller.js";
@@ -276,5 +277,59 @@ describe("news summary route", () => {
     const { controller: news } = await summariser();
     news.callProvider = async () => "통계청은 3.2%라고 밝혔다.";
     expect((await news.summarise({ article: ARTICLE })).tooLong).toBeUndefined();
+  });
+});
+
+describe("what the screen is told about each publisher", () => {
+  /**
+   * 🔴 Every host has both facts, and this is what makes the merged table worth having. A name table on its
+   * own lets somebody add a publisher, ship it, and leave the body question for whoever pastes the first
+   * address to discover. Here, adding a host with no entry reddens this before it reaches anybody.
+   */
+  it("says a readable name and a measured body answer for every publisher", async () => {
+    const { controller: news } = await controller();
+    const { publishers } = await news.setup();
+
+    expect(publishers).toHaveLength(NEWS_SOURCE_HOSTS.length);
+    for (const publisher of publishers) {
+      expect(publisher.name, publisher.host).not.toBe(publisher.host);
+      expect(["address", "varies", "paste", "unknown"], publisher.host).toContain(publisher.body);
+    }
+  });
+
+  /**
+   * 🔴 **`unknown` has to be reachable, and the pair exists to stop it being tidied away.** Two publishers were
+   * not sampled — their entry pages did not expose article links the sampler recognises — and the tempting fix
+   * is to write down whichever answer looks likely. An invented answer is never re-measured, because it
+   * already looks answered.
+   *
+   * 🟠 한겨레 is why the value earns its keep: `unknown` after one article that failed to connect, `address`
+   * after four. The first reading was not a fact about 한겨레, it was a fact about that afternoon.
+   */
+  it("keeps 'not measured' as its own answer rather than guessing either way", async () => {
+    const { controller: news } = await controller();
+    const { publishers } = await news.setup();
+
+    const unmeasured = publishers.filter((publisher) => publisher.body === "unknown");
+    expect(unmeasured.length).toBeGreaterThan(0);
+    // And it is a different value from both real answers, so a screen has to branch on it.
+    expect(unmeasured.every((publisher) => publisher.body !== "address" && publisher.body !== "paste")).toBe(true);
+  });
+
+  /**
+   * 🔴 The two failures are different facts, so they are different values (Cowork Round 942 §5). "This site
+   * draws its article with JavaScript" is a property of the site — MBC's article page is 4KB holding 162
+   * characters of text — and will not differ per article. "This article was not where we look" might.
+   * A boolean would make the screen say one sentence about both.
+   */
+  it("separates a publisher that never works from one that sometimes does", async () => {
+    const { controller: news } = await controller();
+    const { publishers } = await news.setup();
+    const bodyOf = (host: string) => publishers.find((publisher) => publisher.host === host)?.body;
+
+    expect(bodyOf("imbc.com")).toBe("paste");
+    expect(bodyOf("donga.com")).toBe("varies");
+    expect(bodyOf("yna.co.kr")).toBe("address");
+    expect(bodyOf("imbc.com")).not.toBe(bodyOf("donga.com"));
   });
 });

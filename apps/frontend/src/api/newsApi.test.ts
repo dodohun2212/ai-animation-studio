@@ -4,7 +4,7 @@ import { NewsApiError, fetchNewsArticle, getNewsReelSetup } from "./newsApi.js";
 
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 
-const publishers = [{ host: "yna.co.kr", name: "연합뉴스" }];
+const publishers = [{ host: "yna.co.kr", name: "연합뉴스", body: "address" as const }];
 
 afterEach(() => { vi.restoreAllMocks(); });
 

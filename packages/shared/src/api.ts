@@ -2594,9 +2594,35 @@ export interface NewsSummaryCheck {
  * `host` is what a pasted address can be matched against; `name` is what a person can read. Both come from one
  * place on the server, so neither can drift from the other.
  */
+/**
+ * Whether a publisher's article body can be read from its address alone.
+ *
+ * 🔴 **Four values rather than a `needsPaste` boolean, because the two failures are different facts** (Cowork
+ * Round 942 §5). "This site draws its article with JavaScript, so the body is not in the document" is a
+ * property of how the site is built — one article shows it and the next will not differ. "This article's body
+ * was not where we look" might be true of that article only. A boolean would flatten them, and the screen
+ * would then say the same sentence about a publisher that never works and one that usually does.
+ *
+ * 🔴 `unknown` exists so that **not having measured is not written down as an answer.** Two of the twelve could
+ * not be sampled — their entry pages did not expose article links this measurement recognises, which is a
+ * limit of the measurement rather than a fact about the site. Recording those as either "works" or "needs
+ * pasting" would be inventing a result, and the invented one would never be re-measured.
+ */
+export type NewsPublisherBody =
+  /** Every article sampled parsed from its address. */
+  | "address"
+  /** Some articles parsed and some did not — the person finds out per article. */
+  | "varies"
+  /** The body is not in the document at all. No parser reaches it, so this publisher is always a paste. */
+  | "paste"
+  /** Not sampled. Neither promised nor ruled out. */
+  | "unknown";
+
 export interface NewsPublisher {
   host: string;
   name: string;
+  /** 🔴 Measured, not assumed — see NewsPublisherBody, and `unknown` is a real answer. */
+  body: NewsPublisherBody;
 }
 
 /**
@@ -3618,7 +3644,11 @@ export function assertNewsSummaryCheck(check: NewsSummaryCheck): void {
 const isPublisher = (value: unknown): value is NewsPublisher =>
   typeof value === "object" && value !== null
   && typeof (value as NewsPublisher).host === "string" && !!(value as NewsPublisher).host.trim()
-  && typeof (value as NewsPublisher).name === "string" && !!(value as NewsPublisher).name.trim();
+  && typeof (value as NewsPublisher).name === "string" && !!(value as NewsPublisher).name.trim()
+  // 🔴 Checked against the four, not merely for being a string. An unrecognised value would reach a
+  // branch nobody wrote and render as whichever one happens to be last — and the branch that matters here is
+  // `unknown`, which must never be drawn as a promise either way.
+  && ["address", "varies", "paste", "unknown"].includes((value as NewsPublisher).body);
 
 /**
  * 🔴 The guard is here for one field, and it is `dailyCalls`.

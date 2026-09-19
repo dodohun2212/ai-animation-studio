@@ -8,6 +8,7 @@ import {
   type NewsArticleInput,
   type NewsFetchArticleResponse,
   type NewsPublisher,
+  type NewsPublisherBody,
   type NewsReelSetupResponse,
 } from "@ai-animation-studio/shared";
 
@@ -19,35 +20,59 @@ import { NEWS_SOURCE_HOSTS, NewsSourceRefusedError, fetchNewsArticle } from "./n
 import { newsDailyLimitReached, newsLedgerUnreadable, newsSummaryArticleInvalid, newsSummaryFailed, newsSummaryKeyMissing } from "./news-api.error.js";
 
 /**
- * The readable name beside each host on the list.
+ * What this app knows about each publisher: the readable name, and whether its article body can be read
+ * from an address alone.
  *
- * 🟠 Kept next to the list rather than in the contract for the same reason the list is: one place, so a host
- * and its name cannot drift apart. A screen showing only `yna.co.kr` is a list its reader does not recognise;
- * a screen showing only 연합뉴스 is a list they cannot match against the address in their hand. Both travel.
+ * 🟠 One table rather than two, so **adding a publisher forces both decisions**. A name table on its own
+ * invites somebody to add a host, ship it, and leave the body question to be discovered by whoever pastes
+ * the first address.
+ *
+ * 🔴 **`body` is measured, and the measurement is written here so the next person knows what to redo.**
+ * Four articles per publisher, fetched with this app's own code on 2026-09-19 (캡틴D approved the reading,
+ * Cowork Round 936 §1):
+ *
+ *     주소만으로 됨 (4/4)   연합 · 뉴시스 · 중앙 · 한겨레 · 경향 · 한국일보
+ *     기사마다 다름 (3/4)   동아
+ *     본문이 HTML 에 없음   MBC · SBS · YTN — 기사 페이지가 4KB 에 글자 162자(MBC), 81자(SBS)다
+ *     모름                 조선 · KBS
+ *
+ * 🔴 The two `unknown`s are a limit of the measurement, not a fact about those sites: their entry pages did
+ * not expose article links the sampler recognises. Writing them down as "works" or "needs pasting" would be
+ * inventing a result — and an invented one is never re-measured, because it already looks answered.
+ *
+ * 🟠 한겨레 was `unknown` after one article (a connection failure) and is `address` after four. That is the
+ * whole argument for the value existing: the first reading was not a fact about 한겨레, it was a fact about
+ * that afternoon.
  */
-const PUBLISHER_NAMES: Record<string, string> = {
-  "yna.co.kr": "연합뉴스",
-  "newsis.com": "뉴시스",
-  "chosun.com": "조선일보",
-  "joongang.co.kr": "중앙일보",
-  "donga.com": "동아일보",
-  "hani.co.kr": "한겨레",
-  "khan.co.kr": "경향신문",
-  "hankookilbo.com": "한국일보",
-  "kbs.co.kr": "KBS",
-  "imbc.com": "MBC",
-  "sbs.co.kr": "SBS",
-  "ytn.co.kr": "YTN",
+const PUBLISHER_FACTS: Record<string, { name: string; body: NewsPublisherBody }> = {
+  "yna.co.kr": { name: "연합뉴스", body: "address" },
+  "newsis.com": { name: "뉴시스", body: "address" },
+  "chosun.com": { name: "조선일보", body: "unknown" },
+  "joongang.co.kr": { name: "중앙일보", body: "address" },
+  "donga.com": { name: "동아일보", body: "varies" },
+  "hani.co.kr": { name: "한겨레", body: "address" },
+  "khan.co.kr": { name: "경향신문", body: "address" },
+  "hankookilbo.com": { name: "한국일보", body: "address" },
+  "kbs.co.kr": { name: "KBS", body: "unknown" },
+  "imbc.com": { name: "MBC", body: "paste" },
+  "sbs.co.kr": { name: "SBS", body: "paste" },
+  "ytn.co.kr": { name: "YTN", body: "paste" },
 };
 
 const publishers = (): NewsPublisher[] =>
-  NEWS_SOURCE_HOSTS.map((host) => ({ host, name: PUBLISHER_NAMES[host] ?? host }));
+  NEWS_SOURCE_HOSTS.map((host) => {
+    const known = PUBLISHER_FACTS[host];
+    // 🔴 A host with no entry answers `unknown` rather than guessing. The pair below demands an entry for
+    // every host, so this branch is unreachable today — it exists so that the day it is reached, the screen
+    // says "we have not measured" instead of promising something nobody checked.
+    return { host, name: known?.name ?? host, body: known?.body ?? "unknown" };
+  });
 
 /** The publisher a fetched address belongs to, for the screen and for the caption's credit. */
 function publisherOf(finalUrl: string): string {
   const host = new URL(finalUrl).hostname.toLowerCase();
   const matched = NEWS_SOURCE_HOSTS.find((allowed) => host === allowed || host.endsWith(`.${allowed}`));
-  return matched ? PUBLISHER_NAMES[matched] ?? matched : host;
+  return matched ? PUBLISHER_FACTS[matched]?.name ?? matched : host;
 }
 
 @Controller()

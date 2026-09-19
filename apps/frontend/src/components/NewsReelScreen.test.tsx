@@ -5,8 +5,12 @@ import { stubFetchByRoute } from "../api/testUtils.js";
 import { NewsReelScreen } from "./NewsReelScreen.js";
 
 const PUBLISHERS = [
-  { host: "yna.co.kr", name: "연합뉴스" },
-  { host: "sedaily.com", name: "서울경제" },
+  /* 🔴 Three answers, not two rows — the screen has to draw "주소만으로 됨", "늘 붙여넣기" and
+     "아직 모름" differently, and a fixture carrying only one of them would let two of those branches
+     rot unseen. `unknown` in particular must never be drawn as a promise either way. */
+  { host: "yna.co.kr", name: "연합뉴스", body: "address" as const },
+  { host: "imbc.com", name: "MBC", body: "paste" as const },
+  { host: "sedaily.com", name: "서울경제", body: "unknown" as const },
 ];
 
 const SETUP = { publishers: PUBLISHERS, dailyCalls: { used: 2, limit: 10 } };
