@@ -20,6 +20,15 @@ export const QUOTE_FONT_FAMILY = "Noto Serif KR";
  * have to agree about them — including the bounds, which are refusals here and a slider's ends there.
  */
 
+/**
+ * How much of a card's time is spent revealing its lines.
+ *
+ * 🟠 Half, and the number is a floor rather than a taste: **the reveal finishes with at least as long left
+ * to read as it took to appear.** The alternative was a reading rate in characters per second — a figure
+ * nobody here has measured, which everybody downstream would then treat as measured.
+ */
+const PHOTO_CARD_REVEAL_SHARE = 0.5;
+
 /** ASS timestamp: H:MM:SS.CC (centiseconds), per the format's fixed field widths. */
 function timestamp(seconds: number): string {
   const clamped = Math.max(0, seconds);
@@ -138,7 +147,7 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   const { heading, body } = splitPhotoCardSubtitle(text);
   // Every number comes from the shared geometry, which the preview screen draws from too — a second copy of
   // this arithmetic is a preview that can disagree with the video without anything saying so.
-  const { bodySize, headSize, headingY, bodyY, centerX, margin } = photoCardSubtitleGeometry(width, height, card, body.length, heading !== undefined);
+  const { bodySize, headSize, lineGap, headingY, bodyY, centerX, margin } = photoCardSubtitleGeometry(width, height, card, body.length, heading !== undefined);
   // White on a black outline and a half-black shadow, unless the picture chose otherwise (card-palette.ts).
   const outline = colors ? assColour(colors.outline) : "&H00000000";
   const shadow = colors ? assColour(colors.outline, 0x80) : "&H80000000";
@@ -146,8 +155,37 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   // reads these rows checks the field rather than a family name (subtitle-file.photo-card.test.ts).
   const style = (name: string, font: string, size: number, bold: 0 | -1, primary: string) =>
     `Style: ${name},${font},${size},${primary},&H000000FF,${outline},${shadow},${bold},0,0,0,100,100,0,0,1,${PHOTO_CARD_SUBTITLE_OUTLINE},${PHOTO_CARD_SUBTITLE_SHADOW},5,${margin},${margin},0,1`;
-  const cue = (styleName: string, y: number, content: string) =>
-    `Dialogue: 0,${timestamp(0)},${timestamp(durationSeconds)},${styleName},,0,0,0,,{\\an5\\pos(${centerX},${y})}${escapeDialogueText(content)}`;
+  const cue = (styleName: string, y: number, content: string, startSeconds = 0) =>
+    `Dialogue: 0,${timestamp(startSeconds)},${timestamp(durationSeconds)},${styleName},,0,0,0,,{\\an5\\pos(${centerX},${y})}${escapeDialogueText(content)}`;
+
+  /**
+   * Where each body line sits, and when it arrives.
+   *
+   * 🔴 **The block does not move.** Its position is computed once from the *final* line count, and the lines
+   * appear inside it — the first one in its final place, the rest filling in below. Recomputing the centre as
+   * lines arrive would shove the whole block upward on every reveal, and a reader would be chasing the text
+   * instead of reading it (Cowork Round 936 §3). It also keeps `photoCardSubtitleGeometry` answering one
+   * question, which matters because the preview screen draws from that same function.
+   *
+   * 🟠 This is why the `lineGap` fix had to come first (Round 936). The lines used to travel as one `\N` cue
+   * that libass spaced by its own metrics; separate positioned cues are spaced by whatever `lineGap` says. With
+   * it still claiming `bodySize * 1.5`, turning this on would have silently widened every existing card —
+   * and nobody would have blamed the new feature. Now that it is measured and true, **the last frame of a
+   * revealed card is identical to the one static cue it replaces**, which is also why the preview needs no
+   * change: a preview shows the end state, and the end state did not move.
+   */
+  const lineY = (index: number) => bodyY + Math.round((index - (body.length - 1) / 2) * lineGap);
+
+  /**
+   * Lines arrive across the first half of the card, and the whole text is up for the second half.
+   *
+   * 🟠 Half rather than a reading-speed estimate, because a rate in characters per second is a number nobody
+   * here has measured and everybody would then trust. What this does say is the thing that matters: **the
+   * reveal finishes with at least as long left to read as it took to appear.** A last line arriving near the
+   * end would be text nobody gets to read, which is worse than no animation at all.
+   */
+  const revealAt = (index: number) =>
+    body.length <= 1 ? 0 : (index / body.length) * (durationSeconds * PHOTO_CARD_REVEAL_SHARE);
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -164,7 +202,9 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ...(heading !== undefined ? [cue("Quote", headingY, heading)] : []),
-    ...(body.length > 0 ? [cue("Body", bodyY, body.join("\n"))] : []),
+    // One positioned cue per line rather than one `\N` cue, which is what lets them arrive in turn. A single
+    // line reveals at 0 and renders exactly where the one static cue put it — there is nothing to sequence.
+    ...body.map((line, index) => cue("Body", lineY(index), line, revealAt(index))),
     "",
   ].join("\n");
 }

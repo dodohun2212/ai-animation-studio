@@ -43,6 +43,8 @@ const FRAME_HEIGHT = 1920;
 const fontsDirectory = path.resolve(import.meta.dirname, "../../../../fonts");
 /** 캡틴D's defaults, so these numbers describe the card that actually ships. */
 const CARD_LAYOUT = { scale: 0.027, center: 0.4 } as const;
+/** Long enough that the reveal and the hold are both visible in one render. */
+const CARD_SECONDS = 5;
 
 async function plainFrame(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "subtitle-spacing-"));
@@ -59,16 +61,22 @@ async function plainFrame(): Promise<string> {
  * question `subtitle-font-metrics.test.ts` asks column by column, answered in one pass, because a per-row scan
  * of 1920 rows would be 1920 processes.
  */
-async function inkRowCentres(directory: string, label: string, text: string): Promise<number[]> {
+async function inkRowCentres(directory: string, label: string, text: string, atSeconds = CARD_SECONDS - 1): Promise<number[]> {
   const plain = path.join(directory, "plain.png");
   const rendered = path.join(directory, `${label}.png`);
   const column = path.join(directory, `${label}.raw`);
   const assPath = path.join(directory, `${label}.ass`);
 
-  await fs.writeFile(assPath, sceneSubtitleAss(text, 5, FRAME_WIDTH, FRAME_HEIGHT, "photo-card", { card: CARD_LAYOUT }), "utf8");
-  await runMediaCommand(["ffmpeg", "-y", "-loglevel", "error", "-i", plain,
+  await fs.writeFile(assPath, sceneSubtitleAss(text, CARD_SECONDS, FRAME_WIDTH, FRAME_HEIGHT, "photo-card", { card: CARD_LAYOUT }), "utf8");
+  /*
+   * 🔴 The moment is now part of the measurement, and saying so is the point. A card's body lines arrive
+   * in turn, so "what does this card look like" has no answer without a time attached — these pairs read the
+   * settled frame, a second before the end, which is the state the one static cue used to hold for the whole
+   * clip and the state the preview draws.
+   */
+  await runMediaCommand(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-framerate", "30", "-t", String(CARD_SECONDS), "-i", plain,
     "-vf", `subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(fontsDirectory)}'`,
-    "-frames:v", "1", rendered]);
+    "-ss", String(atSeconds), "-frames:v", "1", rendered]);
   // Against the untouched frame, so the background's own texture cannot be read as a line of text.
   await runMediaCommand(["ffmpeg", "-y", "-loglevel", "error", "-i", rendered, "-i", plain,
     "-filter_complex", `[0][1]blend=all_mode=difference,format=gray,scale=1:${FRAME_HEIGHT}:flags=area`,
@@ -86,6 +94,8 @@ async function inkRowCentres(directory: string, label: string, text: string): Pr
 }
 
 const CARD_TEXT = "제목 줄입니다\n첫째 줄입니다\n둘째 줄입니다\n셋째 줄입니다";
+/** A heading and exactly one body line — nothing to put in order, so nothing should wait. */
+const SINGLE_LINE_CARD = "제목 줄입니다\n한 줄뿐입니다";
 
 describe("how far apart the card really draws its lines", () => {
   it("spaces body lines by lineGap, which the preview and the block position both assume", async ({ skip }) => {
@@ -129,5 +139,50 @@ describe("how far apart the card really draws its lines", () => {
     // 8px of slack at 1920 — under half a line — because a band's edge is where a glyph's outline fades, and
     // the heading and the last body line do not fade by the same amount. The error this catches is twice that.
     expect(Math.abs(drawn - FRAME_HEIGHT * CARD_LAYOUT.center)).toBeLessThanOrEqual(8);
+  }, 180000);
+});
+
+describe("how a card's lines arrive", () => {
+  /**
+   * 🔴 **The feature, measured on frames rather than asserted on the file.** The lines arrive in turn, so
+   * this counts bands of ink at four moments and expects the count to climb and then hold.
+   *
+   * 🟠 Counted, not matched to exact times. The *order* is the promise — more text as the card plays, all
+   * of it up well before the end — and pinning "the third line appears at 1.67s" would make a pair that breaks
+   * when somebody changes the share for a good reason, which is how a pair gets deleted instead of read.
+   */
+  it("shows more lines as the card plays, and has them all up long before it ends", async ({ skip }) => {
+    if (!await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false)) skip();
+    const root = await plainFrame();
+
+    const at = async (seconds: number, label: string) => (await inkRowCentres(root, label, CARD_TEXT, seconds)).length;
+    const start = await at(0.1, "t0");
+    const early = await at(1.2, "t1");
+    const settled = await at(2.6, "t2");
+    const end = await at(CARD_SECONDS - 0.2, "t3");
+
+    // The heading and the first body line are there from the start — nothing begins blank.
+    expect(start).toBeGreaterThanOrEqual(2);
+    expect(early).toBeGreaterThan(start);
+    // Four bands is everything: the heading and three body lines.
+    expect(settled).toBe(4);
+    // 🔴 And they stay. A reveal that finishes and then loses a line would be a cue whose end was computed
+    // from its start rather than from the card.
+    expect(end).toBe(4);
+  }, 180000);
+
+  /**
+   * 🟠 A single body line has nothing to sequence, so it must not wait. Somebody looking at a one-line
+   * quote card should see the same card they saw before this existed — the animation is for text that has an
+   * order, and a lone line does not.
+   */
+  it("does not make a one-line card wait for anything", async ({ skip }) => {
+    if (!await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false)) skip();
+    const root = await plainFrame();
+
+    const first = await inkRowCentres(root, "single-start", SINGLE_LINE_CARD, 0.1);
+    const later = await inkRowCentres(root, "single-late", SINGLE_LINE_CARD, CARD_SECONDS - 0.2);
+    expect(first).toHaveLength(2);
+    expect(later).toEqual(first);
   }, 180000);
 });
