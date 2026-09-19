@@ -987,4 +987,58 @@ describe("App", () => {
 
     await screen.findByText("아직 생성된 프로젝트가 없습니다.");
   });
+
+  /**
+   * 2026-09-19 UI 재구성 — 되돌아가기 쉬운 세 가지를 여기서 못 박습니다.
+   *
+   * 셋 다 「없앴다」가 본문이라, 짝이 없으면 다음 사람이 **없앤 줄 모르고** 되살립니다. 특히 격자는 한
+   * 줄짜리 CSS 라, 「배경이 허전한데」 하면서 다시 붙이기 딱 좋습니다.
+   */
+  describe("UI 재구성 — 되살아나면 안 되는 것들", () => {
+    it("앱 배경에 반복 격자가 없다", async () => {
+      vi.stubGlobal("fetch", createFakeBackend());
+      const { container } = render(<App />);
+      await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+
+      const root = container.firstElementChild as HTMLElement;
+      // 🔴 34px 흰 선이 두 축으로 앱 전체에 깔려 있었습니다. 정보는 0이고, 글자 뒤에서 계속 떨렸습니다.
+      expect(root.style.backgroundImage).not.toContain("repeating-linear-gradient");
+      // 🟠 빛 자체를 금지하는 짝이 아닙니다 — 하나는 남아 있어야 배경이 완전한 평면이 되지 않습니다.
+      expect(root.style.backgroundImage).toContain("radial-gradient");
+    });
+
+    it("목록 화면에 장식 그림이 없고, 그걸 피하려던 여백도 없다", async () => {
+      vi.stubGlobal("fetch", createFakeBackend());
+      const { container } = render(<App />);
+      await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+
+      // 🟠 「img 가 하나도 없다」로 쓰지 않습니다 — 프로젝트가 생기면 프레임마다 진짜 <img> 가 붙고, 그건
+      // 장식이 아니라 내용입니다. 없어야 하는 건 hero 그림 **두 장**이라, 그 둘만 집어서 못 박습니다.
+      expect(container.querySelector('img[src*="hero"]')).toBeNull();
+      // 🔴 `pt-24` 는 그 그림을 피하려고 목록을 96px 내린 것이었습니다. 그림이 없으면 밀 이유도 없습니다.
+      expect(container.querySelector(".pt-24")).toBeNull();
+    });
+
+    it("좌측 메뉴가 네 묶음이고, 줄인 이름도 여전히 「이미지 보관함」으로 불린다", async () => {
+      vi.stubGlobal("fetch", createFakeBackend());
+      render(<App />);
+      await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+
+      for (const title of ["만들기", "보관함", "내보내기", "관리"]) {
+        expect(screen.getByTestId(`nav-group-${title}`)).toBeTruthy();
+      }
+      /*
+       * 🔴 이 두 줄이 이 짝의 진짜 값입니다. 화면 글자를 「이미지」로 줄인 건 묶음 제목이 「보관함」을
+       * 이미 말하고 있기 때문인데, **묶음 제목은 버튼의 읽히는 이름에 자동으로 합쳐지지 않습니다.**
+       * `aria-label` 이 빠지면 화면은 그대로인데 스크린리더에는 그냥 「이미지」가 되고, 이 앱의 다른
+       * 짝 열네 개도 같이 무너집니다.
+       */
+      expect(screen.getByRole("button", { name: "이미지 보관함" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "음원 보관함" })).toBeTruthy();
+      // 🟠 「보관한 프로젝트」는 보관함 묶음이 아니라 관리 묶음입니다 — 되살리거나 없애는 곳이지 자료를
+      // 꺼내 쓰는 곳이 아닙니다. 이름이 비슷하다고 옮겨 놓으면 그 구분이 사라집니다.
+      const 관리 = screen.getByTestId("nav-group-관리").parentElement as HTMLElement;
+      expect(within(관리).getByRole("button", { name: "보관한 프로젝트" })).toBeTruthy();
+    });
+  });
 });

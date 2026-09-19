@@ -8,6 +8,19 @@
 @theme {
   --color-gold: #e8c27a;
   --color-gold-ink: #2b1d09;
+
+  /*
+   * 새 바탕색(2026-09-19 UI 재구성). 지금까지는 `bg-slate-950`(#020617) 위에 34px 흰 격자가 두 축으로
+   * 깔려 있었고, 눈이 아프다는 말의 대부분이 그 격자였다. #020617 은 파랑 쪽으로 기운 먹색이라 화면의
+   * 보라 포인트가 그 위에서 차가운 쪽으로 갈라져 보이기도 했다 — 바탕을 보라 쪽으로 아주 살짝 기울인
+   * 먹색으로 바꾸면 같은 보라가 고른 색으로 읽힌다.
+   *
+   * 🔴 새 색은 세 개뿐이고 전부 바탕용이다. 글자·상태 색은 기존 팔레트(§2.1) 그대로 둔다 — 여기서 글자
+   * 색까지 바꾸면 60개 화면이 한꺼번에 검증 대상이 되고, 그건 한 라운드에 되돌릴 수 없는 크기다.
+   */
+  --color-ground: #0c0b11;
+  --color-ground-raised: #15131f;
+  --color-ground-edge: #1f1c2c;
 }
 
 @keyframes rise-in {
@@ -52,6 +65,22 @@
 @media (prefers-reduced-motion: reduce) {
   .effect-card::after { display: none; }
   .bar-live::after { display: none; animation: none; }
+}
+
+/*
+ * 수면선 — 아직 다 안 만들어진 프레임의 「현상된 데까지」를 긋는 가는 선. 밝기만 오르내리고 자리는
+ * 고정이라, 목록을 훑는 눈이 이 선 하나로 「지금 돌아가고 있는 것」을 찾는다.
+ *
+ * 🔴 끝난 프레임에는 이 선이 없다. 없는 것이 상태다 — 100%를 꽉 채운 막대는 정보가 0이었다.
+ */
+@keyframes waterline {
+  0%, 100% { opacity: .9; }
+  50% { opacity: .35; }
+}
+.waterline { animation: waterline 2.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .waterline { animation: none; }
 }
 
 /*

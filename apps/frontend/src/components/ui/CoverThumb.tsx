@@ -6,6 +6,14 @@ interface Props {
   alt?: string;
   /** Tailwind size classes for the box — the caller decides how big a thumbnail is on its screen. */
   className?: string;
+  /**
+   * 테두리와 모서리를 이 컴포넌트가 그리지 않게 한다 — 이미 테두리를 가진 틀 **안에** 놓을 때만.
+   *
+   * 🔴 `className` 으로 `rounded-none border-0` 을 덮어쓰지 않고 따로 받는 이유: Tailwind 의 충돌 해소는
+   * 문자열에 쓴 순서가 아니라 **생성된 CSS 의 순서**를 따릅니다. `rounded-xl rounded-none` 은 어느 쪽이
+   * 이길지 호출하는 쪽에서 알 수 없고, 빌드가 바뀌면 조용히 반대로 뒤집힙니다.
+   */
+  bare?: boolean;
 }
 
 /**
@@ -47,16 +55,17 @@ function BrandGlyph() {
  * `onError` rather than a HEAD request: the route answers 404 for a missing scene image, and asking twice for
  * every card on a list screen to find that out is a request per card that tells the user nothing.
  */
-export function CoverThumb({ src, alt = "", className = "h-16 w-16" }: Props) {
+export function CoverThumb({ src, alt = "", className = "h-16 w-16", bare = false }: Props) {
   const [failed, setFailed] = useState(false);
   const showImage = src !== undefined && !failed;
+  const frame = bare ? "" : "rounded-xl border border-white/10";
   return (
-    <span className={`relative flex flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-800 ${className}`}>
+    <span className={`relative flex flex-shrink-0 items-center justify-center overflow-hidden bg-ground-edge ${frame} ${className}`}>
       {showImage ? (
         <>
           <img src={src} alt={alt} className="h-full w-full object-cover" onError={() => setFailed(true)} />
           {/* A thin inner shade so a bright picture does not fight the card's own border. */}
-          <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-slate-950/40 to-transparent" />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/40 to-transparent" />
         </>
       ) : (
         <BrandGlyph />

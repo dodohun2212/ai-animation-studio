@@ -3,8 +3,6 @@ import type { LongProject, Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { getProject } from "./api/projectsApi.js";
 
-import heroRing from "./assets/hero-ring.png";
-import heroLandscape from "./assets/hero-landscape.png";
 
 import { CreateProjectForm } from "./components/CreateProjectForm.js";
 import { ProjectDetail } from "./components/ProjectDetail.js";
@@ -294,40 +292,103 @@ function navSectionFor(name: Screen["name"]): NavSection | null {
   return null;
 }
 
+interface NavItem {
+  key: NavSection;
+  icon: NavIconName;
+  /** 화면에 보이는 글자. 묶음 이름이 이미 말한 부분은 여기서 뺀다. */
+  label: string;
+  /**
+   * 🔴 화면 글자가 줄어든 항목에만 붙는 **읽히는 이름**. 「이미지」라고만 그려도 스크린리더와 테스트에는
+   * 여전히 「이미지 보관함」으로 들린다 — 묶음 제목은 시각적으로만 이어 주지, 버튼의 접근 가능한 이름에는
+   * 자동으로 합쳐지지 않기 때문이다. 이게 없으면 줄인 순간 이름이 **정말로** 짧아진다.
+   */
+  fullLabel?: string;
+  target: Screen;
+}
+
+/**
+ * 좌측 메뉴의 네 묶음.
+ *
+ * 🔴 전에는 11개가 한 덩어리로, 전부 같은 크기·같은 색으로 서 있었습니다. 그러면 찾을 때마다 11줄을
+ * 처음부터 읽어야 하고, 「보관함」이라는 낱말이 세 줄에 걸쳐 반복되면서 그 세 줄이 서로를 가렸습니다.
+ * 묶음 제목이 그 반복을 한 번만 말합니다 — 그래서 항목 쪽에서 그 낱말을 뺄 수 있습니다.
+ *
+ * 🔴 「보관한 프로젝트」는 일부러 보관함에 **안** 넣었습니다. 위 세 개는 자료를 꺼내 쓰는 곳이고, 이건
+ * 프로젝트를 **되살리거나 없애는** 곳입니다 — 원래 코드 주석이 같은 말을 하고 있었는데, 한 덩어리 목록
+ * 안에서는 그 구분을 말할 자리가 없었습니다. 이제 묶음이 그 자리입니다.
+ *
+ * 순서의 근거: 매일 여는 것(만들기) → 만들 때 꺼내 쓰는 것(보관함) → 다 만든 뒤 한 번(내보내기) →
+ * 어쩌다 한 번(관리). 위에서 아래로 갈수록 여는 횟수가 줄어듭니다.
+ */
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  {
+    title: "만들기",
+    items: [
+      { key: "short", icon: "home", label: "단기 프로젝트", target: { name: "list" } },
+      { key: "long", icon: "long", label: "장기 프로젝트", target: { name: "longList" } },
+      { key: "photoCard", icon: "quote", label: "명언 카드", target: { name: "photoCard" } },
+      { key: "newsReel", icon: "news", label: "뉴스 릴", target: { name: "newsReel" } },
+    ],
+  },
+  {
+    title: "보관함",
+    items: [
+      { key: "assets", icon: "library", label: "이미지", fullLabel: "이미지 보관함", target: { name: "assets" } },
+      { key: "videoLibrary", icon: "film", label: "영상", fullLabel: "영상 보관함", target: { name: "videoLibrary" } },
+      { key: "audioLibrary", icon: "music", label: "음원", fullLabel: "음원 보관함", target: { name: "audioLibrary" } },
+    ],
+  },
+  {
+    title: "내보내기",
+    items: [
+      { key: "instagramPost", icon: "share", label: "게시물 준비", target: { name: "instagramPost" } },
+    ],
+  },
+  {
+    title: "관리",
+    items: [
+      { key: "archive", icon: "archive", label: "보관한 프로젝트", target: { name: "archive" } },
+      { key: "workflowGuide", icon: "workflow", label: "작업 워크플로우", target: { name: "workflowGuide" } },
+      { key: "providerSettings", icon: "settings", label: "API 설정", target: { name: "providerSettings" } },
+    ],
+  },
+];
+
 /** Always visible so a section (이미지 보관함, API 설정, 장기 프로젝트) is never more than one click away, no matter how deep the current screen is. */
 function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: (screen: Screen) => void }) {
   const section = navSectionFor(current);
-  const items: { key: NavSection; icon: NavIconName; label: string; target: Screen }[] = [
-    { key: "short", icon: "home", label: "단기 프로젝트", target: { name: "list" } },
-    { key: "long", icon: "long", label: "장기 프로젝트", target: { name: "longList" } },
-    { key: "assets", icon: "library", label: "이미지 보관함", target: { name: "assets" } },
-    { key: "videoLibrary", icon: "film", label: "영상 보관함", target: { name: "videoLibrary" } },
-    { key: "audioLibrary", icon: "music", label: "음원 보관함", target: { name: "audioLibrary" } },
-    { key: "photoCard", icon: "quote", label: "명언 카드", target: { name: "photoCard" } },
-    { key: "newsReel", icon: "news", label: "뉴스 릴", target: { name: "newsReel" } },
-    { key: "instagramPost", icon: "share", label: "게시물 준비", target: { name: "instagramPost" } },
-    // Not "보관함": three entries above it are libraries and this one is not — it is where a project goes to be recovered or destroyed.
-    { key: "archive", icon: "archive", label: "보관한 프로젝트", target: { name: "archive" } },
-    { key: "workflowGuide", icon: "workflow", label: "작업 워크플로우", target: { name: "workflowGuide" } },
-    { key: "providerSettings", icon: "settings", label: "API 설정", target: { name: "providerSettings" } },
-  ];
   return (
-    <nav aria-label="주 메뉴" className="mt-6 flex flex-col gap-1 border-b border-white/10 pb-6">
-      {items.map((item) => {
-        const active = section === item.key;
-        return (
-          <button
-            key={item.key}
-            type="button"
-            aria-current={active ? "page" : undefined}
-            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm ${active ? "bg-violet-500/15 text-white" : "text-violet-300"}`}
-            onClick={() => onNavigate(item.target)}
+    <nav aria-label="주 메뉴" className="mt-7 flex flex-col gap-6 border-b border-white/10 pb-6">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.title} className="flex flex-col gap-0.5">
+          <p
+            data-testid={`nav-group-${group.title}`}
+            className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500"
           >
-            <NavIcon name={item.icon} />
-            {item.label}
-          </button>
-        );
-      })}
+            {group.title}
+          </p>
+          {group.items.map((item) => {
+            const active = section === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                aria-current={active ? "page" : undefined}
+                aria-label={item.fullLabel}
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors ${
+                  active
+                    ? "bg-violet-500/15 text-white shadow-[inset_2px_0_0_#8b5cf6]"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white"
+                }`}
+                onClick={() => onNavigate(item.target)}
+              >
+                <NavIcon name={item.icon} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
@@ -582,10 +643,17 @@ function PhotoCardStepNotice({ projectId, onOpenMerge }: { projectId: string; on
 
 function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
   return (
-    <aside className="flex w-64 flex-shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-slate-900 px-5 py-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-400">
+    <aside className="flex w-64 flex-shrink-0 flex-col overflow-y-auto border-r border-white/5 bg-ground-raised px-5 py-8">
+      {/* 워드마크 밑의 스펙트럼 한 줄 — 앱 이름이 프리즘(빛을 가름)이라 그 한 번만 무지개를 씁니다.
+          다른 데서 또 쓰고 싶어지면 그건 포인트가 아니라 팔레트가 된 것입니다. */}
+      <p className="px-2.5 text-xs font-semibold uppercase tracking-[0.24em] text-slate-200">
         Prism Forge
       </p>
+      <span
+        aria-hidden="true"
+        className="mx-2.5 mt-2 h-px w-16 rounded-full"
+        style={{ background: "linear-gradient(90deg, #f0abfc, #a78bfa 45%, #60a5fa)" }}
+      />
       <NavBar current={screen.name} onNavigate={onNavigate} />
       <LongWorkspaceNav screen={screen} onNavigate={onNavigate} />
     </aside>
@@ -688,45 +756,36 @@ export function App() {
     setScreen({ name: "longDetail", projectId: project.id });
   }
 
+  /*
+   * 🔴 반복 격자 두 겹을 걷어냈습니다(2026-09-19). 34px 흰 선이 두 축으로 **앱 전체에** 깔려 있었고, 글자
+   * 뒤에서 계속 떨렸습니다 — 「눈이 아프다」는 말의 대부분이 이것이었습니다. 격자는 정보를 하나도 싣고 있지
+   * 않았습니다: 어떤 화면에서도 저 선에 맞춰 놓인 것이 없었습니다.
+   *
+   * 빛은 하나만 남기고, 그것도 **글자가 오지 않는 위쪽 구석**으로 옮겼습니다. 원래 왼쪽 위(8%)에 있던 큰
+   * 빛은 h1 과 좌측 메뉴 바로 뒤라 글자의 대비를 갉아먹고 있었습니다.
+   */
   return (
     <div
-      className="flex min-h-screen bg-slate-950 text-slate-100"
+      className="flex min-h-screen bg-ground text-slate-100"
       style={{
         backgroundImage:
-          "radial-gradient(1100px 640px at 8% -12%, rgba(139,92,246,0.16), transparent 62%), radial-gradient(900px 700px at 100% 100%, rgba(76,29,149,0.14), transparent 65%), repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 34px), repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 34px)",
+          "radial-gradient(900px 520px at 88% -16%, rgba(139,92,246,0.13), transparent 70%)",
       }}
     >
       <Sidebar screen={screen} onNavigate={setScreen} />
       <main className="relative flex-1 overflow-y-auto px-12 py-12">
         <ShortProjectPipeline screen={screen} onNavigate={setScreen} shell={shortProjectShell} />
-        {screen.name === "list" && (
-          <>
-            <img
-              src={heroRing}
-              alt=""
-              aria-hidden="true"
-              className="pointer-events-none absolute right-8 top-0 w-[340px] max-w-[45%]"
-              style={{
-                WebkitMaskImage:
-                  "linear-gradient(to left, black 45%, transparent 100%), linear-gradient(to bottom, black 55%, transparent 100%)",
-                WebkitMaskComposite: "source-in",
-                maskImage:
-                  "linear-gradient(to left, black 45%, transparent 100%), linear-gradient(to bottom, black 55%, transparent 100%)",
-                maskComposite: "intersect",
-              }}
-            />
-            <img
-              src={heroLandscape}
-              alt=""
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-0 left-0 right-0 h-56 w-full object-cover opacity-90"
-              style={{
-                WebkitMaskImage: "linear-gradient(to top, black 40%, transparent 100%)",
-                maskImage: "linear-gradient(to top, black 40%, transparent 100%)",
-              }}
-            />
-          </>
-        )}
+        {/*
+          * 🔴 목록 화면의 장식 그림 두 장(heroRing · heroLandscape)을 뺐습니다(2026-09-19).
+          *
+          * 두 장 다 `absolute` 라 목록을 밀어내지는 않았지만, 그걸 피하려고 목록에 `pt-24` 가 붙어 있었고
+          * 그래서 **매일 쓰는 첫 화면의 위쪽 3분의 1이 장식**이었습니다. 더 나쁜 건 heroRing 이 오른쪽 위에
+          * 겹쳐서 「새 프로젝트」 버튼 위에 그림이 올라와 있었다는 것입니다 — 이 화면에서 제일 많이 누르는
+          * 버튼입니다.
+          *
+          * 목록 자체가 이제 9:16 프레임 시트라 **프로젝트 그림들이 그 자리를 채웁니다.** 장식 그림보다 그게
+          * 이 앱을 더 잘 설명합니다: 여기서 만드는 건 세로 영상이고, 화면에 깔린 게 실제로 만든 것들입니다.
+          */}
         <div className="relative mx-auto max-w-4xl">
           {/* The studio banner is the entry screens' hero, matching §5.1's rule for the hero images. Deep
               screens carry their own <h1> title, so repeating this here would both push the actual work
@@ -739,7 +798,9 @@ export function App() {
             </>
           )}
 
-          <div className={screen.name === "list" ? "mt-8 pt-24" : "mt-8"}>
+          {/* 🔴 `pt-24` 가 여기 있었습니다 — 위 hero 그림을 피하려고 목록을 96px 아래로 민 것. 그림이 없으니
+              밀 이유도 없습니다. 목록 화면만 다른 여백을 갖던 분기도 같이 사라집니다. */}
+          <div className="mt-8">
             {screen.name === "list" && (
               <ProjectList
                 refreshToken={listRefreshToken}
