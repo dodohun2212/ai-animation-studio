@@ -108,6 +108,35 @@ const MONEY_GUARDS: readonly { title: string; why: string }[] = [
     title: "refuses to serve a paid run's placeholder as a scene, but still serves the same file for a local fake run",
     why: "a player handed a 32-byte header draws a black box that claims to be the paid clip — the claim that got six stubs approved",
   },
+  /*
+   * The news reel's own paid path, added 2026-09-19. It has its own ledger (calls per day, not dollars per
+   * month) and its own provider, so none of the entries above stand in front of it.
+   */
+  {
+    title: "refuses to go out at all when the fetch is not a mock",
+    why: "D-016 for the newest provider: without it a test process reaches Gemini with whatever key is on disk",
+  },
+  {
+    title: "refuses once the day's allowance is gone, and names whose limit it is",
+    why: "the day's cap is the only thing between a free-tier key and a bill nobody can see coming",
+  },
+  {
+    title: "refuses rather than calling when the ledger cannot be read",
+    why: "D-036 at the summary route: a count we cannot read is not a count of zero",
+  },
+  /*
+   * And the table six paid OpenAI services share. Both entries guard one outcome — a key with no credit being
+   * asked again — and they fail differently: one is how the failure is classified, the other is which
+   * classifications are worth retrying. Either alone leaves the other free to change.
+   */
+  {
+    title: "calls an exhausted quota a quota problem even when it arrives as 429",
+    why: "429 alone means rate_limit, which is retryable — so a key out of credit would be retried and backed off",
+  },
+  {
+    title: "retries only the three that can change their answer",
+    why: "anything else in that set is a second paid attempt at a failure that will repeat identically",
+  },
 ];
 
 describe("paid-work guard tests", () => {

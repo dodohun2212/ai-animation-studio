@@ -71,13 +71,19 @@ describe("withProjectLock", () => {
     });
     await firstStarted;
     /*
-     * 🟠 Instrumented rather than asserted with `rejects.toThrow`, because this pair has now failed twice in a
-     * full-suite run and passed both times on its own and on re-run (2026-09-07 and 2026-09-09) — and neither
-     * failure said which way it went. `rejects.toThrow` reports "did not throw the expected error" for three
-     * genuinely different bugs, and they need different fixes: the second arrival WON the lock (the guard is
-     * broken), it lost with a different error (a filesystem error is escaping the acquire loop — plausible on
-     * Windows, where a `wx` create under load can come back EPERM rather than EEXIST and this code rethrows
-     * anything that is not EEXIST), or it simply took too long (a starved event loop, and nothing is wrong).
+     * 🟠 Instrumented rather than asserted with `rejects.toThrow`, because this pair has now failed **three
+     * times** in a full-suite run and passed every time on its own and on re-run (2026-09-07, 2026-09-09,
+     * 2026-09-19) — and none of the failures said which way it went. `rejects.toThrow` reports "did not throw
+     * the expected error" for three genuinely different bugs, and they need different fixes: the second
+     * arrival WON the lock (the guard is broken), it lost with a different error (a filesystem error is
+     * escaping the acquire loop — plausible on Windows, where a `wx` create under load can come back EPERM
+     * rather than EEXIST and this code rethrows anything that is not EEXIST), or it simply took too long (a
+     * starved event loop, and nothing is wrong).
+     *
+     * 🔴 **On 2026-09-19 the instrumentation was in place and the answer was still lost** — the suite was run
+     * with its output piped through a grep for the summary line, so the message this comment exists to produce
+     * never reached anybody. A diagnostic only works if whoever runs the suite keeps the output: run it to a
+     * file, then read the failure. That is the fourth occurrence's one job.
      *
      * So the outcome is captured and named. Nothing is retried and nothing is tolerated — the assertions below
      * are exactly as strict as the one they replace. What changed is that the next occurrence arrives with the
