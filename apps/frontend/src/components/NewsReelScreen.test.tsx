@@ -1,7 +1,22 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { stubFetchByRoute } from "../api/testUtils.js";
 import { NewsReelScreen } from "./NewsReelScreen.js";
+
+const PUBLISHERS = [
+  { host: "yna.co.kr", name: "연합뉴스" },
+  { host: "sedaily.com", name: "서울경제" },
+];
+
+const SETUP = { publishers: PUBLISHERS, dailyCalls: { used: 2, limit: 10 } };
+
+/** 이 화면은 열리자마자 `GET /news/setup` 을 부릅니다 — 안 세워 두면 짝이 진짜 네트워크를 건드립니다. */
+function stubRoutes(extra: Record<string, unknown> = {}): ReturnType<typeof vi.fn> {
+  const mock = stubFetchByRoute({ "GET /news/setup": SETUP, ...extra });
+  vi.stubGlobal("fetch", mock);
+  return mock;
+}
 
 const ARTICLE = [
   "국회는 2026년 9월 17일 검찰청 폐지에 따른 후속 법률 51건을 통과시켰다.",
@@ -12,6 +27,11 @@ const ARTICLE = [
 function renderScreen(onUseSummary = vi.fn()) {
   render(<NewsReelScreen onBack={() => {}} onUseSummary={onUseSummary} />);
   return onUseSummary;
+}
+
+async function typeUrlAndFetch(url: string): Promise<void> {
+  fireEvent.change(screen.getByTestId("news-fetch-url"), { target: { value: url } });
+  fireEvent.click(screen.getByTestId("news-fetch"));
 }
 
 function fill(article: string, summary: string, withSource = true): void {
@@ -25,6 +45,9 @@ function fill(article: string, summary: string, withSource = true): void {
 }
 
 describe("NewsReelScreen", () => {
+  beforeEach(() => { stubRoutes(); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
   /**
    * 🔴 이 화면의 존재 이유는 편의가 아니라 **막는 것**입니다. 요약 AI 는 원문에 없는 숫자·날짜·인용문을
    * 그럴듯하게 지어내고, 뉴스에서는 그게 틀린 사실을 예쁘게 만들어 퍼뜨립니다. 그래서 짝의 첫 줄은
@@ -97,6 +120,124 @@ describe("NewsReelScreen", () => {
     fill(ARTICLE, "국회가 후속 법안 51건을 통과시켰다.", false);
 
     expect(screen.getByTestId("news-use-summary")).toBeDisabled();
+  });
+
+  /**
+   * 🔴 이 짝이 붙드는 것은 **화면이 문지기가 되지 않는 것**입니다.
+   *
+   * 언론사 목록이 화면에 오는 이유는 사람에게 **보여 주려고**지 화면이 판정하라고가 아닙니다. 정말로 중요한
+   * 호스트는 리다이렉트가 마지막에 떨어지는 곳이고 그건 서버만 봅니다(CLI Round 929 §2). 여기서 미리 걸러 주면
+   * 친절해 보이지만 **진짜 검사가 존재하는 이유인 바로 그 주소들에 대해 틀린** 두 번째 사본이 됩니다.
+   *
+   * 위험한 건 코드가 아니라 **나중에 들어올 선의**라, 그 선의가 닿는 자리에 짝을 놓습니다 — 누가
+   * `disabled` 에 목록 조건을 더하는 순간 이 줄이 웁니다.
+   */
+  it("sends an address whose host is not on the list, instead of refusing it here", async () => {
+    const mock = stubRoutes({
+      "POST /news/article": { outcome: "refused", reason: "publisher_not_allowed", publishers: PUBLISHERS },
+    });
+    renderScreen();
+    await screen.findByTestId("news-publishers");
+
+    await typeUrlAndFetch("https://nytimes.com/2026/09/17/whatever");
+
+    await waitFor(() => expect(screen.getByTestId("news-fetch-refused")).toBeTruthy());
+    expect(mock.mock.calls.some(([input]) => String(input).endsWith("/news/article"))).toBe(true);
+    expect(screen.getByTestId("news-fetch-refused").getAttribute("data-reason")).toBe("publisher_not_allowed");
+  });
+
+  /**
+   * 🔴 네 거절은 사람이 할 일이 전부 다릅니다. 특히 `private_address` 가 「다른 언론사로 해 보세요」로 읽히면
+   * 안 됩니다 — 자기 공유기 주소를 붙여 넣은 사람은 신문사 하나 차이로 성공하는 게 아닙니다(CLI Round 929 §3).
+   */
+  it("does not tell someone who pasted a network address to try another publisher", async () => {
+    stubRoutes({ "POST /news/article": { outcome: "refused", reason: "private_address", publishers: PUBLISHERS } });
+    renderScreen();
+
+    await typeUrlAndFetch("https://192.168.0.1/article");
+
+    const refused = await screen.findByTestId("news-fetch-refused");
+    expect(refused.textContent).toContain("주소를 다시 확인해 주세요");
+    expect(refused.textContent).not.toContain("언론사");
+  });
+
+  /**
+   * 🔴 `body_not_found` 는 거절도 오류도 아닙니다. 서버는 문을 두드렸고 페이지를 받았고 어느 부분이 기사인지
+   * 못 갈랐습니다 — **우리가 한 일을 우리가 잘못 말하지 않으려고** 값이 따로 있습니다(Cowork Round 931 §4).
+   * 그리고 그 길은 **같은 화면 안**이어야 합니다: 다른 데로 보내면 방금 받은 주소·언론사·발행일이 날아가고
+   * 사람은 처음부터 다시 칩니다.
+   */
+  it("opens the paste box in place, with everything but the body already filled", async () => {
+    stubRoutes({
+      "POST /news/article": {
+        outcome: "body_not_found",
+        sourceUrl: "https://sedaily.com/final",
+        publisher: "서울경제",
+        title: "검찰청 폐지 후속 법안 통과",
+        publishedAt: "2026-09-17",
+      },
+    });
+    renderScreen();
+
+    await typeUrlAndFetch("https://sedaily.com/short");
+
+    const notice = await screen.findByTestId("news-fetch-body-not-found");
+    expect(notice.textContent).toContain("붙여넣어 주세요");
+    // 실패로 읽히면 안 됩니다 — 아무것도 실패하지 않았습니다.
+    expect(notice.textContent).not.toContain("실패");
+    expect(screen.queryByTestId("news-fetch-refused")).toBeNull();
+
+    expect((screen.getByTestId("news-title") as HTMLInputElement).value).toBe("검찰청 폐지 후속 법안 통과");
+    expect((screen.getByTestId("news-outlet") as HTMLInputElement).value).toBe("서울경제");
+    expect((screen.getByTestId("news-published") as HTMLInputElement).value).toBe("2026-09-17");
+    // 🔴 리다이렉트 이후 주소. 자막 출처는 사람이 친 주소가 아니라 이것이어야 합니다.
+    expect((screen.getByTestId("news-url") as HTMLInputElement).value).toBe("https://sedaily.com/final");
+    expect((screen.getByTestId("news-article") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("fills the article from a successful fetch, and keeps the address the body actually came from", async () => {
+    stubRoutes({
+      "POST /news/article": {
+        outcome: "article",
+        article: {
+          title: "검찰청 폐지 후속 법안 통과",
+          body: ARTICLE,
+          publisher: "서울경제",
+          publishedAt: "2026-09-17",
+          sourceUrl: "https://sedaily.com/final",
+        },
+      },
+    });
+    renderScreen();
+
+    await typeUrlAndFetch("https://sedaily.com/short");
+
+    await screen.findByTestId("news-fetch-ok");
+    expect((screen.getByTestId("news-article") as HTMLTextAreaElement).value).toContain("51건");
+    expect(screen.getByTestId("news-source-line").textContent).toContain("https://sedaily.com/final");
+  });
+
+  /**
+   * 🟠 목록은 **막히기 전에** 보입니다. 거절당한 뒤에만 보이면 그건 안내가 아니라 설명이고, 그러면 빈 화면이
+   * 할 말이 없어 제가 「주요 종합지 기사를 넣어 주세요」를 손으로 적게 됩니다 — 그 순간 목록이 두 벌이 되고,
+   * 13번째 언론사가 더해지는 날 제 문장만 조용히 틀립니다(Cowork Round 931 §2).
+   */
+  it("shows which publishers work before anyone has typed anything", async () => {
+    renderScreen();
+
+    const list = await screen.findByTestId("news-publishers");
+    expect(list.textContent).toContain("연합뉴스");
+    expect(list.textContent).toContain("yna.co.kr");
+  });
+
+  /** 목록을 못 불러와도 화면은 돕니다 — 판정은 어차피 서버가 하니까요. */
+  it("still lets someone try an address when the publisher list could not be loaded", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({}, { "GET /news/setup": { status: 500, body: { code: "INTERNAL_ERROR", message: "" } } }));
+    renderScreen();
+
+    await screen.findByTestId("news-publishers-error");
+    fireEvent.change(screen.getByTestId("news-fetch-url"), { target: { value: "https://sedaily.com/a" } });
+    expect(screen.getByTestId("news-fetch")).not.toBeDisabled();
   });
 
   it("waits for both halves before saying anything about the summary", () => {

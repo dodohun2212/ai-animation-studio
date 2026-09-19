@@ -457,6 +457,9 @@ describe("App", () => {
       const url = String(input).split("?")[0]!;
       if (url === "/projects") return jsonResponse(200, { projects: [project] });
       if (url === `/projects/${project.id}`) return jsonResponse(200, { project });
+      /* 뉴스 릴 화면은 열리자마자 이걸 부릅니다. 404 로 두면 이 짝이 **목록을 못 불러온 경로**를 지나면서도
+         초록이라, 넘김이 성공한 것인지 우회한 것인지 구분이 안 됩니다. */
+      if (url === "/news/setup") return jsonResponse(200, { publishers: [{ host: "sedaily.com", name: "서울경제" }], dailyCalls: { used: 0, limit: 10 } });
       return jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "" });
     });
     vi.stubGlobal("fetch", fetchMock);
