@@ -931,7 +931,32 @@ export function photoCardSubtitleGeometry(
   const bodySize = Math.round(height * layout.scale);
   const headSize = Math.round(bodySize * PHOTO_CARD_HEADING_RATIO);
   const headGap = Math.round(headSize * 1.6);
-  const lineGap = Math.round(bodySize * 1.5);
+  /**
+   * 🔴 **`1.0`, and it is a measured number rather than a chosen one.** This was `bodySize * 1.5`, and nothing
+   * read it against the thing it describes — the video lays the body's lines out itself, because they travel as
+   * one `\N`-joined cue that libass positions by its own metrics.
+   *
+   * Measured on real renders at 1080x1920 with the bundled Noto Sans KR, three lines, centre to centre:
+   *
+   *     font size   38    52    80    96
+   *     spacing   38.5  52.0  80.0  96.0      ← ratio 1.00, at every size
+   *
+   * So the preview was drawing the lines **half as far apart again** as the video would, and two things were
+   * wrong at once. The preview places each line at `bodyY + index * lineGap` directly, so a three-line card
+   * previewed 26px wider than it renders. And `bodySpan` below feeds the block's own position: with a heading,
+   * the pair was centred as though the body were 1.5x its real height, which put the whole block **14.5px above
+   * where `layout.center` says** — measured, 753.5 against the 768.0 the slider promises. With this at 1.0 the
+   * same render lands on 768.0 exactly.
+   *
+   * 🟠 A body-only card does not move at all: `headingY` subtracts `blockHeight / 2` and `bodyY` adds
+   * `bodySpan / 2`, so with no heading the span cancels and `bodyY` is `height * center` either way. The change
+   * is confined to cards that have a heading, and there it moves the heading **towards** the promise.
+   *
+   * 🔴 It is also the number ④'s sequential subtitles need to be correct. Revealing lines one at a time means
+   * emitting a positioned cue per line instead of one `\N` cue — and per-line cues are spaced by whatever this
+   * says. At 1.5 every existing card would quietly respace the moment that feature landed.
+   */
+  const lineGap = bodySize;
   const bodySpan = lineGap * Math.max(0, bodyLineCount - 1);
   const blockHeight = (hasHeading ? headGap : 0) + bodySpan;
   const headingY = Math.round(height * layout.center) - Math.round(blockHeight / 2);
