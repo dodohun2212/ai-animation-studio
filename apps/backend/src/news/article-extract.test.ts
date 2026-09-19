@@ -102,3 +102,37 @@ describe("article extraction", () => {
     expect(extractArticle(html).title).toBe("타이틀 태그");
   });
 });
+
+describe("article extraction, when the block names are ones we never guessed", () => {
+  /**
+   * 🔴 **The pair for the half of the defence that fails silently.** `STRIP_PATTERNS` is a list of class names,
+   * and a list of names only catches the publishers somebody thought of. This related-article block is named
+   * `연관` — nothing in that list matches it — and it still must not reach the body, because every headline in
+   * it carries another story's numbers into the place `checkNewsSummary` looks for the summary's.
+   *
+   * What catches it is structural rather than nominal: its text exists to be clicked, and article prose does
+   * not. Measured through the checker, which is the thing that would have gone falsely green.
+   */
+  it("drops a related list whose class name is not on any list, because its text is all links", () => {
+    const html = page(`<article><p>${filler("물가")}</p><p>통계청은 3.2%라고 밝혔다.</p>
+      <div class="연관"><p><a href="/a">코스피 7.8% 급등</a></p><p><a href="/b">환율 1,450원 돌파</a></p></div></article>`);
+    const article = extractArticle(html);
+
+    expect(article.body).toBeDefined();
+    expect(article.body!).not.toContain("7.8");
+    expect(article.body!).not.toContain("1,450");
+    expect(checkNewsSummary("코스피가 7.8% 올랐다.", article.body!).missing.map((c) => c.text)).toContain("7.8%");
+  });
+
+  /**
+   * 🟠 And the other side of the same threshold: prose that happens to cite a source is still prose. A rule
+   * that cut every paragraph containing a link would quietly shorten real articles — the cheap failure, but
+   * still a failure, and one that would make the summariser work from less than the article said.
+   */
+  it("keeps a paragraph that merely contains a link", () => {
+    const article = extractArticle(page(`<article><p>${filler("예산")}</p>
+      <p>정부는 <a href="/source">기획재정부 자료</a>에서 3.2%라고 밝혔다. 이 수치는 지난달과 같다.</p></article>`));
+    expect(article.body!).toContain("3.2%");
+    expect(article.body!).toContain("기획재정부 자료");
+  });
+});

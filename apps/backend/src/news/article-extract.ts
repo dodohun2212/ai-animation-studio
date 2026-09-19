@@ -44,6 +44,43 @@ const STRIP_PATTERNS: readonly RegExp[] = [
   /<(div|ul|section)\b[^>]*\b(?:id|class)\s*=\s*["'][^"']*\b(?:related|recommend|most-?read|popular|ad|advert|banner|promo|share|sns|copyright|reporter|byline-?box|comment)\b[^"']*["'][\s\S]*?<\/\1>/gi,
 ];
 
+/**
+ * A block is navigation, not prose, when almost all of its text is inside links.
+ *
+ * 🔴 **The list above is names, and names are a guess.** It catches `class="related-news"` because that is what
+ * the publishers I could think of call it; it catches nothing at all from a publisher who writes
+ * `class="articleRelated"` or `class="연관기사"` — and it fails **silently**, leaving another story's numbers in
+ * the body where an invented figure can be "found". A defence whose only failure mode is invisible is not one
+ * I want to be alone.
+ *
+ * So this asks a structural question instead, which no naming convention can slip past: a related-article list,
+ * a most-read box and a tag cloud are all **text that exists to be clicked**, and article prose is not. A
+ * paragraph may certainly contain a link; it does not consist of one.
+ *
+ * 🟠 80%, and the direction of the error is why it can be this blunt. Cutting too much makes the body smaller,
+ * which at worst drops it under the minimum and falls back to pasting — the person copies and pastes. Cutting
+ * too little leaves the guard quietly weaker, which costs a viewer a fabricated number presented as news. When
+ * the two mistakes are not symmetric, the threshold belongs on the side of the cheap one.
+ */
+const LINK_TEXT_SHARE_LIMIT = 0.8;
+
+const textLengthOf = (html: string): number => stripTags(html).replace(/\s+/g, "").length;
+
+function dropLinkOnlyBlocks(container: string): string {
+  // Split on block ends rather than parsing: each chunk is one paragraph, list item or heading's worth of text,
+  // which is the unit a publisher actually groups links into.
+  return container
+    .split(/(?<=<\/(?:p|li|h[1-6]|div|dd|dt|figcaption)>)/i)
+    .filter((chunk) => {
+      const total = textLengthOf(chunk);
+      if (total === 0) return true;
+      const linked = [...chunk.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)]
+        .reduce((sum, match) => sum + textLengthOf(match[1] ?? ""), 0);
+      return linked / total < LINK_TEXT_SHARE_LIMIT;
+    })
+    .join("");
+}
+
 const META_PATTERNS = (property: string): RegExp =>
   new RegExp(`<meta\\b[^>]*\\b(?:property|name)\\s*=\\s*["']${property}["'][^>]*\\bcontent\\s*=\\s*["']([^"']*)["']`, "i");
 
@@ -125,7 +162,8 @@ export function extractArticle(html: string): ExtractedArticle {
     const container = pattern.exec(html)?.[1];
     if (!container) continue;
     const stripped = STRIP_PATTERNS.reduce((text, strip) => text.replace(strip, " "), container);
-    const body = stripTags(stripped);
+    // Names first, then structure — two independent defences, because the first one's failures are silent.
+    const body = stripTags(dropLinkOnlyBlocks(stripped));
     if (body.length < ARTICLE_MIN_BODY_CHARS) continue;
     return { ...found, body };
   }
