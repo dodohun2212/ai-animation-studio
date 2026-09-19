@@ -206,6 +206,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   /** Null until the Episode has loaded — merging before then would send a mode derived from nothing. */
   const audioSettings = toAudioSettings(audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
+  /** 🔴 `VideoMergeScreen` 과 같은 이유로 같은 조건입니다 — 자세한 설명은 그쪽 주석과 `mergeAudio.tsx`. */
+  const audioUnready = audioSettings === null;
   const sceneSubtitleAdjustable = subtitledScenes.length > 0 && mediaMode?.subtitlesEnabled === true;
   /* 서버는 16:9 가 아닌 프로젝트에서 `rotateClockwise: true` 를 받으면 렌더 전에 거절합니다(계약 주석) —
      그래서 그 모양일 때만 선택지를 보여줍니다. */
@@ -219,6 +221,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
 
   async function confirm(): Promise<void> {
     if (busy.current) return;
+    /* 🟠 두 번째 방어선. 지금은 도달할 수 없어서 짝을 안 붙였습니다 — `VideoMergeScreen` 의 같은 자리 참고. */
+    if (audioSettings === null) return;
     busy.current = true;
     setPending(true);
     setError(null);
@@ -226,7 +230,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
       const merged = await mergeLongEpisodeVideos(
         projectId,
         episodeNumber,
-        audioSettings ?? undefined,
+        audioSettings,
         sceneSubtitleAdjustable ? sceneLayout : undefined,
         rotatable && rotateClockwise ? true : undefined,
       );
@@ -330,11 +334,16 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
             type="button"
             className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
             data-testid="episode-open-merge-confirm"
-            disabled={confirmationOpen || pending || blocked || modeUnready}
+            disabled={confirmationOpen || pending || blocked || audioUnready}
             onClick={openConfirmation}
           >
             {audioMode ? `${AUDIO_MODE_LABELS[audioMode]}으로 최종 영상 만들기` : "최종 영상 만들기"}
           </button>
+          {audioUnready && !modeUnready && (
+            <p data-testid="episode-merge-audio-not-ready" className="text-xs text-slate-400">
+              회차를 아직 읽는 중입니다. 다 읽으면 소리를 고르실 수 있습니다.
+            </p>
+          )}
           {modeUnready && (
             <p data-testid="episode-merge-audio-track-required" className="text-xs text-amber-300">
               배경음악을 고르면 최종 영상을 만들 수 있습니다.

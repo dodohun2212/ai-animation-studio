@@ -86,8 +86,49 @@ const confirmedRoutes = (approved: number, total: number) => ({
   },
 });
 
+/**
+ * 확인 패널 열기 — **다 읽었는지 기다린 뒤에** 누릅니다.
+ *
+ * 🔴 `render` 직후 동기로 누르던 자리가 다섯 곳 있었고, 몇 달 동안 **통과하고 있었습니다.** 통과한 이유가
+ * 문제입니다: 그때 회차 GET 이 아직 안 돌아와 `audioMode` 가 null 인데도 **버튼이 열려 있었기** 때문입니다
+ * (CLI Round 966 → Cowork 967 §1). 즉 그 다섯은 *「화면 열고 빨리 누르면 소리 설정 없이 병합이 나간다」*를
+ * **매번 재현하면서 초록이었습니다.**
+ *
+ * 🟠 그래서 「버튼이 존재한다」로는 부족합니다 — **닫힌 채로도 존재합니다.** 기다려야 하는 것은 존재가 아니라
+ * **눌러도 되는 상태**입니다. 한 군데로 모아서, 다음에 짝을 쓰는 사람이 이 순서를 다시 고르지 않게 합니다.
+ *
+ * 🔴 **다만 이 헬퍼는 방향을 하나만 압니다 — 「열릴 때까지 기다린다」.** 「닫혀 있는 게 맞다」를 주장하는
+ * 짝은 여기로 보내면 **자기 주장의 반대를 기다리다** 죽습니다(CLI Round 970 §1 이 그렇게 잡았습니다).
+ * 지금 그런 짝은 **하나뿐**이라 그 자리에서 직접 씁니다 — 「3개 남았다」 짝. 두 번째가 생기면 그때 나누세요.
+ */
+async function openConfirmPanel(): Promise<HTMLButtonElement> {
+  const button = await screen.findByTestId("episode-open-merge-confirm") as HTMLButtonElement;
+  await waitFor(() => expect(button.disabled).toBe(false));
+  fireEvent.click(button);
+  return button;
+}
+
 describe("LongEpisodeVideoMergeScreen", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  /** 🔴 `VideoMergeScreen` 의 같은 짝과 같은 이유입니다 — 두 화면이 같은 `toAudioSettings` 를 씁니다. */
+  it("회차를 아직 못 읽었으면 병합을 보내지 않는다", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url === AUDIO_LIBRARY_URL) return jsonResponse(200, { tracks: [] });
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+    const button = await screen.findByTestId("episode-open-merge-confirm") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === MERGE_URL)).toBe(false);
+
+    expect(screen.getByTestId("episode-merge-audio-not-ready")).toBeTruthy();
+    expect(screen.queryByTestId("episode-merge-audio-track-required")).toBeNull();
+  });
 
   /**
    * A finished Episode used to keep offering "최종 영상 만들기". Pressing it reached the server, which refuses a
@@ -127,7 +168,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     vi.stubGlobal("fetch", mergeFetch);
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
 
     expect(await screen.findByTestId("episode-merge-confirm-panel")).toBeTruthy();
     // Reading the Episode to word the notice is a GET; nothing may POST until the final confirmation.
@@ -152,7 +193,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect((await screen.findByTestId("episode-merge-scope-notice")).textContent).toContain("이 단계는 비용이 들지 않습니다");
     expect(screen.queryByTestId("episode-merge-blocked")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     expect((await screen.findByTestId("episode-merge-confirm-panel")).textContent).toContain("유료 요청은 전송되지 않습니다");
   });
 
@@ -164,7 +205,19 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect((await screen.findByTestId("episode-merge-blocked")).textContent).toContain("3개");
     expect((await screen.findByTestId("episode-merge-approved-count")).textContent).toContain("1개 확정됨");
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    /*
+     * 🔴 **이 짝만 `openConfirmPanel` 을 안 씁니다 — 주장이 반대 방향이라서**(CLI Round 970 §1).
+     *
+     * 그 헬퍼는 「눌러도 되는 상태가 될 때까지 기다린다」이고, 여기 주장은 **「눌러선 안 되는 상태다」**입니다.
+     * 한 문으로 보내면 짝이 **자기 주장의 반대를 기다리다** 죽습니다.
+     *
+     * 🟢 그리고 이렇게 쓰는 편이 원래보다 셉니다. 전에는 「패널이 안 열렸다」만 주장했는데, 패널이 안 열리는
+     * 이유는 여럿입니다 — 버튼이 없어도, 렌더가 깨져도 안 열립니다. `disabled === true` 를 먼저 박으면
+     * **「막혀서 안 열렸다」**가 되고, 그게 이 짝의 제목이 원래 말하려던 것입니다.
+     */
+    const button = await screen.findByTestId("episode-open-merge-confirm") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
     expect(screen.queryByTestId("episode-merge-confirm-panel")).toBeNull();
   });
 
@@ -231,7 +284,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     fireEvent.change(scale, { target: { value: "0.04" } });
     fireEvent.change(screen.getByTestId("scene-subtitle-center"), { target: { value: "0.62" } });
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
     await screen.findByTestId("episode-merge-success");
 
@@ -267,7 +320,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect((await screen.findByTestId("episode-merge-rotate-toggle")) as HTMLInputElement).toBeTruthy();
     expect(((screen.getByTestId("episode-merge-rotate-toggle")) as HTMLInputElement).checked).toBe(false);
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
     await screen.findByTestId("episode-merge-success");
 
@@ -286,7 +339,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
     fireEvent.click(await screen.findByTestId("episode-merge-rotate-toggle"));
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     expect((await screen.findByTestId("episode-merge-confirm-rotate-notice")).textContent).toContain("폰을 눕혀서 보는 영상이 됩니다");
     fireEvent.click(screen.getByTestId("episode-confirm-merge"));
 
@@ -327,7 +380,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     vi.stubGlobal("fetch", mergeFetch);
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
 
     await screen.findByTestId("episode-merge-success");
@@ -361,7 +414,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     vi.stubGlobal("fetch", mergeFetch);
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
     await screen.findByTestId("episode-merge-success");
 
@@ -382,7 +435,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     vi.stubGlobal("fetch", mergeFetch);
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
     await screen.findByTestId("episode-merge-success");
 
@@ -416,7 +469,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     expect(screen.getByTestId("episode-merge-audio-track-required")).toBeTruthy();
 
     fireEvent.change(screen.getByTestId("episode-merge-audio-track"), { target: { value: "t1" } });
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
 
     await screen.findByTestId("episode-merge-success");
@@ -457,7 +510,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     fireEvent.change(screen.getByTestId("episode-merge-audio-volume"), { target: { value: "40" } });
     expect(screen.getByTestId("episode-merge-audio-volume-note").textContent).toContain("40%");
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
 
     await screen.findByTestId("episode-merge-success");
@@ -516,7 +569,7 @@ describe("LongEpisodeVideoMergeScreen", () => {
     ));
     render(<LongEpisodeVideoMergeScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
 
-    fireEvent.click(screen.getByTestId("episode-open-merge-confirm"));
+    await openConfirmPanel();
     fireEvent.click(await screen.findByTestId("episode-confirm-merge"));
 
     const alert = await screen.findByTestId("episode-merge-error");

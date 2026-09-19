@@ -347,13 +347,24 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
 
   async function confirmMerge(): Promise<void> {
     if (busy.current) return;
+    /*
+     * 🟠 **두 번째 방어선입니다 — 짝을 붙이지 않았습니다.**
+     *
+     * 버튼이 이미 `audioUnready` 로 막혀 있고, 확인 패널이 열려 있는 동안에는 소리 칸 전체가 `disabled` 라
+     * 트랙을 지울 수도 없습니다. 그러니 이 줄은 **지금 도달할 수 없습니다.** 도달할 수 없는 줄에 짝을 붙이면
+     * 영원히 초록인 짝이 하나 늘 뿐입니다(Cowork Round 943 §4).
+     *
+     * 그래도 지웁니다가 아니라 **둡니다**: 짝은 「지금 도달 가능한가」를 묻고, 가드는 「도달하면 어떻게
+     * 되나」에 답합니다. 여기 도달하면 답은 **아무것도 안 보낸다**여야 합니다.
+     */
+    if (audioSettings === null) return;
     busy.current = true;
     setPending(true);
     setError(null);
     try {
       const response = await mergeVideos(
         projectId,
-        audioSettings ?? undefined,
+        audioSettings,
         photoCard ? layout : undefined,
         sceneSubtitleAdjustable ? sceneLayout : undefined,
         photoCard || frameFit === "pad" ? undefined : frameFit,
@@ -399,6 +410,18 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
     audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds, photoCard ? 0 : clipVolumePercent,
   );
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
+  /**
+   * 🔴 **병합 버튼을 막는 단 하나의 소리 조건 — 보낼 설정을 만들 수 없다.**
+   *
+   * 전에는 `modeUnready` 가 버튼을 막았는데, 그건 `toAudioSettings` 가 null 을 돌려주는 **두 이유 중 하나만**
+   * 셌습니다. 나머지 하나가 **프로젝트를 아직 못 읽은 상태**(`audioMode === null`)이고, 그때 `blocked` 도
+   * `modeUnready` 도 전부 거짓이라 **버튼이 열려 있었습니다.** 누르면 `audio` 없이 나가고, 백엔드는 그걸
+   * 서버 기본값으로 받습니다 — 사람은 **자기가 고르지도 않은 소리로 구워진 영상**을 받습니다.
+   *
+   * 🟢 이제 막는 조건이 **보내는 값 그 자체**라, 새 이유가 생겨도 자동으로 막힙니다. `modeUnready` 는 이제
+   * 버튼이 아니라 **어느 문장을 보여 줄지**만 정합니다 — 그건 틀려도 최악이 「설명이 어긋남」입니다.
+   */
+  const audioUnready = audioSettings === null;
   /* 🔴 잰 값이 먼저입니다. 모델 표는 「이 모델이면 이렇게 될 것이다」이고 `clip` 은 「이 파일이 이렇다」라,
      둘이 갈리면 이기는 쪽이 정해져 있습니다 — 그리고 잰 값에는 「확인 안 됨」이 없어서 단정해도 됩니다. */
   const clipFrameNote = measuredFrameNote(clipFacts, aspectRatio, clipSceneCount) ?? frameNoteFor(clipModels, aspectRatio);
@@ -594,10 +617,17 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
             data-testid="open-merge-confirm-button"
             onClick={openConfirmation}
-            disabled={confirmOpen || pending || blocked || modeUnready}
+            disabled={confirmOpen || pending || blocked || audioUnready}
           >
             {mergeButtonLabel(audioMode, photoCard ? 0 : clipVolumePercent)}
           </button>
+          {/* 🟠 못 누르는 이유를 **이유별로** 말합니다. 버튼이 닫힌 채 아무 말도 없으면 화면이 고장 난 것으로
+              읽히고, 두 이유를 한 문장으로 뭉개면 「음악을 고르라」는 말이 아직 불러오는 중인 사람에게 갑니다. */}
+          {audioUnready && !modeUnready && (
+            <p data-testid="merge-audio-not-ready" className="text-xs text-slate-400">
+              프로젝트를 아직 읽는 중입니다. 다 읽으면 소리를 고르실 수 있습니다.
+            </p>
+          )}
           {modeUnready && (
             <p data-testid="merge-audio-track-required" className="text-xs text-amber-300">
               배경음악을 고르면 병합할 수 있습니다.

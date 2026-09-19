@@ -48,6 +48,16 @@ export function needsTrack(mode: AudioMode): boolean {
  *
  * Null is not "no audio" — it is "do not merge yet". A mode that needs a track and has none must never fall
  * back to sending something else, because the something else would render and look finished.
+ *
+ * 🔴 **이 null 이 곧 병합 버튼을 막는 조건입니다.** 2026-09-19 이전에는 그렇지 않았고, 그게 CLI Round 966 이
+ * 찾은 것입니다: 이 주석은 자기가 그 사고를 막는다고 말하는데, 실제로 막던 건 **부모 화면의 `modeUnready`**
+ * 라는 **두 번째 사본**이었고, 이 null 은 부모에서 `?? undefined` 로 풀려 **audio 를 아예 안 보내는** 요청이
+ * 됐습니다. 백엔드는 `audio === undefined` 를 **서버 기본값**으로 받습니다 — 주석이 금지한 바로 그 「렌더되고
+ * 다 된 것처럼 보이는 결과」입니다.
+ *
+ * 🟢 이제 두 화면 다 `audioSettings === null` 로 버튼을 막고, `?? undefined` 는 없습니다. 그래서 이 주석이
+ * **참**입니다. 🟠 고친 이유가 「사고가 났다」가 아니라 **「주석을 믿고 `modeUnready` 를 정리하면 난다」**라는
+ * 점은 적어 둡니다 — 규칙이 두 벌인 동안에는, 맞는 쪽을 지운 사람이 잘못한 게 아니게 됩니다.
  */
 export function toAudioSettings(
   mode: AudioMode | null,

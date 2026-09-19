@@ -121,6 +121,53 @@ describe("VideoMergeScreen", () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * 🔴 **프로젝트를 읽기 전에도 병합 버튼이 열려 있었습니다.**
+   *
+   * CLI Round 966 이 `mergeAudio.tsx:70` 의 주석이 **틀린 가드를 가리킨다**고 알려 줬고, 그걸 따라가다 찾은
+   * 것이 이 자리입니다. `toAudioSettings` 는 두 가지 이유로 null 을 돌려주는데(모드를 아직 모름 / 트랙이
+   * 필요한데 없음), 버튼을 막던 `modeUnready` 는 **둘째만** 셌습니다. 첫째일 때는 `blocked` 도 거짓이라
+   * 버튼이 그대로 열려 있고, 누르면 `audio` 없이 요청이 나갑니다 — 백엔드는 그걸 **서버 기본값**으로 받고,
+   * 사람은 **자기가 고르지도 않은 소리로 구워진 영상**을 받습니다. 렌더되고, 다 된 것처럼 보입니다.
+   *
+   * 🟠 그래서 단언이 「버튼이 닫혀 있다」로 끝나지 않습니다 — **요청이 안 나간다**까지 봅니다. 닫힌 버튼은
+   * 막는 방법 중 하나일 뿐이고, 이 짝이 지키는 것은 **나가면 안 되는 요청**입니다.
+   */
+  it("프로젝트를 아직 못 읽었으면 병합을 보내지 않는다", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url === AUDIO_LIBRARY_URL) return jsonResponse(200, { tracks: [] });
+      // 프로젝트 응답은 영원히 오지 않습니다 — 화면이 「아직 모르는」 상태에 머뭅니다.
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} />);
+
+    const button = await screen.findByTestId("open-merge-confirm-button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === MERGE_URL)).toBe(false);
+
+    /*
+     * 🟠 닫힌 채 아무 말도 없으면 화면이 고장 난 것으로 읽힙니다. 그리고 두 이유를 한 문장으로 뭉개면
+     * 「음악을 고르라」는 말이 **아직 불러오는 중인 사람**에게 갑니다 — 고를 칸이 아직 없는데요.
+     */
+    expect(screen.getByTestId("merge-audio-not-ready")).toBeTruthy();
+    expect(screen.queryByTestId("merge-audio-track-required")).toBeNull();
+  });
+
+  /**
+   * 🟠 위 짝만 있으면 「버튼을 아예 안 그린다」로도 통과합니다. 다 읽고 나면 **열려야** 합니다 — 그게 다른
+   * 이야기입니다.
+   */
+  it("다 읽고 나면 열리고, 그때는 안내도 사라진다", async () => {
+    renderScreen(vi.fn(), { narrationAvailable: false });
+
+    await screen.findByTestId("merge-audio-settings");
+    expect((screen.getByTestId("open-merge-confirm-button") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("merge-audio-not-ready")).toBeNull();
+  });
+
   // Regression: the default used to be "narration only" regardless of whether the project had any. A project
   // that never generated narration would then be labelled as narrated while producing a silent video — the
   // screen saying one thing and the file being another (docs/06_DECISIONS.md D-011).
