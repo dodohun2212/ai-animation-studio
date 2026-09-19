@@ -95,6 +95,25 @@ export function videoModelLastFrameLine(option: VideoModelOption): string {
  * about inputs), and this repository does not put a model fact on screen without a source — a wrong 「소리 있음」
  * would be exactly the reassuring-direction error the frame-shape field exists to avoid.
  */
+/**
+ * 실패한 장면 옆에서 「이 작업의 모델은 안 바뀐다」를 말하는 문장 — 두 파이프라인이 한 문장으로.
+ *
+ * 🔴 상수인 이유는 이 문장이 **돈에 대한 주장**이기 때문입니다. 처음 판은 「다른 모델로 바꾸시려면 API 설정에서
+ * 고르실 수 있습니다」로 끝났는데, 실패 카드 바로 아래에 「다시 시도」가 있으니 그 조언의 다음 동작은 **설정을
+ * 바꾸고 다시 시도**입니다. 그런데 작업은 확인된 모델을 그대로 지닙니다 — `regenerate` 가 기록을
+ * `{ ...record, status: "created" }` 로 되돌리면서 `model` 을 덮지 않고, 견적과 예산 문도
+ * `recordedVideoModel(records[0]?.model)` 을 읽습니다. 그래서 사람은 바꿨다고 믿은 채 **같은 모델로 같은 실패를
+ * 한 번 더 삽니다**(docs/06_DECISIONS.md D-010 과 같은 방향).
+ *
+ * 🟠 단기 프로젝트와 장편 회차의 실패 카드는 **같은 카드**입니다. 같은 코드에 두 화면이 다른 양을 말하면 안 되는
+ * 것이 `runwaySceneError` 를 한 곳으로 모은 이유였고, 이 문장도 같은 자리입니다.
+ *
+ * 🟠 앞머리(「이 장면은 <모델> 로 만들고 있었습니다」)는 상수가 아닙니다 — 그건 설명이라 갈라져도 손해가 없고,
+ * 화면마다 모델 이름을 강조해 그려야 해서 조각으로 두면 오히려 읽기 어렵습니다. 붙들 값이 있는 절반만 붙듭니다.
+ */
+export const VIDEO_MODEL_FROZEN_NOTE =
+  "이 작업은 이 모델로 굳어 있어, 설정에서 바꾸셔도 여기 「다시 시도」는 같은 모델로 나갑니다 — 바꾼 모델은 다음에 새로 만드는 영상부터 쓰입니다.";
+
 export const VIDEO_CLIP_AUDIO_NOTE =
   "영상 AI 가 만든 소리는 기본으로는 완성본에 들어가지 않습니다 — 합치기 화면에서 음량을 올리면 깔 수 있습니다.";
 

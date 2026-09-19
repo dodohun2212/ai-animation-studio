@@ -673,6 +673,43 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
   });
 
   /**
+   * 🔴 어느 모델이 실패했는지, 그리고 그 모델이 이 작업에서 **안 바뀐다**는 것.
+   *
+   * 카탈로그에 다섯 회사의 모델 스무 개가 있어서 「Runway 크레딧이 부족합니다」만으로는 무엇을 바꿔야 하는지가
+   * 안 나옵니다 — 과금과 키는 실제로 Runway 것이라 그 문장이 틀린 건 아니고, **무엇이 실패했나** 쪽이 비어
+   * 있었습니다.
+   *
+   * 🔴 뒷문장은 「바꿀 수 있다」가 아니라 「여기서는 안 바뀐다」입니다. 실패 카드 바로 아래에 「다시 시도」가 있으니
+   * 「설정에서 고르실 수 있습니다」의 다음 동작은 **설정을 바꾸고 다시 시도**인데, 작업은 확인된 모델을 그대로
+   * 지닙니다. 그러면 사람은 바꿨다고 믿은 채 **같은 모델로 같은 실패를 한 번 더 삽니다**(D-010 과 같은 방향).
+   *
+   * 🟠 단기 프로젝트 화면과 **같은 상수**(`VIDEO_MODEL_FROZEN_NOTE`)를 씁니다. 두 파이프라인의 실패 카드는 같은
+   * 카드이고, 같은 코드에 두 화면이 다른 양을 말하지 않게 하는 것이 `runwaySceneError` 를 한 곳에 모은 이유였습니다.
+   */
+  it("names the model this job was running, and says the setting will not move it", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": {
+        ...failedWith({ category: "quota_or_permission", billedOnFailure: false }),
+        sceneErrors: { 2: "quota_or_permission" },
+        model: "seedance2_720p",
+      },
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    await screen.findByTestId("episode-video-failed-scenes");
+    expect(screen.getByTestId("episode-video-failed-reason-2").textContent).toContain("Runway 크레딧이 부족합니다");
+
+    const line = screen.getByTestId("episode-video-failed-model-2").textContent ?? "";
+    expect(line).toContain("Seedance 2.0 (720p)");
+    expect(line).toContain("같은 모델로 나갑니다");
+    expect(line).toContain("다음에 새로 만드는 영상부터");
+    /* 되돌아올 문장을 박습니다: 「설정에서 고르실 수 있습니다」로 끝나면 이 작업에 대해 거짓입니다. 이름만 보는
+       단언은 뒷문장이 무슨 조언을 하든 초록이라, 이름과 주장을 따로 봅니다. */
+    expect(line).not.toContain("바꾸시려면");
+  });
+
+  /**
    * 🔴 One failure, two sentences, saying the opposite.
    *
    * A Runway task failure's category is the provider's own English sentence, so the category table missed it

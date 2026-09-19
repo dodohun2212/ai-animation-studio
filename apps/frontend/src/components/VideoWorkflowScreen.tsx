@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
 import type { GenerationProgressResponse, RecoverVideosResponse, Scene, SceneNumber, VideoReview, SceneStaleness } from "@ai-animation-studio/shared";
+import { VIDEO_MODEL_FROZEN_NOTE } from "../utils/videoModelFacts.js";
 
 import {
   approveVideoReview,
@@ -628,7 +629,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                           이름 한 줄을 안 보여 주는 쪽이 낫습니다(`VideoPromptPreviewScreen` 과 같은 판단). */}
                       {failedModelLabel && (
                         <p data-testid={`failed-scene-model-${sceneNumber}`} className="text-xs text-rose-200/80">
-                          이 장면은 <span className="text-rose-100">{failedModelLabel}</span> 로 만들고 있었습니다. 이 작업은 이 모델로 굳어 있어, 설정에서 바꾸셔도 여기 「다시 시도」는 같은 모델로 나갑니다 — 바꾼 모델은 다음에 새로 만드는 영상부터 쓰입니다.
+                          이 장면은 <span className="text-rose-100">{failedModelLabel}</span> 로 만들고 있었습니다. {VIDEO_MODEL_FROZEN_NOTE}
                         </p>
                       )}
                       {cannotRetry && (

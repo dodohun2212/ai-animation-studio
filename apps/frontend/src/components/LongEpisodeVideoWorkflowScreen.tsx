@@ -7,7 +7,7 @@ import { LongEpisodeSceneVersions } from "./LongEpisodeSceneVersions.js";
 import { Spinner } from "./Spinner.js";
 import { videoRatioLabel } from "../utils/sceneFields.js";
 import { omittedSectionLabel } from "../utils/omittedSectionLabels.js";
-import { hasBlockingIssue, videoSetupIssues, type VideoSetup } from "../utils/videoModelFacts.js";
+import { hasBlockingIssue, videoSetupIssues, VIDEO_MODEL_FROZEN_NOTE, type VideoSetup } from "../utils/videoModelFacts.js";
 import { isLongEpisodeStatusBefore, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { sceneRemedyAdvice } from "../utils/sceneFailureAdvice.js";
@@ -505,6 +505,11 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                * answer — a response from a build that predates `sceneFailures` must not become a claim.
                */
               const failure = job.sceneFailures?.[scene];
+              /* 한 작업의 클립은 전부 같은 모델로 나가므로 장면마다 다르지 않습니다 — 그래도 실패한 줄 옆에서
+                 읽혀야 뜻이 있어서 여기서 꺼냅니다(단기 프로젝트 화면과 같은 판단).
+                 🟠 `videoModelOption` 이 아니라 `.find` 입니다: 모르는 이름에 화면이 통째로 죽는 것보다 이름 한
+                 줄을 안 보여 주는 쪽이 낫습니다. */
+              const failedModelLabel = VIDEO_MODEL_OPTIONS.find((option) => option.id === job.model)?.label;
               const mustChangeInput = failure?.remedy === "change_input";
               const cannotRetry = failure?.remedy === "not_retryable";
               return (
@@ -512,6 +517,16 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 <div className="flex-1 space-y-1">
                   <span className="text-sm text-slate-300">{scene}번 장면</span>
                   <p data-testid={`episode-video-failed-reason-${scene}`} className="text-xs text-rose-300">{episodeSceneErrorMessage(job.sceneErrors?.[scene], failure?.providerCode)}</p>
+                  {/* 🔴 어느 모델이 실패했는지. 거절 문장들은 키와 과금이 있는 곳(Runway)을 말하는데 — 그건 맞습니다 —
+                      카탈로그에는 다섯 회사의 모델 스무 개가 있어서 「Runway 크레딧이 부족합니다」만으로는 **무엇을
+                      바꿔야 하는지**가 안 나옵니다. 그리고 뒷문장은 「바꿀 수 있다」가 아니라 **여기서는 안 바뀐다**를
+                      말합니다 — 이유는 `VIDEO_MODEL_FROZEN_NOTE` 에 적혀 있고, 단기 프로젝트 화면과 같은 상수입니다.
+                      같은 코드에 두 화면이 다른 양을 말하지 않게. */}
+                  {failedModelLabel && (
+                    <p data-testid={`episode-video-failed-model-${scene}`} className="text-xs text-rose-200/80">
+                      이 장면은 <span className="text-rose-100">{failedModelLabel}</span> 로 만들고 있었습니다. {VIDEO_MODEL_FROZEN_NOTE}
+                    </p>
+                  )}
                 </div>
                 {/* Withheld only on a definite not_retryable. The provider says the same request never passes
                     — SAFETY.INPUT and SAFETY.OUTPUT — so offering a paid button here would be selling a press
