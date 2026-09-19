@@ -240,6 +240,94 @@ describe("NewsReelScreen", () => {
     expect(list.textContent).toContain("yna.co.kr");
   });
 
+  /**
+   * 🔴 이 네 짝이 지키는 건 **화면이 서버가 하지 않은 약속을 하지 않는 것**입니다.
+   *
+   * 서버는 언론사마다 「주소만으로 읽혔다 / 기사마다 달랐다 / 본문이 문서에 없다 / 아직 안 재 봤다」를
+   * **재 본 결과로** 돌려줍니다. 화면이 할 일은 그걸 그대로 말하는 것뿐인데, 네 갈래를 한 줄로 뭉개면
+   * 사람은 **목록에 있으니 다 되는 줄** 압니다 — 그게 지금까지의 화면이었습니다.
+   */
+  describe("언론사 목록 — 네 답을 네 답으로", () => {
+    const FOUR = [
+      { host: "yna.co.kr", name: "연합뉴스", body: "address" as const },
+      { host: "chosun.com", name: "조선일보", body: "varies" as const },
+      { host: "imbc.com", name: "MBC", body: "paste" as const },
+      { host: "sedaily.com", name: "서울경제", body: "unknown" as const },
+    ];
+
+    async function renderFour(): Promise<void> {
+      stubRoutes({}, { publishers: FOUR, dailyCalls: { used: 0, limit: 10 } });
+      renderScreen();
+      await screen.findByTestId("news-publishers");
+    }
+
+    it("네 답이 각자 자기 묶음에 들어가고, 한 언론사는 한 번만 나온다", async () => {
+      await renderFour();
+
+      for (const [body, name] of [["address", "연합뉴스"], ["varies", "조선일보"], ["paste", "MBC"], ["unknown", "서울경제"]] as const) {
+        expect(screen.getByTestId(`news-publishers-${body}`).textContent).toContain(name);
+      }
+      /*
+       * 🟠 「한 번만」이 중요합니다. 묶음을 거르는 조건이 겹치면 같은 언론사가 두 묶음에 나오고, 그러면
+       * 화면이 **서로 반대되는 두 말**을 동시에 합니다 — 「주소만 넣으면 됩니다」와 「늘 붙여넣어야 합니다」.
+       */
+      /*
+       * 🔴 **모든 언론사를 봅니다 — 둘만 보면 안 됩니다.** 이 줄이 처음엔 연합뉴스와 MBC 만 셌는데, 거르는
+       * 조건을 겹치게 해서 **`unknown` 이 `paste` 묶음에도 나오게** 주입해 보니 **아무것도 안 빨개졌습니다.**
+       * 위 반복문은 네 답을 다 부르는데 중복 검사만 둘이었고, 겹침은 **검사 안 하는 답에서** 일어날 수 있습니다.
+       * 픽스처에서 이름을 끌어오면 답이 늘어도 이 구멍이 다시 생기지 않습니다.
+       */
+      const all = screen.getByTestId("news-publishers").textContent ?? "";
+      for (const one of FOUR) {
+        expect(all.split(one.name).length - 1, one.name).toBe(1);
+      }
+    });
+
+    /**
+     * 🔴 이 짝이 이 묶음의 핵심입니다. `unknown` 은 **아직 아무도 안 본 것**이라, 「될 겁니다」도
+     * 「안 됩니다」도 화면이 해선 안 되는 말입니다. 어느 한쪽으로 그리는 순간 화면이 서버 대신 약속합니다.
+     */
+    it("「아직 재 보지 않았습니다」는 어느 쪽 약속으로도 그리지 않는다", async () => {
+      await renderFour();
+
+      const unknown = screen.getByTestId("news-publishers-unknown").textContent ?? "";
+      expect(unknown).toContain("서울경제");
+      expect(unknown).not.toContain("주소만 넣으면");
+      expect(unknown).not.toContain("늘 붙여넣어야");
+      // 대신 말해야 하는 것: 판정은 서버가 그 자리에서 한다.
+      expect(unknown).toContain("넣어 보시면");
+    });
+
+    /**
+     * 🔴 `paste` 의 문장은 **기다림을 허용하면 안 됩니다.** 「아직 안 됩니다」로 읽히면 사람은 며칠 뒤
+     * 다시 시도하는데, 본문이 문서 안에 없는 건 파서가 좋아져서 해결되는 종류가 아닙니다.
+     */
+    it("「늘 붙여넣어야 합니다」는 기다리면 된다고 말하지 않는다", async () => {
+      await renderFour();
+
+      const paste = screen.getByTestId("news-publishers-paste").textContent ?? "";
+      expect(paste).toContain("MBC");
+      expect(paste).toContain("기다리면 되는 종류가 아닙니다");
+      expect(paste).not.toContain("아직");
+      expect(paste).not.toContain("지금은");
+    });
+
+    /**
+     * 🟠 없는 묶음은 **머리말도 안 그립니다.** 열두 곳이 전부 주소로 되는 날 「늘 붙여넣어야 합니다」라는
+     * 제목이 빈 채로 남아 있으면, 그 화면은 있지도 않은 문제를 말하고 있는 것입니다.
+     */
+    it("해당하는 언론사가 없는 묶음은 제목도 안 나온다", async () => {
+      stubRoutes({}, { publishers: [FOUR[0]], dailyCalls: { used: 0, limit: 10 } });
+      renderScreen();
+      await screen.findByTestId("news-publishers");
+
+      expect(screen.getByTestId("news-publishers-address")).toBeTruthy();
+      expect(screen.queryByTestId("news-publishers-paste")).toBeNull();
+      expect(screen.queryByTestId("news-publishers-unknown")).toBeNull();
+      expect(screen.getByTestId("news-publishers").textContent).not.toContain("늘 붙여넣어야 합니다");
+    });
+  });
+
   /** 목록을 못 불러와도 화면은 돕니다 — 판정은 어차피 서버가 하니까요. */
   it("still lets someone try an address when the publisher list could not be loaded", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({}, { "GET /news/setup": { status: 500, body: { code: "INTERNAL_ERROR", message: "" } } }));

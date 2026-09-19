@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, type NewsClaimCheck, type NewsDailyCallCount, type NewsFetchRefusalReason, type NewsPublisher } from "@ai-animation-studio/shared";
+import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, type NewsClaimCheck, type NewsDailyCallCount, type NewsFetchRefusalReason, type NewsPublisher, type NewsPublisherBody } from "@ai-animation-studio/shared";
 import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsSummary, fetchNewsArticle, getNewsReelSetup } from "../api/newsApi.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { Spinner } from "./Spinner.js";
@@ -83,6 +83,50 @@ function messageOf(caught: unknown): string {
  * 🟠 붙여넣기 길은 없어지지 않았습니다. 추출기가 본문 상자를 못 알아보면 **그 자리에서** 본문 칸이 열리고
  * 주소·언론사·제목·발행일은 채워진 채로 남습니다. 파서를 완벽하게 만드는 것보다 후퇴 경로가 있는 쪽이 쌉니다.
  */
+/**
+ * 언론사 목록을 **네 답으로 나눠** 그립니다 — 이 화면에서 제일 자주 나올 질문이 「왜 이건 붙여넣어야 하나」라서요.
+ *
+ * 🔴 네 답은 서버가 **재 본 결과**지 이 화면의 짐작이 아닙니다(`NewsPublisherBody`). 그래서 여기서 하는 일은
+ * 딱 하나 — **재 본 것을 재 본 대로 말하는 것**입니다. 특히 `unknown` 은 「아마 될 것」도 「안 될 것」도 아니라,
+ * **아직 아무도 안 봤다**는 뜻입니다. 둘 중 하나로 그리면 그 순간 화면이 서버가 하지 않은 약속을 합니다.
+ *
+ * 🟠 `paste` 의 문장이 제일 중요합니다. 「지금은 안 됩니다」로 적으면 사람이 **기다립니다** — 그런데 이건
+ * 기다려서 되는 종류가 아닙니다. 본문이 문서 안에 아예 없으면 어떤 파서도 주소만으로는 못 읽습니다.
+ *
+ * 🟠 다섯째 값이 오는 경우는 **여기서 막지 않습니다.** `isNewsReelSetupResponse` 가 네 개 중 하나가 아니면
+ * 응답 자체를 거절하므로, 화면까지 오지 못합니다. 대신 아래 `Record<NewsPublisherBody, ...>` 가
+ * **계약에 다섯째가 생기면 이 파일을 컴파일 에러로 세웁니다** — 그게 이 층에서 할 수 있는 몫입니다.
+ */
+const PUBLISHER_GROUPS: Record<NewsPublisherBody, { title: string; note: string; tone: string }> = {
+  address: {
+    title: "주소만 넣으면 됩니다",
+    note: "재 본 기사가 전부 주소만으로 읽혔습니다.",
+    tone: "text-emerald-300",
+  },
+  varies: {
+    title: "기사마다 다릅니다",
+    note: "같은 언론사인데 읽히는 기사와 안 읽히는 기사가 있었습니다. 넣어 보시고, 본문이 비어 있으면 그때 붙여넣어 주세요.",
+    tone: "text-amber-300",
+  },
+  unknown: {
+    title: "아직 재 보지 않았습니다",
+    note: "된다고도 안 된다고도 말씀드릴 수 없습니다. 주소를 넣어 보시면 서버가 그 자리에서 알려 줍니다.",
+    tone: "text-slate-300",
+  },
+  paste: {
+    title: "늘 붙여넣어야 합니다",
+    note: "본문이 문서 안에 아예 없어서, 주소만으로는 어떤 도구도 읽지 못합니다. 기다리면 되는 종류가 아닙니다 — 기사를 열어 본문을 복사해 아래에 붙여넣어 주세요.",
+    tone: "text-slate-300",
+  },
+};
+
+/**
+ * 🟠 되는 것부터, 못 되는 것을 맨 끝에. 사람이 목록을 훑는 이유는 **자기 언론사를 찾으려는 것**이고, 그때
+ * 제일 먼저 보고 싶은 건 「그냥 넣으면 되는 곳」입니다. `paste` 를 맨 위에 두면 이 기능이 안 되는 기능처럼
+ * 읽힙니다 — 열두 곳 중 둘입니다.
+ */
+const PUBLISHER_GROUP_ORDER: NewsPublisherBody[] = ["address", "varies", "unknown", "paste"];
+
 export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   const [setup, setSetup] = useState<Setup>({ status: "loading" });
   const [url, setUrl] = useState("");
@@ -298,13 +342,26 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
           {publishers.length > 0 && (
             <>
               <p className="text-xs text-slate-500">넣을 수 있는 언론사</p>
-              <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1" data-testid="news-publishers">
-                {publishers.map((one) => (
-                  <li key={one.host} className="text-xs text-slate-400">
-                    {one.name} <span className="text-slate-600">{one.host}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-2 space-y-3" data-testid="news-publishers">
+                {PUBLISHER_GROUP_ORDER.map((body) => {
+                  const members = publishers.filter((one) => one.body === body);
+                  if (members.length === 0) return null;
+                  const group = PUBLISHER_GROUPS[body];
+                  return (
+                    <div key={body} data-testid={`news-publishers-${body}`}>
+                      <p className={`text-xs font-semibold ${group.tone}`}>{group.title}</p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{group.note}</p>
+                      <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                        {members.map((one) => (
+                          <li key={one.host} className="text-xs text-slate-400">
+                            {one.name} <span className="text-slate-600">{one.host}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           )}
         </div>
