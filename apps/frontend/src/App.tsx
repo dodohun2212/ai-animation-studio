@@ -811,15 +811,9 @@ export function App() {
             * 장기 목록은 아직 이 배너를 씁니다. 그쪽은 한 줄이 회차 여러 개를 대표해서 같은 머리말이 같은
             * 뜻을 갖는지부터 다릅니다 — 캡틴D께서 단기 쪽을 보신 뒤에 정하는 게 맞습니다.
             */}
-          {isEntryScreen && screen.name !== "list" && (
-            <h1 className="bg-gradient-to-r from-violet-200 via-violet-300 to-pink-300 bg-clip-text text-4xl font-semibold text-transparent">
-              AI Animation Studio
-            </h1>
-          )}
-
           {/* 🔴 `pt-24` 가 여기 있었습니다 — 위 hero 그림을 피하려고 목록을 96px 아래로 민 것. 그림이 없으니
               밀 이유도 없습니다. 목록 화면만 다른 여백을 갖던 분기도 같이 사라집니다. */}
-          <div className={screen.name === "list" ? "" : "mt-8"}>
+          <div className={isEntryScreen ? "" : "mt-8"}>
             {screen.name === "list" && (
               <ProjectList
                 refreshToken={listRefreshToken}
