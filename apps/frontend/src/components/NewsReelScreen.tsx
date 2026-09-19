@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, type NewsClaimCheck, type NewsFetchRefusalReason, type NewsPublisher } from "@ai-animation-studio/shared";
-import { NewsApiError, fetchNewsArticle, getNewsReelSetup } from "../api/newsApi.js";
+import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, type NewsClaimCheck, type NewsDailyCallCount, type NewsFetchRefusalReason, type NewsPublisher } from "@ai-animation-studio/shared";
+import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsSummary, fetchNewsArticle, getNewsReelSetup } from "../api/newsApi.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { Spinner } from "./Spinner.js";
 import { cardSectionRoomy as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
@@ -96,14 +96,24 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   const [sourceUrl, setSourceUrl] = useState("");
   const [summary, setSummary] = useState("");
 
-  /* 🟠 `dailyCalls` 는 아직 그리지 않습니다 — 그 수를 깎는 버튼(유료 요약)이 이 화면에 아직 없어서, 지금
-     「오늘 0 / 10」을 띄우면 **일어나지도 않는 일의 잔량**을 말하는 셈입니다. 요약 호출이 들어오는 날 그 버튼
-     옆에 붙고, 그때 `null` 은 「예산 있음」이 아니라 「모르니까 안 부른다」로 그려야 합니다(계약의
-     NewsDailyCallCount, 그리고 CLI Round 933 §3). */
+  /* 🔴 이제 이 수를 깎는 버튼이 생겼으니 그립니다(940 까지는 일부러 안 그렸습니다 — 아무것도 안 깎는 잔량을
+     보여 주는 셈이었으니까요). `null` 은 **「예산 있음」이 아니라 「모르니까 안 부른다」**입니다. */
+  const [dailyCalls, setDailyCalls] = useState<NewsDailyCallCount | null>(null);
+  /* 🟠 서버가 「오늘 다 썼다」고 말한 순간을 따로 듭니다. 거절은 예외 경로라 새 건수를 안 싣고 오는데, 그때
+     제가 들고 있는 수는 **한 번 낡은 것**입니다 — 그 낡은 수로 버튼을 열어 두면 다음 누름이 또 거절됩니다. */
+  const [limitReached, setLimitReached] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [tooLong, setTooLong] = useState(false);
+
   useEffect(() => {
     let live = true;
     getNewsReelSetup()
-      .then((response) => { if (live) setSetup({ status: "ready", publishers: response.publishers }); })
+      .then((response) => {
+        if (!live) return;
+        setSetup({ status: "ready", publishers: response.publishers });
+        setDailyCalls(response.dailyCalls);
+      })
       .catch(() => { if (live) setSetup({ status: "error" }); });
     return () => { live = false; };
   }, []);
@@ -145,6 +155,39 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
     }
   }
 
+  /**
+   * 🔴 **이 화면에서 오늘 쓸 수 있는 횟수를 깎는 유일한 버튼입니다.** 기사 가져오기는 공짜고 이것만 셉니다 —
+   * 두 버튼을 같은 모양으로 그리면 사람은 가져오기를 몇 번 눌러 보다가 하루치를 태운 줄 알게 됩니다(927 §4).
+   *
+   * 🟠 받은 `check` 를 따로 그리지 않습니다. 요약이 아래 칸에 들어가는 순간 화면의 **살아 있는 대조**가 같은
+   * 함수·같은 입력으로 다시 돕니다(`checkNewsSummary(요약, 본문)`) — 계산이 같으니 둘을 다 그리면 **같은 말을
+   * 두 곳에서** 하게 되고, 사람이 문장을 고치기 시작하는 순간 서버 것은 **옛 문장에 대한 판정**으로 굳습니다.
+   */
+  async function summarise(): Promise<void> {
+    if (summarizing || !canSummarise) return;
+    setSummarizing(true);
+    setSummaryError(null);
+    setTooLong(false);
+    try {
+      const response = await createNewsSummary({
+        title: title.trim(),
+        body: trimmedArticle,
+        publisher: outlet.trim(),
+        publishedAt: publishedAt.trim(),
+        sourceUrl: sourceUrl.trim(),
+      });
+      setSummary(response.summary);
+      setDailyCalls(response.dailyCalls);
+      setTooLong(response.tooLong === true);
+    } catch (caught) {
+      setSummaryError(messageOf(caught));
+      /* 🔴 서버가 한도를 말했으면 제가 들고 있는 수와 관계없이 닫습니다 — 거절은 새 건수를 안 싣고 옵니다. */
+      if (caught instanceof NewsApiError && caught.code === "NEWS_DAILY_LIMIT_REACHED") setLimitReached(true);
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
   const trimmedSummary = summary.trim();
   const trimmedArticle = articleText.trim();
   const ready = trimmedSummary.length > 0 && trimmedArticle.length > 0;
@@ -158,6 +201,11 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
 
   const blocked = check.missing.length > 0;
   const sourceLine = [outlet.trim(), publishedAt.trim(), sourceUrl.trim()].filter((part) => part.length > 0).join(" · ");
+
+  /* 🔴 `dailyCalls === null` 은 **막힘**입니다 — 「모르니까 안 부른다」이지 「여유 있음」이 아닙니다. 남은 수가
+     0 이어도, 서버가 한도를 말한 뒤에도 닫힙니다. 그리고 본문이 없으면 애초에 요약할 것이 없습니다. */
+  const callsLeft = dailyCalls ? Math.max(0, dailyCalls.limit - dailyCalls.used) : 0;
+  const canSummarise = trimmedArticle.length > 0 && dailyCalls !== null && callsLeft > 0 && !limitReached;
 
   /* 거절이 들고 온 목록이 있으면 그걸 씁니다 — 화면이 오래 열려 있었을 수 있고, 거절에 실려 온 쪽이 그 순간의
      사실입니다(CLI Round 932 §2). */
@@ -296,8 +344,54 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
       </section>
 
       <section className={cardSection} aria-label="요약">
-        <h2 className="text-sm font-semibold text-slate-100">요약</h2>
-        <p className="mt-1 text-xs text-slate-500">릴에 들어갈 문장입니다. 첫 줄이 제목처럼 크게 들어갑니다.</p>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-100">요약</h2>
+          {dailyCalls && (
+            <span className="text-xs tabular-nums text-slate-500" data-testid="news-daily-calls">
+              오늘 쓴 요약 {dailyCalls.used} / {dailyCalls.limit}
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-slate-500">릴에 들어갈 문장입니다. 첫 줄이 제목처럼 크게 들어갑니다. 직접 쓰셔도 되고, 아래 버튼으로 뽑으셔도 됩니다.</p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button
+            type="button"
+            data-testid="news-summarize"
+            className={outlineButton}
+            disabled={summarizing || !canSummarise}
+            onClick={() => void summarise()}
+          >
+            {summarizing ? "요약을 받는 중..." : "AI로 요약 뽑기"}
+          </button>
+          {/* 🔴 값을 버튼 옆에 적습니다. 위 「기사 가져오기」는 공짜라 아무 말도 안 하는데, 둘이 같은 모양이면
+              사람은 **어느 쪽이 깎는지 모른 채** 누릅니다(927 §4). */}
+          <span className="text-xs text-slate-500">
+            {dailyCalls ? `누를 때마다 하나씩 씁니다 — 오늘 ${callsLeft}번 남았습니다.` : "누를 때마다 오늘 쓸 수 있는 횟수를 하나 씁니다."}
+          </span>
+        </div>
+
+        {/* 🔴 「모르니까 안 부른다」입니다. 숫자 자리를 비워 두거나 0 으로 그리면 「여유 있음」으로 읽힙니다. */}
+        {dailyCalls === null && setup.status === "ready" && (
+          <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300" data-testid="news-calls-unknown">
+            {NEWS_LEDGER_UNREADABLE_MESSAGE}
+          </p>
+        )}
+
+        {summaryError && (
+          <p role="alert" className="mt-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" data-testid="news-summary-error">
+            {summaryError}
+          </p>
+        )}
+
+        {/* 🟠 자르지 않고 알립니다. 길이로 자르면 `4,000` 이 `4,0` 이 되고, 그러면 **대조기가 우리 편집을 보고
+            「지어냈다」**고 합니다 — 어느 문장을 버릴지는 읽은 사람이 정할 일입니다(CLI 943 §1). */}
+        {tooLong && (
+          <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300" data-testid="news-summary-too-long">
+            요약이 카드에 들어가기엔 깁니다. 그대로 두었으니 <strong>뺄 문장을 직접 골라</strong> 줄여 주세요 — 저희가 잘라내면 숫자가 반토막 나서 아래 대조가 엉뚱하게 걸립니다.
+          </p>
+        )}
+
         <textarea
           data-testid="news-summary"
           rows={5}

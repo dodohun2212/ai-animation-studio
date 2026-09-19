@@ -12,8 +12,14 @@ const PUBLISHERS = [
 const SETUP = { publishers: PUBLISHERS, dailyCalls: { used: 2, limit: 10 } };
 
 /** 이 화면은 열리자마자 `GET /news/setup` 을 부릅니다 — 안 세워 두면 짝이 진짜 네트워크를 건드립니다. */
-function stubRoutes(extra: Record<string, unknown> = {}): ReturnType<typeof vi.fn> {
-  const mock = stubFetchByRoute({ "GET /news/setup": SETUP, ...extra });
+function stubRoutes(extra: Record<string, unknown> = {}, setup: unknown = SETUP): ReturnType<typeof vi.fn> {
+  const routes: Record<string, unknown> = { "GET /news/setup": setup };
+  const errors: Record<string, { status: number; body: unknown }> = {};
+  for (const [key, value] of Object.entries(extra)) {
+    if (value && typeof value === "object" && "status" in (value as object)) errors[key] = value as { status: number; body: unknown };
+    else routes[key] = value;
+  }
+  const mock = stubFetchByRoute(routes, errors);
   vi.stubGlobal("fetch", mock);
   return mock;
 }
@@ -241,27 +247,103 @@ describe("NewsReelScreen", () => {
   });
 
   /**
-   * 🔴 **이 짝은 「지금 없는 것」을 붙듭니다 — 그래서 없는 것이 생기는 날 웁니다.**
-   *
-   * `GET /news/setup` 은 「오늘 몇 번 불렀나 / 상한」을 같이 줍니다. 그런데 이 화면에는 **그 수를 깎는 버튼이
-   * 없습니다** — 요약은 아직 사람이 손으로 씁니다. 그 상태에서 「오늘 2 / 10」을 띄우면 **일어나지도 않는 일의
-   * 잔량**을 말하는 셈이고, 사람은 무엇이 깎는지 화면에서 찾지 못합니다.
-   *
-   * 🟠 그래서 두 줄이 **함께** 서 있습니다: 건수도 없고, 그 건수를 쓰는 버튼도 없다. 유료 요약이 들어오는 날
-   * 누군가 버튼만 붙이면 **아래쪽이 먼저 빨개져서**, 건수와 `null` 처리(「예산 있음」이 아니라 「모르니까 안
-   * 부른다」)를 같이 넣게 만듭니다. 주석은 그날 아무도 안 깨웁니다 — CLI Round 937 §2.
+   * 🔴 **940 의 짝이 여기서 제 역할을 끝냈습니다.** 그때는 「이 수를 깎는 버튼이 없으니 수도 안 보인다」를 붙들고
+   * 있었고, 그 버튼이 생기는 순간 울도록 짜 두었습니다. 울었고, 그래서 이 자리로 바뀌었습니다 — 주석이었으면
+   * 아무도 안 깨웠을 것입니다(CLI Round 937 §2).
    */
-  it("shows no call count while nothing on this screen spends one", async () => {
+  it("shows the day's count beside the button that spends it", async () => {
     renderScreen();
-    await screen.findByTestId("news-publishers");
 
-    // 건수가 응답에 실려 왔는데도(SETUP.dailyCalls) 화면에는 없습니다.
+    expect((await screen.findByTestId("news-daily-calls")).textContent).toContain("2 / 10");
+    expect(screen.getByTestId("news-summarize")).toBeTruthy();
+  });
+
+  /**
+   * 🔴 `dailyCalls: null` 은 **「여유 있음」이 아니라 「모르니까 안 부른다」**입니다. 숫자를 안 그리는 것만으로는
+   * 모자랍니다 — 아무 말이 없으면 사람은 **문제가 없다고** 읽고 버튼을 찾습니다. 그래서 세 줄이 함께 섭니다:
+   * 숫자는 없고, 이유는 있고, 버튼은 닫힙니다.
+   *
+   * 🟠 그리고 그 이유가 **어느 파일을 볼지** 말해야 합니다. 「이번 달 사용액」을 말하는 예산 쪽 문장을 그대로
+   * 썼다면 사람이 `api_budget_usage.json` 을 열어 보고 멀쩡한 걸 확인한 뒤 막힌 이유를 못 찾습니다(CLI 935 §1).
+   */
+  it("closes the button and says which file, when the ledger cannot be read", async () => {
+    stubRoutes({}, { publishers: PUBLISHERS, dailyCalls: null });
+    renderScreen();
+
+    const notice = await screen.findByTestId("news-calls-unknown");
+    expect(notice.textContent).toContain("news_call_usage.json");
     expect(screen.queryByTestId("news-daily-calls")).toBeNull();
-    /* 🟠 testid 없이 그려도 잡히게 「2 / 10」 모양을 같이 봅니다. `/10/` 처럼 넓게 잡으면 무관한 글자에
-       걸려서, 이 짝이 **엉뚱한 이유로** 빨개집니다 — 그런 짝은 다음 사람이 지워 버립니다. */
-    expect(screen.queryByText(/2\s*\/\s*10/)).toBeNull();
-    // 🔴 그리고 그 이유: 이 수를 깎는 버튼이 아직 없습니다. 이 줄이 이 짝의 자물쇠입니다.
-    expect(screen.queryByTestId("news-summarize")).toBeNull();
+    expect(screen.getByTestId("news-summarize")).toBeDisabled();
+  });
+
+  it("closes the button when today's allowance is already spent", async () => {
+    stubRoutes({}, { publishers: PUBLISHERS, dailyCalls: { used: 10, limit: 10 } });
+    renderScreen();
+
+    await screen.findByTestId("news-daily-calls");
+    expect(screen.getByTestId("news-summarize")).toBeDisabled();
+  });
+
+  /**
+   * 🔴 거절은 **새 건수를 싣고 오지 않습니다.** 그러면 화면이 들고 있는 수는 한 번 낡은 것이고, 그 낡은 수로
+   * 버튼을 열어 두면 다음 누름이 또 거절됩니다 — 서버가 방금 「다 썼다」고 말했는데도요.
+   */
+  it("closes the button when the server says the day is spent, even though the count it holds says otherwise", async () => {
+    stubRoutes({ "POST /news/summaries": { status: 409, body: { code: "NEWS_DAILY_LIMIT_REACHED", message: "" } } });
+    renderScreen();
+    await screen.findByTestId("news-daily-calls");
+    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
+
+    fireEvent.click(screen.getByTestId("news-summarize"));
+
+    expect((await screen.findByTestId("news-summary-error")).textContent).toContain("내일");
+    // 들고 있는 수는 2/10 이라 「8번 남음」인데도 닫혀 있어야 합니다.
+    expect(screen.getByTestId("news-summarize")).toBeDisabled();
+  });
+
+  it("fills the summary and moves the count on, then checks what came back", async () => {
+    stubRoutes({
+      "POST /news/summaries": {
+        summary: "국회가 후속 법안 51건을 통과시켰다.",
+        check: { claims: [], missing: [] },
+        dailyCalls: { used: 3, limit: 10 },
+      },
+    });
+    renderScreen();
+    await screen.findByTestId("news-daily-calls");
+    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
+
+    fireEvent.click(screen.getByTestId("news-summarize"));
+
+    await waitFor(() => expect((screen.getByTestId("news-summary") as HTMLTextAreaElement).value).toContain("51건"));
+    expect(screen.getByTestId("news-daily-calls").textContent).toContain("3 / 10");
+    /* 🔴 서버가 준 `check` 를 따로 그리지 않고, **화면의 살아 있는 대조**가 같은 결론을 냅니다. 둘을 다 그리면
+       사람이 문장을 고치는 순간 서버 것은 「옛 문장에 대한 판정」으로 굳어 남습니다. */
+    expect(screen.getByTestId("news-check-passed")).toBeTruthy();
+  });
+
+  /**
+   * 🔴 길다고 **자르지 않습니다.** 길이로 자르면 `4,000` 이 `4,0` 이 되고, 그러면 대조기가 **우리 편집을 보고**
+   * 「기사에 없는 숫자」라고 합니다 — 가드가 우리 때문에 우는 자리입니다(CLI 943 §1).
+   */
+  it("says a summary is too long without shortening it", async () => {
+    const long = "국회가 후속 법안 51건을 통과시켰다. " + "길어진 문장입니다. ".repeat(20);
+    stubRoutes({
+      "POST /news/summaries": {
+        summary: long,
+        check: { claims: [], missing: [] },
+        dailyCalls: { used: 3, limit: 10 },
+        tooLong: true,
+      },
+    });
+    renderScreen();
+    await screen.findByTestId("news-daily-calls");
+    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
+
+    fireEvent.click(screen.getByTestId("news-summarize"));
+
+    await screen.findByTestId("news-summary-too-long");
+    expect((screen.getByTestId("news-summary") as HTMLTextAreaElement).value).toBe(long);
   });
 
   it("waits for both halves before saying anything about the summary", () => {

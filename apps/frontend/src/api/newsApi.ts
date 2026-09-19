@@ -26,11 +26,26 @@ import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from ".
  * the backend can throw — and it is also what shows if the two ever drift, because a code answered by both is
  * a code somebody is looking at.
  */
+/**
+ * 장부를 못 읽었을 때의 한 문장 — **두 자리에서 같은 말을 해야 해서** 상수입니다.
+ *
+ * 하나는 요약을 눌렀다가 거절당한 자리(`NEWS_LEDGER_UNREADABLE`), 다른 하나는 화면이 **열리자마자**
+ * `GET /news/setup` 이 `dailyCalls: null` 로 답하는 자리입니다. 같은 파일이 같은 이유로 안 읽히는 것이고,
+ * 사람이 할 일도 같습니다 — 그래서 문장이 갈라지면 둘 중 하나는 반드시 틀립니다.
+ *
+ * 🔴 「이번 달 사용액」을 말하는 `BUDGET_LEDGER_UNREADABLE_MESSAGE` 를 **재활용하지 않습니다.** 이건 **오늘 ·
+ * 호출 수**고 그건 **이번 달 · 달러**입니다. 한 번 합쳤다가 CLI Round 935 §1 에서 잡혔는데, 그대로 썼으면 사람이
+ * `api_budget_usage.json` 을 열어 보고 멀쩡한 걸 확인한 뒤 「그럼 왜 막혔지」로 갔을 겁니다. 그래서 **파일 이름을
+ * 문장에 적습니다.**
+ */
+export const NEWS_LEDGER_UNREADABLE_MESSAGE =
+  "사용 기록 파일을 읽을 수 없어 오늘 쓴 횟수를 확인하지 못했습니다. 확인하기 전에는 요약을 부르지 않습니다. 다시 누르셔도 같은 결과이니 news_call_usage.json 을 확인해 주세요.";
+
 const SUMMARY_ERRORS: Record<string, string> = {
   NEWS_ARTICLE_INVALID: "요약할 기사가 올바르지 않습니다. 본문 전체가 들어 있는지 보아 주세요.",
   NEWS_SUMMARY_KEY_MISSING: "요약에 쓸 Gemini 키가 없습니다. API 설정에서 넣어 주세요.",
   NEWS_DAILY_LIMIT_REACHED: "오늘 쓸 수 있는 요약 횟수를 다 썼습니다. 이 앱이 막고 있는 것이고, 내일 다시 쓰실 수 있습니다.",
-  NEWS_LEDGER_UNREADABLE: "사용 기록 파일을 읽을 수 없어 오늘 쓴 횟수를 확인하지 못했습니다. 확인하기 전에는 요약을 부르지 않습니다. 다시 누르셔도 같은 결과이니 news_call_usage.json 을 확인해 주세요.",
+  NEWS_LEDGER_UNREADABLE: NEWS_LEDGER_UNREADABLE_MESSAGE,
   NEWS_SUMMARY_FAILED: "요약을 받지 못했습니다. 다시 누르시면 오늘 쓸 수 있는 횟수를 한 번 더 씁니다.",
 };
 
