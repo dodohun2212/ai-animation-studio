@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type {
   GetProviderSettingsResponse,
+  ProviderBudgetKind,
   ProviderCredentialKind,
   ProviderCredentialStatus,
   ProviderMonthlyBudget,
@@ -20,11 +21,25 @@ import { VIDEO_MODEL_VARIABLE, resolveVideoModel } from "../videos/runway-video-
 import { ProviderSettingsRepository } from "./provider-settings.repository.js";
 import { ProviderSettingsLogger } from "./provider-settings.redaction.js";
 import { DEFAULT_MONTHLY_LIMIT_USD } from "../providers/monthly-budget-limit.js";
-import { PROVIDER_CREDENTIAL_KINDS } from "@ai-animation-studio/shared";
+import { PROVIDER_BUDGET_KINDS, PROVIDER_CREDENTIAL_KINDS } from "@ai-animation-studio/shared";
 
 const PROVIDERS: readonly ProviderCredentialKind[] = PROVIDER_CREDENTIAL_KINDS;
-/** The same names the budgets read, so the screen and the environment are one knob rather than two. */
-const BUDGET_VARIABLE: Record<ProviderCredentialKind, string> = {
+/**
+ * The providers that have a monthly dollar budget — a shorter list than the one above, deliberately.
+ *
+ * 🔴 A provider can have a key here and no money budget at all. Gemini runs on a free tier and is bounded by
+ * a count per day in its own ledger (`news_call_usage.json`), so a dollar limit for it would refuse nothing,
+ * about money nobody is spending, sitting next to the numbers that do stop paid work.
+ */
+const BUDGET_PROVIDERS: readonly ProviderBudgetKind[] = PROVIDER_BUDGET_KINDS;
+/**
+ * The same names the budgets read, so the screen and the environment are one knob rather than two.
+ *
+ * 🔴 Keyed to the **budget** kinds, not the credential ones. A provider can have a key here and no dollar
+ * budget at all — Gemini is used on a free tier and is bounded by a count per day in its own ledger, so a
+ * `GEMINI_MONTHLY_BUDGET_USD` would be a limit that refuses nothing, about money nobody spends.
+ */
+const BUDGET_VARIABLE: Record<ProviderBudgetKind, string> = {
   openai: "OPENAI_MONTHLY_BUDGET_USD",
   runway: "RUNWAY_MONTHLY_BUDGET_USD",
 };
@@ -48,6 +63,17 @@ function validateMonthlyLimit(body: unknown): number {
 function validateProvider(value: string): ProviderCredentialKind {
   if (!PROVIDERS.includes(value as ProviderCredentialKind)) throw unknownProvider();
   return value as ProviderCredentialKind;
+}
+
+/**
+ * 🔴 A provider with a key is not automatically a provider with a dollar budget, and this is where the
+ * difference has to be refused rather than merely typed. Saving `GEMINI_MONTHLY_BUDGET_USD` would write a knob
+ * into the settings file that nothing ever reads — and the screen showing it would report a limit that stops
+ * nothing, which is worse than showing no limit at all.
+ */
+function validateBudgetProvider(value: string): ProviderBudgetKind {
+  if (!BUDGET_PROVIDERS.includes(value as ProviderBudgetKind)) throw unknownProvider();
+  return value as ProviderBudgetKind;
 }
 
 function validateCredentialRequest(body: unknown): string {
@@ -88,12 +114,12 @@ export class ProviderSettingsService {
    * `budgets` is optional because this service is also constructed in contexts that have no ledger to read —
    * leaving it out reports the limit with the spend marked unavailable rather than inventing a zero.
    */
-  constructor(private readonly repository: ProviderSettingsRepository, private readonly budgets?: Partial<Record<ProviderCredentialKind, MonthlyBudgetReader>>) {}
+  constructor(private readonly repository: ProviderSettingsRepository, private readonly budgets?: Partial<Record<ProviderBudgetKind, MonthlyBudgetReader>>) {}
 
   async getSettings(): Promise<GetProviderSettingsResponse> {
     const [providers, monthlyBudgets] = await Promise.all([
       Promise.all(PROVIDERS.map((provider) => this.status(provider))),
-      Promise.all(PROVIDERS.map((provider) => this.monthlyBudget(provider))),
+      Promise.all(BUDGET_PROVIDERS.map((provider) => this.monthlyBudget(provider))),
     ]);
     return { providers, monthlyBudgets, videoModel: await this.videoModelSetting() };
   }
@@ -135,7 +161,7 @@ export class ProviderSettingsService {
   }
 
   async saveMonthlyBudget(providerValue: string, body: unknown): Promise<SaveProviderMonthlyBudgetResponse> {
-    const provider = validateProvider(providerValue);
+    const provider = validateBudgetProvider(providerValue);
     const monthlyLimitUsd = validateMonthlyLimit(body);
     await this.repository.saveNamed(BUDGET_VARIABLE[provider], String(monthlyLimitUsd));
     return { budget: await this.monthlyBudget(provider) };
@@ -149,7 +175,7 @@ export class ProviderSettingsService {
    * zero: this screen has no business claiming nothing has been spent, and the limit itself is still true and
    * still worth showing and changing.
    */
-  private async monthlyBudget(provider: ProviderCredentialKind): Promise<ProviderMonthlyBudget> {
+  private async monthlyBudget(provider: ProviderBudgetKind): Promise<ProviderMonthlyBudget> {
     const budget = this.budgets?.[provider];
     const stored = await this.repository.readNamed(BUDGET_VARIABLE[provider]).catch(() => null);
     const monthlyLimitUsd = budget ? await budget.monthlyLimit() : DEFAULT_MONTHLY_LIMIT_USD;

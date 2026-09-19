@@ -19,7 +19,7 @@ describe("providerSettingsApi", () => {
 
   it("fetches settings via GET /settings/providers", async () => {
     const responseBody: GetProviderSettingsResponse = {
-      providers: [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" })],
+      providers: [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })],
       videoModel: { selected: DEFAULT_VIDEO_MODEL, isDefault: true, options: VIDEO_MODEL_OPTIONS },
       monthlyBudgets: [makeMonthlyBudget({ provider: "openai" }), makeMonthlyBudget({ provider: "runway" })],
     };
@@ -32,14 +32,18 @@ describe("providerSettingsApi", () => {
 
   it("handles openai/runway regardless of response order, keyed by the provider field", async () => {
     const reversed: GetProviderSettingsResponse = {
-      providers: [makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "openai" })],
+      providers: [makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "openai" })],
       videoModel: { selected: DEFAULT_VIDEO_MODEL, isDefault: true, options: VIDEO_MODEL_OPTIONS },
       monthlyBudgets: [makeMonthlyBudget({ provider: "runway" }), makeMonthlyBudget({ provider: "openai" })],
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, reversed)));
 
     const result = await getProviderSettings();
-    expect(result.providers.map((item) => item.provider)).toEqual(["runway", "openai"]);
+    // The order the server sent, kept as sent — the screen keys by `provider`, never by position.
+    expect(result.providers.map((item) => item.provider)).toEqual(["runway", "gemini", "openai"]);
+    // 🔴 And the budgets are a shorter list on purpose: Gemini has a key and no dollars. A response carrying a
+    // budget row for every credential would now be the malformed one.
+    expect(result.monthlyBudgets.map((item) => item.provider)).toEqual(["runway", "openai"]);
   });
 
   it("saves a credential via PUT with a body containing exactly { value }", async () => {
@@ -169,6 +173,7 @@ describe("providerSettingsApi", () => {
       providers: [
         makeProviderStatus({ provider: "openai", configured: false, maskedValue: "sk-********7890" }),
         makeProviderStatus({ provider: "runway" }),
+        makeProviderStatus({ provider: "gemini" }),
       ],
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, contradictory)));
@@ -181,6 +186,7 @@ describe("providerSettingsApi", () => {
       providers: [
         makeProviderStatus({ provider: "openai", configured: false, connected: true }),
         makeProviderStatus({ provider: "runway" }),
+        makeProviderStatus({ provider: "gemini" }),
       ],
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, contradictory)));
@@ -199,6 +205,7 @@ describe("providerSettingsApi", () => {
     const invalid = { providers: [
       makeProviderStatus({ provider: "openai", configured: true, maskedValue }),
       makeProviderStatus({ provider: "runway" }),
+      makeProviderStatus({ provider: "gemini" }),
     ] };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, invalid)));
     await expect(getProviderSettings()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });

@@ -28,6 +28,9 @@ describe("ProviderSettingsService", () => {
     expect(saved.providers).toEqual([
       { provider: "openai", configured: true, connected: true, maskedValue: "sk-********wxyz" },
       { provider: "runway", configured: true, connected: true, maskedValue: "key********wxyz" },
+      // Present and empty: a provider whose key nobody has pasted yet is still a provider this app stores one
+      // for, and leaving it out of the list would be the screen's cue that it does not exist.
+      { provider: "gemini", configured: false, connected: false, maskedValue: null },
     ]);
     expect(JSON.stringify(saved)).not.toContain(openai);
     expect(JSON.stringify(saved)).not.toContain(runway);
@@ -56,6 +59,7 @@ describe("ProviderSettingsService", () => {
     expect(response.providers).toEqual([
       expect.objectContaining({ provider: "openai", configured: true, connected: true }),
       expect.objectContaining({ provider: "runway", configured: true, connected: true }),
+      expect.objectContaining({ provider: "gemini", configured: false, connected: false }),
     ]);
   });
 

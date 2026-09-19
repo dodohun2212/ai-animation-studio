@@ -24,7 +24,12 @@ describe("ProviderSettingsController", () => {
   afterEach(async () => { await fs.rm(root, { recursive: true, force: true }); });
 
   it("serves all four settings operations without returning a secret", async () => {
-    expect((await controller.getSettings()).providers).toHaveLength(2);
+    const settings = await controller.getSettings();
+    expect(settings.providers).toHaveLength(3);
+    // 🔴 Three keys, two budgets, and the gap is the point: Gemini runs on a free tier and is bounded by a
+    // count per day in its own ledger, so a dollar limit for it would refuse nothing about money nobody spends.
+    expect(settings.monthlyBudgets).toHaveLength(2);
+    expect(settings.monthlyBudgets.map((budget) => budget.provider)).not.toContain("gemini");
     const saved = await controller.save("openai", { value: secret });
     expect(saved.provider).toMatchObject({ configured: true, connected: true });
     expect(JSON.stringify(saved)).not.toContain(secret);

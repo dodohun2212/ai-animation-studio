@@ -1,18 +1,24 @@
 import { useState } from "react";
-import type { ProviderCredentialKind, ProviderMonthlyBudget } from "@ai-animation-studio/shared";
+import type { ProviderBudgetKind, ProviderMonthlyBudget } from "@ai-animation-studio/shared";
 import { saveProviderMonthlyBudget, toDisplayError } from "../api/providerSettingsApi.js";
-import { PROVIDER_CREDENTIAL_KINDS } from "@ai-animation-studio/shared";
+import { PROVIDER_BUDGET_KINDS } from "@ai-animation-studio/shared";
 
 interface Props {
-  budgets: Record<ProviderCredentialKind, ProviderMonthlyBudget>;
+  budgets: Record<ProviderBudgetKind, ProviderMonthlyBudget>;
   onBudgetChange: (budget: ProviderMonthlyBudget) => void;
 }
 
-const LABEL: Record<ProviderCredentialKind, string> = {
+const LABEL: Record<ProviderBudgetKind, string> = {
   openai: "OpenAI — 글·그림·목소리",
   runway: "Runway — 영상",
 };
-const ORDER: readonly ProviderCredentialKind[] = PROVIDER_CREDENTIAL_KINDS;
+/**
+ * 🔴 Budget kinds, not credential kinds — and tsc is what decided that. A provider whose key this app
+ * stores does not necessarily have a dollar limit: Gemini runs on a free tier and is bounded by a count per day
+ * in its own ledger. Keyed to the credential list, this card would have drawn it "$10.00 남음" — a limit that
+ * refuses nothing, about money nobody spends, beside the numbers that really do stop paid work.
+ */
+const ORDER: readonly ProviderBudgetKind[] = PROVIDER_BUDGET_KINDS;
 const money = (value: number) => `$${value.toFixed(2)}`;
 
 /**
@@ -27,11 +33,11 @@ const money = (value: number) => `$${value.toFixed(2)}`;
  * one being asked before a cycle. The two providers are separate budgets and are never added together.
  */
 export function MonthlyBudgetCard({ budgets, onBudgetChange }: Props) {
-  const [drafts, setDrafts] = useState<Partial<Record<ProviderCredentialKind, string>>>({});
-  const [pending, setPending] = useState<ProviderCredentialKind | null>(null);
-  const [errors, setErrors] = useState<Partial<Record<ProviderCredentialKind, { code: string; message: string }>>>({});
+  const [drafts, setDrafts] = useState<Partial<Record<ProviderBudgetKind, string>>>({});
+  const [pending, setPending] = useState<ProviderBudgetKind | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<ProviderBudgetKind, { code: string; message: string }>>>({});
 
-  async function save(provider: ProviderCredentialKind) {
+  async function save(provider: ProviderBudgetKind) {
     if (pending) return;
     const raw = (drafts[provider] ?? String(budgets[provider].monthlyLimitUsd)).trim();
     const parsed = Number(raw);

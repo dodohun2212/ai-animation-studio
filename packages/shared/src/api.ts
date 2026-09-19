@@ -2098,8 +2098,49 @@ export interface RunLegacyReferenceMigrationResponse {
  * written by the same login and stop being true together (app id, app secret, token, token expiry), so it has
  * its own store rather than a single masked string — see InstagramConnectionStatus.
  */
-export const PROVIDER_CREDENTIAL_KINDS = ["openai", "runway"] as const;
+export const PROVIDER_CREDENTIAL_KINDS = ["openai", "runway", "gemini"] as const;
 export type ProviderCredentialKind = (typeof PROVIDER_CREDENTIAL_KINDS)[number];
+
+/**
+ * The providers whose spending is counted **in dollars, per month**.
+ *
+ * 🔴 **Not the same list as the one above, and keeping them apart is the point.** They were one list while the
+ * two providers happened to coincide — a key and a dollar budget arrived together — so the single union quietly
+ * meant both "we store a key for this" and "this has a monthly limit in money". Gemini has the first and not
+ * the second: it is used on a free tier, and what bounds it is a **count per day** in its own ledger
+ * (`news_call_usage.json`), which is a different unit over a different window.
+ *
+ * Left merged, adding Gemini would have drawn it a monthly budget card reading "$10.00 남음" — a limit that
+ * refuses nothing, about money nobody is spending, next to the one number that actually stops paid work. The
+ * screen is spared that by the type rather than by anyone remembering: `MonthlyBudgetCard` is keyed to this
+ * list, so a provider without dollars cannot appear in it.
+ *
+ * 🟠 This is the same distinction CLI got wrong in Round 926 and corrected in 928 — `api_budget_usage.json` is
+ * one provider's dollars per month, and the news reel's cap is another provider's calls per day. Merging them
+ * in the contract would have undone in types what the ledgers already keep apart.
+ */
+export const PROVIDER_BUDGET_KINDS = ["openai", "runway"] as const;
+export type ProviderBudgetKind = (typeof PROVIDER_BUDGET_KINDS)[number];
+
+/**
+ * What a person has to know **at the moment they paste a key**, for the providers where it is not obvious.
+ *
+ * 🔴 Gemini's entry is a condition, not a tip. A Gemini key is always issued inside a Google Cloud project, and
+ * a key made in a project that already has billing attached is **a paid key from its first request** — the free
+ * allowance simply becomes the first slice of a bill. Our own daily cap bounds what that costs (Round 926 §1),
+ * but a cap is "cheap when the promise breaks"; nobody owned "do not break it", and the only place that can be
+ * owned is the field where the key goes in (Cowork Round 941 §1).
+ *
+ * A `Record` over the union rather than an optional field, so adding a provider is a decision about this rather
+ * than a default. And per provider rather than one sentence about keys in general, because it is **false for
+ * the others**: a Runway key is supposed to have billing behind it, and telling somebody otherwise would break
+ * the thing it was trying to protect.
+ */
+export const PROVIDER_KEY_NOTES: Record<ProviderCredentialKind, string | null> = {
+  openai: null,
+  runway: null,
+  gemini: "결제가 연결되지 않은 구글 클라우드 프로젝트에서 만든 키를 넣어 주세요. 그래야 무료 한도를 넘었을 때 청구가 아니라 거절이 됩니다. 결제가 걸린 프로젝트의 키는 처음부터 유료로 동작하고, 이 앱은 그 차이를 확인할 방법이 없습니다.",
+};
 
 export interface ProviderCredentialStatus {
   provider: ProviderCredentialKind;
@@ -2120,7 +2161,8 @@ export interface ProviderCredentialStatus {
  * showing the number that will actually stop a request rather than a second estimate of it.
  */
 export interface ProviderMonthlyBudget {
-  provider: ProviderCredentialKind;
+  /** 🔴 Budget kinds, not credential kinds — a provider counted in calls per day has no row here at all. */
+  provider: ProviderBudgetKind;
   monthlyLimitUsd: number;
   isDefault: boolean;
   spentUsd: number;

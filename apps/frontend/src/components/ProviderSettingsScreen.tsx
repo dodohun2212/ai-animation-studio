@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { InstagramConnectionStatus, ProviderCredentialKind, ProviderCredentialStatus, ProviderMonthlyBudget, VideoModelSetting } from "@ai-animation-studio/shared";
+import type { InstagramConnectionStatus, ProviderBudgetKind, ProviderCredentialKind, ProviderCredentialStatus, ProviderMonthlyBudget, VideoModelSetting } from "@ai-animation-studio/shared";
 import { getInstagramConnection } from "../api/instagramConnectionApi.js";
 import { getProviderSettings, toDisplayError } from "../api/providerSettingsApi.js";
 import { InstagramConnectionCard } from "./InstagramConnectionCard.js";
@@ -12,7 +12,7 @@ import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props { onBack: () => void }
 type StatusMap = Record<ProviderCredentialKind, ProviderCredentialStatus>;
-type BudgetMap = Record<ProviderCredentialKind, ProviderMonthlyBudget>;
+type BudgetMap = Record<ProviderBudgetKind, ProviderMonthlyBudget>;
 interface State { statuses: StatusMap | null; budgets: BudgetMap | null; videoModel: VideoModelSetting | null; error: { code: string; message: string } | null; loading: boolean }
 /**
  * A failed read must not be rendered as "not connected", which is a different fact — but it must not be
@@ -80,6 +80,10 @@ export function ProviderSettingsScreen({ onBack }: Props) {
         <div className="space-y-5">
           <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
           <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={() => acquireMutation("runway")} releaseMutation={() => releaseMutation("runway")}/>
+          {/* 🟠 예산 카드 **위**입니다. Gemini 는 월 예산이 없어서(무료 등급, 한도는 하루 건수) 아래 카드에 안
+              나오는데, 키 칸까지 예산 아래로 내려가면 「예산이 없으니 이 제공자도 없다」로 읽힙니다. 키를 넣는
+              자리는 키들끼리 모여 있어야 합니다. 결제 조건 문구는 카드가 계약에서 읽습니다(PROVIDER_KEY_NOTES). */}
+          <ProviderCredentialCard label="Gemini" status={state.statuses.gemini} onStatusChange={update} acquireMutation={() => acquireMutation("gemini")} releaseMutation={() => releaseMutation("gemini")}/>
           {state.budgets && <MonthlyBudgetCard budgets={state.budgets} onBudgetChange={updateBudget} />}
           {/* Beside the budget on purpose: the model is what decides the per-second rate the budget is spent
               at, so the two numbers a person compares are next to each other rather than a screen apart. */}

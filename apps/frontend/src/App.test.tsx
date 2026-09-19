@@ -172,6 +172,8 @@ describe("App", () => {
           providers: [
             { provider: "openai", configured: false, connected: false, maskedValue: null },
             { provider: "runway", configured: false, connected: false, maskedValue: null },
+            // Gemini has a key and no dollar budget, so it belongs here and deliberately not in monthlyBudgets.
+            { provider: "gemini", configured: false, connected: false, maskedValue: null },
           ],
           monthlyBudgets: [
             { provider: "openai", monthlyLimitUsd: 10, isDefault: true, spentUsd: 0, remainingUsd: 10 },

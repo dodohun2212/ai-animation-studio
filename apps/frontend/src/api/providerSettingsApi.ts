@@ -1,4 +1,5 @@
 import {
+  PROVIDER_BUDGET_KINDS,
   PROVIDER_CREDENTIAL_KINDS,
   API_ROUTES,
   VIDEO_MODELS,
@@ -7,6 +8,7 @@ import {
   type VideoModel,
   type VideoModelOption,
   type VideoModelSetting,
+  type ProviderBudgetKind,
   type ProviderCredentialKind,
   type ProviderCredentialStatus,
   type ProviderMonthlyBudget,
@@ -33,6 +35,7 @@ const MALFORMED_RESPONSE_ERROR = { code: "CLIENT_MALFORMED_RESPONSE", message: "
 const UNKNOWN_ERROR = { code: "CLIENT_UNKNOWN_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요." };
 
 const PROVIDER_KINDS: readonly ProviderCredentialKind[] = PROVIDER_CREDENTIAL_KINDS;
+const BUDGET_KINDS: readonly ProviderBudgetKind[] = PROVIDER_BUDGET_KINDS;
 
 // Fixed, safe Korean text for every backend error code. The server's own
 // `message` (and `details`) is never displayed — only this trusted mapping is.
@@ -171,7 +174,14 @@ function isGetProviderSettingsResponse(value: unknown): value is GetProviderSett
   if (seenProviders.size !== value.providers.length) return false;
   const seenBudgets = new Set((value.monthlyBudgets as ProviderMonthlyBudget[]).map((item) => item.provider));
   if (seenBudgets.size !== value.monthlyBudgets.length) return false;
-  return PROVIDER_KINDS.every((kind) => seenProviders.has(kind) && seenBudgets.has(kind));
+  /*
+   * 🔴 Two lists, checked separately — they used to be one, and one was wrong. A provider whose key this app
+   * stores does not necessarily have a dollar budget: Gemini runs on a free tier and is bounded by a count per
+   * day in its own ledger. Demanding a budget row for every credential kind would have refused every real
+   * response as malformed the moment that provider existed.
+   */
+  return PROVIDER_KINDS.every((kind) => seenProviders.has(kind))
+    && BUDGET_KINDS.every((kind) => seenBudgets.has(kind));
 }
 
 /** Same reason as the credential response below: a limit answered for the other provider must not land on this card. */

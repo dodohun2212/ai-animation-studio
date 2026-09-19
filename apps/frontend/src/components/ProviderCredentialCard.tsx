@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
-import type { ProviderCredentialStatus } from "@ai-animation-studio/shared";
+import { PROVIDER_KEY_NOTES, type ProviderCredentialStatus } from "@ai-animation-studio/shared";
 import { disconnectProvider, reconnectProvider, saveProviderCredential, toDisplayError } from "../api/providerSettingsApi.js";
 import { validateCredentialInput } from "../validation/credential.js";
 
@@ -55,6 +55,16 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
       {status.configured && status.maskedValue && <p className="mt-1 font-mono text-sm text-slate-400">{status.maskedValue}</p>}
       <form className="mt-4 space-y-2" onSubmit={save}>
         <label className="block text-sm text-slate-300" htmlFor={inputId}>{label} API 키</label>
+        {/* 🔴 조건이지 팁이 아닙니다 — 그래서 저장 뒤가 아니라 **붙여넣는 칸 바로 위**입니다. Gemini 키는 결제가
+            걸린 프로젝트에서 만들면 **첫 요청부터 유료**이고, 이 앱은 그 차이를 확인할 방법이 없습니다. 우리 상한은
+            「약속이 깨졌을 때 싸게」이고 「안 깨지게」는 여기서만 맡을 수 있습니다(Cowork Round 941 §1).
+            🟠 그리고 제공자마다 다릅니다 — Runway 키는 결제가 **있어야** 정상이라, 「키에 대한 일반 안내」로 쓰면
+            지키려던 것을 깨뜨립니다. 그래서 계약이 제공자별 `Record` 로 들고 있고 여기서는 읽기만 합니다. */}
+        {PROVIDER_KEY_NOTES[status.provider] && (
+          <p data-testid={`${status.provider}-key-note`} className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3.5 py-2.5 text-xs leading-relaxed text-amber-200">
+            {PROVIDER_KEY_NOTES[status.provider]}
+          </p>
+        )}
         <input
           id={inputId}
           type="password"
