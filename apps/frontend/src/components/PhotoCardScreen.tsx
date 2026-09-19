@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Asset, AspectRatio, PhotoCardDurationSeconds, ProjectSummary } from "@ai-animation-studio/shared";
-import { PHOTO_CARD_DURATIONS, PHOTO_CARD_QUOTE_MAX_LENGTH } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_MAX_PICTURES, PHOTO_CARD_DURATIONS, PHOTO_CARD_QUOTE_MAX_LENGTH } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createPhotoCard, toPhotoCardDisplayError } from "../api/photoCardsApi.js";
@@ -67,7 +67,14 @@ const outlineButton =
 export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, initialCaptionNote }: Props) {
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [listError, setListError] = useState<DisplayError | null>(null);
-  const [assetId, setAssetId] = useState("");
+  /**
+   * 고른 그림들 — **순서가 곧 장면 순서**입니다.
+   *
+   * 🔴 `Set` 이 아니라 배열인 이유가 여기 있습니다. 계약이 *「in the order they are shown — one scene each」*
+   * 라, 고른 순서가 그대로 재생 순서가 됩니다. `Set` 으로 담으면 순서가 **삽입 순서라는 우연**에 기대게 되고,
+   * 나중에 누가 정렬 한 줄만 넣어도 **영상의 순서가 조용히 바뀝니다.**
+   */
+  const [assetIds, setAssetIds] = useState<string[]>([]);
   const [projectId, setProjectId] = useState("");
   const [quote, setQuote] = useState(initialQuote ?? "");
   const [seconds, setSeconds] = useState<PhotoCardDurationSeconds>(PHOTO_CARD_DURATIONS[0]);
@@ -125,7 +132,29 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
   const trimmedId = projectId.trim();
   const nameTaken = takenNames !== null && takenNames.has(trimmedId);
   const nameUsable = trimmedId.length > 0 && SAFE_NAME.test(trimmedId) && !nameTaken;
-  const ready = Boolean(assetId) && trimmedQuote.length > 0 && nameUsable && trimmedQuote.length <= PHOTO_CARD_QUOTE_MAX_LENGTH;
+  const atLimit = assetIds.length >= PHOTO_CARD_MAX_PICTURES;
+  /**
+   * 🔴 **상한에 닿아도 빼는 것은 늘 열려 있습니다.** 「12장이 찼다」를 이유로 버튼 전체를 닫으면, 잘못 고른
+   * 한 장을 **바꿀 수가 없어서** 사람이 갇힙니다 — 나가는 길은 폼을 다시 채우는 것뿐이고요. 닫히는 것은
+   * **아직 안 고른 것**뿐입니다.
+   */
+  function togglePicture(id: string): void {
+    setAssetIds((current) => {
+      if (current.includes(id)) return current.filter((one) => one !== id);
+      if (current.length >= PHOTO_CARD_MAX_PICTURES) return current;
+      return [...current, id];
+    });
+  }
+
+  /**
+   * 🟠 **고르는 것이 곧 길이를 고르는 것입니다**(계약 주석, CLI Round 950).
+   *
+   * 카드는 예전엔 장면 하나라 길이가 곧 그 한 장의 유지 시간이었습니다. 이제 사진마다 장면 하나라
+   * **장수 × 한 장당 길이**가 완성 길이입니다. 이걸 화면이 말하지 않으면, 세 장을 고른 사람은 10초짜리를
+   * 기대하고 30초를 받습니다 — 그리고 그건 **다 구워진 뒤에야** 압니다.
+   */
+  const totalSeconds = assetIds.length * seconds;
+  const ready = assetIds.length > 0 && trimmedQuote.length > 0 && nameUsable && trimmedQuote.length <= PHOTO_CARD_QUOTE_MAX_LENGTH;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -135,13 +164,8 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
     try {
       const response = await createPhotoCard({
         projectId: trimmedId,
-        /*
-         * 🟠 One picture, in a list. The contract takes several now (CLI Round 950) — each becomes a scene, and
-         * a card's length becomes `pictures × clipDurationSeconds`. This screen still chooses one, because
-         * choosing several is a picker this screen does not have yet and inventing it here while the sidebar
-         * and surfaces are being rebuilt would be a second thing to undo. Widening it is Cowork's, after that.
-         */
-        assetIds: [assetId],
+        // 고른 순서 그대로. 정렬하지 않습니다 — 순서가 장면 순서입니다.
+        assetIds,
         quote: trimmedQuote,
         clipDurationSeconds: seconds,
         aspectRatio,
@@ -158,7 +182,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
     <section className="space-y-5">
       <ScreenHeader title="명언 카드" backLabel="프로젝트 목록으로" onBack={onBack} />
       <p className="text-sm text-slate-400">
-        보관함의 그림 한 장에 문장을 얹어 짧은 영상으로 만듭니다. 그림은 이미 만들어 둔 것을 그대로 쓰기 때문에{" "}
+        보관함의 그림에 문장을 얹어 짧은 영상으로 만듭니다. 그림을 여러 장 고르시면 고른 순서대로 이어 붙습니다. 그림은 이미 만들어 둔 것을 그대로 쓰기 때문에{" "}
         <span className="font-semibold text-slate-100">여기서는 돈이 나가지 않습니다.</span>
       </p>
 
@@ -216,19 +240,36 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
           {assets && assets.length > 0 && (
             <ul aria-label="그림 목록" className="grid max-h-[420px] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
               {assets.map((asset) => {
-                const picked = asset.assetId === assetId;
+                const order = assetIds.indexOf(asset.assetId);
+                const picked = order >= 0;
+                // 🔴 이미 고른 것은 상한과 무관하게 계속 누를 수 있습니다 — 그 누름은 「빼기」입니다.
+                const closed = pending || (!picked && atLimit);
                 return (
                   <li key={asset.assetId}>
                     <button
                       type="button"
                       data-testid={`photo-card-asset-${asset.assetId}`}
+                      data-pick-order={picked ? order + 1 : undefined}
                       aria-pressed={picked}
-                      disabled={pending}
-                      className={`w-full space-y-1 rounded-xl border p-1.5 text-left disabled:opacity-50 ${picked ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 hover:bg-white/5"}`}
-                      onClick={() => setAssetId(asset.assetId)}
+                      disabled={closed}
+                      className={`relative w-full space-y-1 rounded-xl border p-1.5 text-left disabled:opacity-40 ${picked ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 hover:bg-white/5"}`}
+                      onClick={() => togglePicture(asset.assetId)}
                     >
                       {asset.contentUrl && (
                         <img src={asset.contentUrl} alt={asset.displayName} className="w-full rounded-xl border border-white/10 object-cover" />
+                      )}
+                      {/*
+                        * 🔴 번호는 「골랐다」가 아니라 **「몇 번째로 나온다」**를 말합니다. 체크 표시로 그리면
+                        * 순서를 정한 줄도 모른 채 고르게 되고, 순서는 **되돌릴 수 없는 결과**(영상)에 그대로
+                        * 실립니다. 색만으로 상태를 말하지 않는다는 §6 도 이 번호가 같이 지킵니다.
+                        */}
+                      {picked && (
+                        <span
+                          data-testid={`photo-card-order-${asset.assetId}`}
+                          className="type-mono absolute left-3 top-3 flex h-5 min-w-5 items-center justify-center rounded bg-ground/85 px-1 text-[11px] font-semibold text-bone"
+                        >
+                          {order + 1}
+                        </span>
                       )}
                       <span className="block truncate text-xs text-slate-300">{asset.displayName}</span>
                     </button>
@@ -236,6 +277,23 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
                 );
               })}
             </ul>
+          )}
+
+          {/*
+            * 🟠 이 두 줄이 이 화면에서 **고른 결과를 말하는 유일한 자리**입니다. 그림 격자는 무엇을 골랐는지만
+            * 보여 주지, 그게 무엇이 되는지는 말하지 않습니다.
+            */}
+          <p className="text-xs text-slate-400 tabular-nums" data-testid="photo-card-length">
+            {assetIds.length === 0
+              ? "아직 고른 그림이 없습니다. 고른 순서대로 한 장씩 이어 붙습니다."
+              : `사진 ${assetIds.length}장 × 한 장당 ${seconds}초 = ${totalSeconds}초`}
+          </p>
+          {atLimit && (
+            /* 🔴 「더 못 고른다」만 말하면 사람은 화면이 고장 난 줄 압니다. 왜 닫혔는지와 **어떻게 여는지**를
+               같이 말합니다 — 여는 방법은 고른 것을 다시 눌러 빼는 것입니다. */
+            <p className="text-xs text-amber-300" data-testid="photo-card-limit">
+              한 카드에 {PHOTO_CARD_MAX_PICTURES}장까지입니다. 다른 그림을 넣으시려면 고른 것을 다시 눌러 빼 주세요.
+            </p>
           )}
         </section>
 
@@ -271,8 +329,10 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
             </div>
           )}
 
+          {/* 🔴 「길이」가 아니라 **「한 장당 길이」**입니다. 사진이 여럿이 되면서 이 값은 완성 길이가 아니게
+              됐는데, 이름이 그대로면 사람은 이걸 전체 길이로 읽습니다. 전체는 위의 한 줄이 말합니다. */}
           <label className="block text-sm text-slate-300">
-            길이
+            한 장당 길이
             <select
               data-testid="photo-card-seconds"
               className={field}
@@ -330,7 +390,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
         {/* Repeated next to the button, not only in the header. The header sentence is read once on the way in;
             this one is read at the moment someone hesitates over a button that might cost money. */}
         <p className="text-sm text-slate-400" data-testid="photo-card-music-note">
-          <span className="font-semibold text-slate-100">이 단계는 비용이 들지 않습니다</span> — 이미 만들어 둔 그림 한 장을 그대로 쓰고
+          <span className="font-semibold text-slate-100">이 단계는 비용이 들지 않습니다</span> — 이미 만들어 둔 그림을 그대로 쓰고
           AI에 새로 요청하지 않습니다. 음악은 다음 단계(영상 합치기)에서 고릅니다. 저작권 표시가 필요한 음원이면 거기서 알려드립니다.
         </p>
 

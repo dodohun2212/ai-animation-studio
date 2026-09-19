@@ -42,6 +42,127 @@ async function fillAndSubmit() {
 describe("PhotoCardScreen", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
+  /**
+   * 사진 여러 장 — **고르는 것이 곧 길이를 고르는 것**입니다(계약 주석, CLI Round 950).
+   *
+   * 🔴 카드는 예전엔 장면 하나라 「길이」가 곧 완성 길이였습니다. 이제 사진마다 장면 하나라
+   * **장수 × 한 장당 길이**가 완성 길이인데, 화면이 그 말을 안 하면 세 장을 고른 사람은 10초짜리를 기대하고
+   * 30초를 받습니다 — 그리고 그건 **다 구워진 뒤에야** 압니다.
+   */
+  describe("사진 여러 장", () => {
+    const many = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((n) =>
+      makeAsset({ assetId: `P${n}`, displayName: `그림${n}`, imageAvailable: true, contentUrl: `/assets/P${n}/content` }));
+
+    async function renderWith(assets: unknown[], ...rest: Response[]) {
+      stub(jsonResponse(200, { assets }), ...rest);
+      render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
+      await screen.findByTestId(`photo-card-asset-${(assets[0] as { assetId: string }).assetId}`);
+    }
+
+    const pick = (id: string) => fireEvent.click(screen.getByTestId(`photo-card-asset-${id}`));
+
+    /**
+     * 🔴 순서가 이 짝의 전부입니다. 계약이 *「in the order they are shown — one scene each」* 라, 고른 순서가
+     * 그대로 **재생 순서**가 됩니다. 정렬이 한 줄 끼어들면 화면은 그대로인데 **영상의 순서가 바뀝니다** —
+     * 그리고 그건 되돌릴 수 없는 결과물에 실립니다.
+     */
+    it("고른 순서 그대로 보내고, 화면에도 그 번호가 보인다", async () => {
+      const fetchMock = stub(
+        jsonResponse(200, { assets: many.slice(0, 3) }),
+        jsonResponse(201, { project: makeProject({ id: "quote_01" }) }),
+      );
+      render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
+      await screen.findByTestId("photo-card-asset-P1");
+
+      // 일부러 목록 순서와 다르게 고릅니다 — 목록 순서로 보내면 이 짝이 잡습니다.
+      pick("P3"); pick("P1"); pick("P2");
+
+      expect(screen.getByTestId("photo-card-order-P3").textContent).toBe("1");
+      expect(screen.getByTestId("photo-card-order-P1").textContent).toBe("2");
+      expect(screen.getByTestId("photo-card-order-P2").textContent).toBe("3");
+
+      fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
+      fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "quote_01" } });
+      fireEvent.click(screen.getByTestId("photo-card-submit"));
+
+      await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/photo-cards")).toBe(true));
+      const call = fetchMock.mock.calls.find(([url]) => url === "/photo-cards")!;
+      const body = JSON.parse(String((call[1] as RequestInit).body)) as { assetIds: string[] };
+      expect(body.assetIds).toEqual(["P3", "P1", "P2"]);
+    });
+
+    it("다시 누르면 빠지고, 남은 것들의 번호가 당겨진다", async () => {
+      await renderWith(many.slice(0, 3));
+      pick("P1"); pick("P2"); pick("P3");
+
+      pick("P1");
+
+      expect(screen.queryByTestId("photo-card-order-P1")).toBeNull();
+      /*
+       * 🟠 「빠졌다」만 보면 부족합니다. 번호가 그대로 2·3 으로 남으면 **1번이 없는 카드**가 되고, 그건
+       * 화면이 순서에 대해 거짓말을 하는 것입니다.
+       */
+      expect(screen.getByTestId("photo-card-order-P2").textContent).toBe("1");
+      expect(screen.getByTestId("photo-card-order-P3").textContent).toBe("2");
+    });
+
+    it("길이를 「장수 × 한 장당 길이」로 말하고, 둘 중 뭘 바꿔도 따라온다", async () => {
+      await renderWith(many.slice(0, 3));
+      const line = () => screen.getByTestId("photo-card-length").textContent ?? "";
+
+      // 🔴 한 장도 안 골랐을 때 숫자를 말하면 안 됩니다 — 0초는 만들 수 있는 카드가 아닙니다.
+      expect(line()).toContain("아직 고른 그림이 없습니다");
+
+      pick("P1");
+      expect(line()).toContain("사진 1장");
+      pick("P2");
+      expect(line()).toContain("사진 2장");
+
+      // 기본값은 PHOTO_CARD_DURATIONS[0] = 5초라, 두 장이면 10초입니다.
+      expect(line()).toContain("= 10초");
+
+      fireEvent.change(screen.getByTestId("photo-card-seconds"), { target: { value: "10" } });
+      /*
+       * 🔴 「장수를 바꾸면 바뀐다」만 박으면, 한 장당 길이를 곱하지 않고 **장수만 쓰는 판**도 통과합니다.
+       * 곱셈이 살아 있는지는 **다른 쪽 피연산자**를 바꿔 봐야 압니다 — 같은 두 장인데 20초여야 합니다.
+       */
+      expect(line()).toContain("한 장당 10초");
+      expect(line()).toContain("= 20초");
+    });
+
+    /**
+     * 🔴 이 짝이 이 묶음에서 제일 중요합니다. 「12장이 찼다」를 이유로 격자 전체를 닫으면, 잘못 고른 한 장을
+     * **바꿀 수가 없어서** 사람이 갇힙니다 — 나가는 길은 폼을 처음부터 다시 채우는 것뿐입니다.
+     */
+    it("상한에 닿으면 안 고른 것만 닫히고, 고른 것은 계속 뺄 수 있다", async () => {
+      await renderWith(many);
+      for (const one of many.slice(0, 12)) pick(one.assetId);
+
+      expect(screen.getByTestId("photo-card-limit")).toBeTruthy();
+      expect((screen.getByTestId("photo-card-asset-P13") as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByTestId("photo-card-asset-P1") as HTMLButtonElement).disabled).toBe(false);
+
+      pick("P1");
+      expect(screen.queryByTestId("photo-card-order-P1")).toBeNull();
+      // 자리가 나면 닫힌 것이 다시 열립니다 — 그리고 안내도 같이 사라져야 합니다.
+      expect((screen.getByTestId("photo-card-asset-P13") as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.queryByTestId("photo-card-limit")).toBeNull();
+    });
+
+    it("한 장도 안 고르면 만들기가 닫혀 있다", async () => {
+      await renderWith(many.slice(0, 2));
+      fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
+      fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "quote_01" } });
+
+      expect((screen.getByTestId("photo-card-submit") as HTMLButtonElement).disabled).toBe(true);
+      pick("P1");
+      expect((screen.getByTestId("photo-card-submit") as HTMLButtonElement).disabled).toBe(false);
+      // 뺐으면 다시 닫힙니다 — 「한 번이라도 골랐으면 열린 채로」가 되면 안 됩니다.
+      pick("P1");
+      expect((screen.getByTestId("photo-card-submit") as HTMLButtonElement).disabled).toBe(true);
+    });
+  });
+
   // A folder is not a picture, and an asset whose file cannot be read would be refused by the server after the
   // person had already chosen it and pressed the button. Both are filtered here so the only things offered are
   // things that can actually be used.
