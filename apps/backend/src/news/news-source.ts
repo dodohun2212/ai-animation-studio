@@ -1,0 +1,181 @@
+/**
+ * Which addresses the server may be sent to, and how it gets there.
+ *
+ * 🔴 **This is the condition on fetching an article, not a feature of it.** Everywhere else in this app the
+ * server decides its own destinations; here a person types one in. Unguarded, "fetch the article at this URL"
+ * is a button that makes our process request anything reachable from this machine — `localhost`, the router,
+ * a NAS, a cloud instance's metadata endpoint — and hand the body back to whoever asked (Cowork Round 925
+ * §2.4). The article feature is the same code either way; the difference is entirely in this file.
+ *
+ * Kept in the backend rather than the contract deliberately (CLI Round 926 §4): if the screen held the list it
+ * would judge an address before the redirects are followed, and the host that matters is the **last** one, not
+ * the typed one. Only the side that actually opens the connection can know that, so only that side decides.
+ */
+
+/**
+ * The publishers 캡틴D chose — 「주요 종합지·통신사」.
+ *
+ * 🟠 A list is the right shape here for a reason beyond safety: the summary is only as good as the body we can
+ * parse out, and a parser breaks per publisher. A known set is a set we can actually check, and the screen can
+ * say 「이 언론사는 아직 안 됩니다」 with a list rather than failing vaguely (Cowork Round 927 §5).
+ *
+ * 🔴 Being on this list is not a claim that the body parses — that is measured per publisher in step ③, and a
+ * publisher whose body we cannot read falls back to pasting rather than silently producing a thin summary.
+ * Adding a host here costs nothing and removes nothing; it only says "we may knock on this door".
+ */
+export const NEWS_SOURCE_HOSTS: readonly string[] = [
+  "yna.co.kr",        // 연합뉴스
+  "newsis.com",       // 뉴시스
+  "chosun.com",
+  "joongang.co.kr",
+  "donga.com",
+  "hani.co.kr",
+  "khan.co.kr",
+  "hankookilbo.com",
+  "kbs.co.kr",
+  "imbc.com",         // MBC
+  "sbs.co.kr",
+  "ytn.co.kr",
+];
+
+/** Anything larger is not an article, and reading it costs memory we have no reason to spend. */
+export const NEWS_ARTICLE_MAX_BYTES = 2 * 1024 * 1024;
+/** Publishers redirect (http→https, m.→www, AMP), but a chain this long is a redirector, not a publisher. */
+export const NEWS_MAX_REDIRECTS = 5;
+
+export type NewsSourceRefusal =
+  /** Not a URL we can act on at all — unparseable, or a scheme that is not https. */
+  | "unsupported_address"
+  /** A real address, but not one of the publishers on the list. The person can act on this: use another paper. */
+  | "publisher_not_allowed"
+  /** An address that points back inside this machine or network. Never shown as "try a different one". */
+  | "private_address"
+  /** The chain of redirects did not settle. */
+  | "too_many_redirects";
+
+export class NewsSourceRefusedError extends Error {
+  constructor(readonly reason: NewsSourceRefusal, readonly host?: string) {
+    super(`News source refused (${reason}${host ? `: ${host}` : ""}).`);
+    this.name = "NewsSourceRefusedError";
+  }
+}
+
+const stripBrackets = (host: string): string => host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+
+/**
+ * Whether a host is a literal address rather than a name, and if so whether it is one we must never call.
+ *
+ * 🔴 Refuses every literal, not only the private ones. A public literal has no legitimate use here — the
+ * allowlist is a list of **names**, so an address that skips the name skips the list. Being strict costs
+ * nothing (nobody types an IP for a news article) and removes the whole class of "which ranges did we
+ * remember?" from the answer.
+ *
+ * The ranges are still spelled out below, because the error a person sees must distinguish "that is not a
+ * publisher we know" from "that points inside your own network" — the second is never advice to try again.
+ */
+function literalAddressRefusal(host: string): NewsSourceRefusal | undefined {
+  const bare = stripBrackets(host);
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(bare);
+  if (ipv4) {
+    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+    if (a > 255 || b > 255 || Number(ipv4[3]) > 255 || Number(ipv4[4]) > 255) return "unsupported_address";
+    const isPrivate = a === 10 || a === 127 || a === 0
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168)
+      || (a === 169 && b === 254)          // link-local, and the cloud metadata endpoint lives here
+      || (a === 100 && b >= 64 && b <= 127) // CGNAT
+      || a >= 224;                          // multicast and reserved
+    return isPrivate ? "private_address" : "publisher_not_allowed";
+  }
+  // IPv6, including the ::ffff:10.0.0.1 form that smuggles a v4 address through a v6 literal.
+  if (bare.includes(":")) {
+    const lower = bare.toLowerCase();
+    const isPrivate = lower === "::1" || lower === "::" || lower.startsWith("fc") || lower.startsWith("fd")
+      || lower.startsWith("fe80") || lower.startsWith("::ffff:");
+    return isPrivate ? "private_address" : "publisher_not_allowed";
+  }
+  return undefined;
+}
+
+/** `localhost` and friends never reach DNS on most systems, and none of them are a publisher either way. */
+const LOCAL_NAMES = new Set(["localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"]);
+
+const isAllowedPublisher = (host: string): boolean =>
+  NEWS_SOURCE_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+
+/**
+ * The one check, applied to the typed address and to **every** host a redirect leads to.
+ *
+ * 🟠 **The host is decided before the port and the credentials, and that order is the pair's subject.** Every
+ * branch here refuses, so safety does not depend on the order — the *answer a person reads* does.
+ * `https://www.yna.co.kr@192.168.0.1/` is their own router with a wire service's name pasted in front of the
+ * `@`; deciding on the credentials first would answer 「지원하지 않는 주소」 and leave them adjusting the link.
+ * The host is what we actually connect to, so the host is what the refusal is about. For the same reason the
+ * inside-the-network answer is decided before the not-a-publisher one: somebody who pasted their NAS address
+ * is not one newspaper away from success, and must never be told to try a different one.
+ */
+export function assertAllowedNewsUrl(raw: string): URL {
+  let url: URL;
+  try { url = new URL(raw); } catch { throw new NewsSourceRefusedError("unsupported_address"); }
+
+  // https only. http would let anything between here and the publisher rewrite the article we are about to
+  // summarise as fact — and every publisher on the list serves https.
+  if (url.protocol !== "https:") throw new NewsSourceRefusedError("unsupported_address");
+
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (LOCAL_NAMES.has(host)) throw new NewsSourceRefusedError("private_address", host);
+
+  const literal = literalAddressRefusal(host);
+  if (literal) throw new NewsSourceRefusedError(literal, host);
+
+  if (!isAllowedPublisher(host)) throw new NewsSourceRefusedError("publisher_not_allowed", host);
+
+  // A listed publisher on another port is a port scan wearing its name, and credentials are never part of an
+  // article address — both are refused, but as "we do not speak that", since the host itself was fine.
+  if (url.port && url.port !== "443") throw new NewsSourceRefusedError("unsupported_address", host);
+  if (url.username || url.password) throw new NewsSourceRefusedError("unsupported_address", host);
+  return url;
+}
+
+export interface NewsFetchResult {
+  /** Where the body actually came from, after redirects — what the screen and the caption must credit. */
+  finalUrl: string;
+  body: string;
+}
+
+export interface NewsFetchDeps {
+  fetch?: typeof globalThis.fetch;
+  maxRedirects?: number;
+  maxBytes?: number;
+}
+
+/**
+ * Fetch one article, checking **every** hop.
+ *
+ * 🔴 `redirect: "manual"` is the point of this function. Letting fetch follow redirects itself checks the
+ * address the person typed and then goes wherever it is sent — so an allowed publisher's open redirector, or
+ * simply a shortened link, walks straight past the list. The list has to be applied to the host that finally
+ * answers, which means stepping through the chain here.
+ */
+export async function fetchNewsArticle(raw: string, deps: NewsFetchDeps = {}): Promise<NewsFetchResult> {
+  const call = deps.fetch ?? globalThis.fetch;
+  const maxRedirects = deps.maxRedirects ?? NEWS_MAX_REDIRECTS;
+  const maxBytes = deps.maxBytes ?? NEWS_ARTICLE_MAX_BYTES;
+
+  let url = assertAllowedNewsUrl(raw);
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    const response = await call(url.toString(), { redirect: "manual", headers: { Accept: "text/html" } });
+    const location = response.status >= 300 && response.status < 400 ? response.headers.get("location") : null;
+    if (!location) {
+      const body = await response.text();
+      // Checked after reading because a body is only bounded once it is in hand; the cap exists so an endless
+      // or enormous response cannot become this process's memory problem.
+      if (body.length > maxBytes) throw new NewsSourceRefusedError("unsupported_address", url.hostname);
+      return { finalUrl: url.toString(), body };
+    }
+    // Relative redirects are ordinary; resolving against the current URL is what a browser does, and the
+    // result goes through the same door as the first address.
+    url = assertAllowedNewsUrl(new URL(location, url).toString());
+  }
+  throw new NewsSourceRefusedError("too_many_redirects", url.hostname);
+}
