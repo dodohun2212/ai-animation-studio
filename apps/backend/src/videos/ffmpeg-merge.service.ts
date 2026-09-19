@@ -114,6 +114,19 @@ export interface MergeSceneInput {
   /** Photo cards only, alongside stillDurationSeconds: where this card's text goes. Absent means the defaults. */
   subtitleLayout?: PhotoCardSubtitleLayout;
   /**
+   * Whether this card's lines arrive one at a time, or are all up from the first frame.
+   *
+   * 🔴 **False for every picture after the first.** Subtitles are burned per scene, so a card holding
+   * several pictures would otherwise replay the reveal on each one: read three lines, watch them vanish, read
+   * them again. The reveal exists to keep pace with somebody reading, and restarting it takes their place
+   * away. The text itself stays on every picture — in a news reel the text *is* the content, and losing it
+   * halfway is worse than any animation.
+   *
+   * Carried rather than inferred, because "is this the first picture" is a fact about the card that only the
+   * caller assembling the scenes knows. Absent means true, so an ordinary one-picture card is unchanged.
+   */
+  revealSubtitle?: boolean;
+  /**
    * Ordinary scenes only: where this scene's subtitle goes. Absent means the defaults.
    *
    * The other half of the pair above, and named apart from it on purpose — the two types are structurally
@@ -294,7 +307,7 @@ export class FfmpegMergeEngine {
         // through for that: the field that says "this is a still" is already here.
         const layout = scene.stillDurationSeconds === undefined ? "scene" : "photo-card";
         const cardColors = layout === "photo-card" ? await this.cardColors(scene.clip, width, height, scene.subtitleLayout, normalizedDirectory, index) : undefined;
-        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height, layout, { scene: scene.sceneSubtitleLayout, card: scene.subtitleLayout }, cardColors), "utf8");
+        await fs.writeFile(assPath, sceneSubtitleAss(scene.subtitleText, clipDurationSeconds, width, height, layout, { scene: scene.sceneSubtitleLayout, card: scene.subtitleLayout }, cardColors, scene.revealSubtitle ?? true), "utf8");
         filter += `,subtitles='${escapeForFfmpegFilterPath(assPath)}':fontsdir='${escapeForFfmpegFilterPath(this.fontsDir)}'`;
       }
       // Last, after the subtitles, so the whole finished frame turns together and the text reads upright to

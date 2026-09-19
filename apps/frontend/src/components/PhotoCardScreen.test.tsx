@@ -68,7 +68,9 @@ describe("PhotoCardScreen", () => {
     expect(call).toBeTruthy();
     expect(JSON.parse(String((call![1] as RequestInit).body))).toEqual({
       projectId: "quote_01",
-      assetId: "ASSET-1",
+      // 🟠 A list, holding the one picture this screen can choose. Each entry becomes a scene, so a card's
+      // length is now `pictures × clipDurationSeconds` — the picker for several is not built yet (CLI 950).
+      assetIds: ["ASSET-1"],
       quote: "천천히 서두르라",
       clipDurationSeconds: 5,
       aspectRatio: "9:16",

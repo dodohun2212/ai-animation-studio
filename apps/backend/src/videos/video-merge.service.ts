@@ -10,6 +10,7 @@ import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, MERGE_FRAME_FOR_ASPECT, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type GetPhotoCardSubtitleColorsResponse, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
+import { cardImagePath } from "../projects/card-image-path.js";
 import { photoCardFor, storedSceneSubtitleLayout, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
 import { cssColour } from "./card-palette.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -202,6 +203,19 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
   };
 }
 
+
+/**
+ * A photo card's scenes, one per picture.
+ *
+ * 🟠 Read from the project's own scene list rather than from a count kept somewhere else. A card written
+ * before this feature has one scene and answers `[1]`, so nothing about it changes — which is the only reason
+ * it is safe to widen a shape that already has cards on disk.
+ */
+function cardSceneNumbers(project: StoredProject): SceneNumber[] {
+  const count = Math.max(1, project.scenes.length);
+  return Array.from({ length: count }, (_, index) => (index + 1) as SceneNumber);
+}
+
 @Injectable()
 export class LocalVideoMergeService {
   private readonly engine: FfmpegMergeEngine;
@@ -232,8 +246,15 @@ export class LocalVideoMergeService {
 
   private projectDirectory(projectId: string): string { return path.join(this.projectsRoot, projectId); }
   private clip(projectId: string, scene: SceneNumber): string { return path.join(this.projectDirectory(projectId), "videos", "runway", `scene${scene}.mp4`); }
-  /** A photo card's single picture, kept where every project's scene images live so nothing needs a second convention. */
-  private cardImage(projectId: string): string { return path.join(this.projectDirectory(projectId), "images", "scene1.png"); }
+  /**
+   * One of a photo card's pictures, by scene number.
+   *
+   * 🔴 Through `cardImagePath` rather than spelled here, because the writer spells it too. While a card held
+   * one picture the name was a constant and two copies were survivable; with an index in it, a writer counting
+   * from one and a reader counting from zero would drop the first picture and never show the last — and
+   * neither side would be wrong on its own.
+   */
+  private cardImage(projectId: string, scene: number = 1): string { return cardImagePath(this.projectsRoot, projectId, scene); }
   private final(projectId: string): string { return path.join(this.projectDirectory(projectId), FINAL_VIDEO_RELATIVE_PATH); }
 
   /**
@@ -265,7 +286,12 @@ export class LocalVideoMergeService {
       // scene without one is merged as before rather than failing the whole reel over a missing stream.
       const clipAudioVolume = stillDurationSeconds === undefined && clipVolume > 0 && (await probeClipFacts(clips[index]!, this.runner))?.hasAudio ? clipVolume : undefined;
       return stillDurationSeconds !== undefined
-        ? { clip: clips[index]!, narrationAudioPath, subtitleText, stillDurationSeconds, ...(subtitleLayout ? { subtitleLayout } : {}) }
+        /*
+         * 🔴 `revealSubtitle` only on the first picture. The text stays on every one — in a news reel the
+         * text is the content — but the line-by-line reveal must not start over each time the picture
+         * changes, or somebody reading loses their place three times in a row.
+         */
+        ? { clip: clips[index]!, narrationAudioPath, subtitleText, stillDurationSeconds, revealSubtitle: index === 0, ...(subtitleLayout ? { subtitleLayout } : {}) }
         : { clip: clips[index]!, narrationAudioPath, subtitleText, ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(clipAudioVolume !== undefined ? { clipAudioVolume } : {}) };
     }));
   }
@@ -306,12 +332,22 @@ export class LocalVideoMergeService {
     if (project.workflow_state === WorkflowState.Completed && !remakeableCard) throw videoMergeAlreadyCompleted();
     if (!remakeableCard && project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
     if (photoCardFor(project)) {
-      const picture = this.cardImage(project.project_id);
-      // The picture is the whole material. Checked for real bytes the same way a clip is, and never probed —
-      // a still has no duration of its own, which is exactly what ffprobe refuses it for.
-      const { size } = await fs.stat(picture).catch(() => ({ size: 0 }));
-      if (size <= 0) throw videoMergeClipsInvalid();
-      return { paths: [picture], stillDurationSeconds: toShortProjectSettings(project).clipDurationSeconds };
+      /*
+       * Every picture, in scene order. A card used to be one picture and one scene; it is now one scene per
+       * picture, which reuses `merge()`'s existing walk-and-concatenate without changing a line of it — and
+       * gives each picture the same Ken Burns push the single one already had.
+       *
+       * 🔴 Each is checked for real bytes, the same way a clip is, and none is probed: a still has no duration
+       * of its own, which is exactly what ffprobe refuses it for. Checking all of them rather than the first
+       * matters more now than it did — a card that merged its first picture and then failed on its third
+       * would leave a partly-rendered reel whose length is wrong and whose ending is missing.
+       */
+      const pictures = cardSceneNumbers(project).map((scene) => this.cardImage(project.project_id, scene));
+      for (const picture of pictures) {
+        const { size } = await fs.stat(picture).catch(() => ({ size: 0 }));
+        if (size <= 0) throw videoMergeClipsInvalid();
+      }
+      return { paths: pictures, stillDurationSeconds: toShortProjectSettings(project).clipDurationSeconds };
     }
     return { paths: await this.approvedClips(project) };
   }
@@ -450,8 +486,7 @@ export class LocalVideoMergeService {
         }
       }
     }
-    const cardScenes: SceneNumber[] = [1 as SceneNumber];
-    const renderedScenes = material.stillDurationSeconds === undefined ? scenesFor(project) : cardScenes;
+    const renderedScenes = material.stillDurationSeconds === undefined ? scenesFor(project) : cardSceneNumbers(project);
     const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout, audio.clipVolume);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };

@@ -135,7 +135,13 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
     try {
       const response = await createPhotoCard({
         projectId: trimmedId,
-        assetId,
+        /*
+         * 🟠 One picture, in a list. The contract takes several now (CLI Round 950) — each becomes a scene, and
+         * a card's length becomes `pictures × clipDurationSeconds`. This screen still chooses one, because
+         * choosing several is a picker this screen does not have yet and inventing it here while the sidebar
+         * and surfaces are being rebuilt would be a second thing to undo. Widening it is Cowork's, after that.
+         */
+        assetIds: [assetId],
         quote: trimmedQuote,
         clipDurationSeconds: seconds,
         aspectRatio,

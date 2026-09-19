@@ -83,7 +83,7 @@ describe("a photo card, from made to published", () => {
     const { root, projectsRoot, projects, connection, cards, assetId } = await setup();
     // Nothing on this path may reach a provider except the Graph stub below.
     vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
-    await cards.create({ projectId: "card_one", assetId, quote: "불광불급\n미치지 않으면 미치지 못한다", clipDurationSeconds: 5, aspectRatio: "9:16" });
+    await cards.create({ projectId: "card_one", assetIds: [assetId], quote: "불광불급\n미치지 않으면 미치지 못한다", clipDurationSeconds: 5, aspectRatio: "9:16" });
 
     const merged = await new LocalVideoMergeService(projects, projectsRoot, mergeRunner()).merge("card_one");
     expect(merged.finalVideoPath).toBe("videos/final/instagram_reel.mp4");
@@ -109,7 +109,7 @@ describe("a photo card, from made to published", () => {
   it("stops being remakeable the moment it is published", async () => {
     const { projectsRoot, projects, connection, cards, assetId } = await setup();
     vi.stubGlobal("fetch", () => { throw new Error("a photo card must not reach a provider"); });
-    await cards.create({ projectId: "card_one", assetId, quote: "불광불급", clipDurationSeconds: 5, aspectRatio: "9:16" });
+    await cards.create({ projectId: "card_one", assetIds: [assetId], quote: "불광불급", clipDurationSeconds: 5, aspectRatio: "9:16" });
     await new LocalVideoMergeService(projects, projectsRoot, mergeRunner()).merge("card_one");
     // Remakeable while unpublished — this is what 캡틴D can do with the card sitting on their machine today.
     await new LocalVideoMergeService(projects, projectsRoot, mergeRunner()).merge("card_one", { subtitleLayout: { scale: 0.03 } });

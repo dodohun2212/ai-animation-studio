@@ -3,7 +3,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { jsonResponse } from "./testUtils.js";
 import { PhotoCardsApiError, createPhotoCard, getPhotoCardSubtitleColors, toPhotoCardDisplayError } from "./photoCardsApi.js";
 
-const request = { projectId: "quote_01", assetId: "ASSET-1", quote: "문장", clipDurationSeconds: 5, aspectRatio: "9:16" } as const;
+const request = { projectId: "quote_01", assetIds: ["ASSET-1"], quote: "문장", clipDurationSeconds: 5, aspectRatio: "9:16" } as const;
 
 describe("photoCardsApi", () => {
   afterEach(() => { vi.unstubAllGlobals(); });

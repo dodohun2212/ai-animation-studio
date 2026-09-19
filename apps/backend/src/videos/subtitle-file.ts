@@ -63,8 +63,10 @@ export function sceneSubtitleAss(
   layouts: SubtitleLayouts = {},
   /** A photo card's colours, chosen from its picture (card-palette.ts). Absent keeps the plain white text. */
   cardColors?: CardSubtitleColors,
+  /** See MergeSceneInput.revealSubtitle — false puts the whole text up from the first frame. */
+  reveal = true,
 ): string {
-  if (layout === "photo-card") return photoCardSubtitleAss(text, durationSeconds, width, height, layouts.card ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, cardColors);
+  if (layout === "photo-card") return photoCardSubtitleAss(text, durationSeconds, width, height, layouts.card ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, cardColors, reveal);
   // Every number comes from the shared geometry, which the screen offering the slider previews from too.
   const { size, y, centerX, margin } = sceneSubtitleGeometry(width, height, layouts.scene ?? DEFAULT_SCENE_SUBTITLE_LAYOUT);
   return [
@@ -143,7 +145,7 @@ export interface SubtitleLayouts {
  * picked at 1920). `n5\pos` places each line by its own centre, so the block's position does not depend on
  * how many lines wrapped.
  */
-function photoCardSubtitleAss(text: string, durationSeconds: number, width: number, height: number, card: PhotoCardSubtitleLayout, colors?: CardSubtitleColors): string {
+function photoCardSubtitleAss(text: string, durationSeconds: number, width: number, height: number, card: PhotoCardSubtitleLayout, colors?: CardSubtitleColors, reveal = true): string {
   const { heading, body } = splitPhotoCardSubtitle(text);
   // Every number comes from the shared geometry, which the preview screen draws from too — a second copy of
   // this arithmetic is a preview that can disagree with the video without anything saying so.
@@ -185,7 +187,7 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
    * end would be text nobody gets to read, which is worse than no animation at all.
    */
   const revealAt = (index: number) =>
-    body.length <= 1 ? 0 : (index / body.length) * (durationSeconds * PHOTO_CARD_REVEAL_SHARE);
+    !reveal || body.length <= 1 ? 0 : (index / body.length) * (durationSeconds * PHOTO_CARD_REVEAL_SHARE);
   return [
     "[Script Info]",
     "ScriptType: v4.00+",

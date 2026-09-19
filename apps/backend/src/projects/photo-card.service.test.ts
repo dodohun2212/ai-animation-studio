@@ -3,6 +3,7 @@ import { ProjectsService } from "./projects.service.js";
 import { createStoredProject } from "./project.mapper.js";
 import { shortProjectAspectRatio } from "./project-aspect.js";
 import type { ShortProjectSettings } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_MAX_PICTURES } from "@ai-animation-studio/shared";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -56,7 +57,8 @@ async function setup() {
   };
 }
 
-const body = (assetId: string) => ({ projectId: "card_one", assetId, quote: "오늘의 문장", clipDurationSeconds: 5 as const, aspectRatio: "9:16" as const });
+/** One picture unless a test asks for more — the shape a card had before it could hold several. */
+const body = (...assetIds: string[]) => ({ projectId: "card_one", assetIds, quote: "오늘의 문장", clipDurationSeconds: 5 as const, aspectRatio: "9:16" as const });
 
 describe("PhotoCardService", () => {
   /**
@@ -106,6 +108,38 @@ describe("PhotoCardService", () => {
     expect(normalize).toContain("-loop");
     expect(normalize[normalize.indexOf("-vf") + 1]).toContain("zoompan");
     expect(used).toBeTruthy();
+  });
+
+  /**
+   * 🔴 **The seam, not the function.** `sceneSubtitleAss` has its own pair for "reveal off puts everything up
+   * at once", and that pair stayed green when the merge was changed to ask for a reveal on *every* picture —
+   * because nothing looked at what the merge actually asks for. A guard whose own wiring has no pair is a
+   * guard on one side of a wire.
+   *
+   * So this reads the subtitle files the merge really writes: picture 1's first body cue starts after zero,
+   * picture 2's starts at zero. The text is on both — losing it halfway would be worse than any animation.
+   */
+  it("asks for the reveal on the first picture only, which is what the burned files say", async () => {
+    const { projectsRoot, projects, service, assets, asset } = await setup();
+    const second = await assets.create({ buffer: PNG, originalname: "two.png", mimetype: "image/png" }, { assetType: "general_reference", displayName: "둘" });
+    await service.create({ projectId: "card_one", assetIds: [asset.asset_id, second.asset_id], quote: "불광불급\n미치지 않으면\n미치지 못한다", clipDurationSeconds: 5, aspectRatio: "9:16" });
+
+    const written = new Map<string, string>();
+    await new LocalVideoMergeService(projects, projectsRoot, runner([], written)).merge("card_one");
+
+    const bodyStarts = (ass: string) => ass.split("\n")
+      .filter((line) => line.startsWith("Dialogue:") && line.includes(",Body,"))
+      .map((line) => line.split(",")[1]!);
+
+    const first = bodyStarts(written.get("scene1.ass")!);
+    const later = bodyStarts(written.get("scene2.ass")!);
+
+    expect(first.length).toBeGreaterThan(1);
+    expect(later).toHaveLength(first.length);
+    // Picture 1: the lines arrive in turn, so not all of them begin at zero.
+    expect(first.some((start) => start !== "0:00:00.00")).toBe(true);
+    // Picture 2: everything is up from the first frame.
+    expect(later.every((start) => start === "0:00:00.00")).toBe(true);
   });
 
   /**
@@ -439,5 +473,67 @@ describe("a photo card and the paid routes", () => {
     const after = await deps.projects.findById("card_one");
     expect([WorkflowState.WaitingForAssetMappingReview, WorkflowState.AssetMappingApproved]).not.toContain(after.workflow_state);
     expect(after.generated_images.length).toBeGreaterThan(0);
+  });
+});
+
+describe("a card holding several pictures", () => {
+  /**
+   * 🔴 Every picture becomes its own scene, which is what lets `merge()` stay untouched — it already walks
+   * scenes and concatenates them, so each picture gets the existing Ken Burns push for free and 캡틴D's hard
+   * cut (Cowork Round 934 §1) is what the concat already does. A scene holding several images would have
+   * needed new code at exactly the place `d=frames` once produced a 625-second card.
+   */
+  it("gives every picture its own scene, its own file, and its own record", async () => {
+    const { projectsRoot, service, assets, asset } = await setup();
+    const second = await assets.create({ buffer: PNG, originalname: "two.png", mimetype: "image/png" }, { assetType: "general_reference", displayName: "둘" });
+    const third = await assets.create({ buffer: PNG, originalname: "three.png", mimetype: "image/png" }, { assetType: "general_reference", displayName: "셋" });
+
+    const { project } = await service.create(body(asset.asset_id, second.asset_id, third.asset_id));
+
+    expect(project.scenes).toHaveLength(3);
+    for (const scene of [1, 2, 3]) {
+      // 🔴 On disk, not merely recorded. A record pointing at a file that is not there is the lie the
+      // single-picture path was already careful about, three times over.
+      const stat = await fs.stat(path.join(projectsRoot, "card_one", "images", `scene${scene}.png`));
+      expect(stat.size, `scene${scene}`).toBeGreaterThan(0);
+    }
+  });
+
+  /** The text is the card's content, so every picture carries it — losing it halfway is worse than no animation. */
+  it("puts the same text on every picture", async () => {
+    const { service, assets, asset } = await setup();
+    const second = await assets.create({ buffer: PNG, originalname: "two.png", mimetype: "image/png" }, { assetType: "general_reference", displayName: "둘" });
+
+    const { project } = await service.create(body(asset.asset_id, second.asset_id));
+    expect(project.scenes.map((scene) => scene.narration)).toEqual(["오늘의 문장", "오늘의 문장"]);
+  });
+
+  /**
+   * 🔴 A card that copied its first picture and then failed on its third would leave a project on disk whose
+   * record points at files that are not there — and the record is what makes generation skip a scene, so a
+   * missing file becomes a scene nobody will ever fill. Everything is resolved before anything is written.
+   */
+  it("writes nothing at all when one of the pictures cannot be used", async () => {
+    const { projectsRoot, service, asset } = await setup();
+
+    await expect(service.create(body(asset.asset_id, "no-such-asset"))).rejects.toThrow();
+    await expect(fs.stat(path.join(projectsRoot, "card_one", "images", "scene1.png"))).rejects.toThrow();
+  });
+
+  /** One is still a card, and the shape it produces is the one that was there before this existed. */
+  it("still makes a one-picture card exactly as it did", async () => {
+    const { service, asset } = await setup();
+    const { project } = await service.create(body(asset.asset_id));
+    expect(project.scenes).toHaveLength(1);
+  });
+
+  /**
+   * 🟠 A bound rather than a preference: each picture is a scene, each scene is an encode, and the finished
+   * file grows with it. The refusal is what stops a card from quietly becoming a two-minute video.
+   */
+  it("refuses an empty list and refuses more pictures than a card is", async () => {
+    const { service, asset } = await setup();
+    await expect(service.create(body())).rejects.toThrow();
+    await expect(service.create(body(...Array.from({ length: PHOTO_CARD_MAX_PICTURES + 1 }, () => asset.asset_id)))).rejects.toThrow();
   });
 });

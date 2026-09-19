@@ -61,13 +61,13 @@ async function plainFrame(): Promise<string> {
  * question `subtitle-font-metrics.test.ts` asks column by column, answered in one pass, because a per-row scan
  * of 1920 rows would be 1920 processes.
  */
-async function inkRowCentres(directory: string, label: string, text: string, atSeconds = CARD_SECONDS - 1): Promise<number[]> {
+async function inkRowCentres(directory: string, label: string, text: string, atSeconds = CARD_SECONDS - 1, reveal = true): Promise<number[]> {
   const plain = path.join(directory, "plain.png");
   const rendered = path.join(directory, `${label}.png`);
   const column = path.join(directory, `${label}.raw`);
   const assPath = path.join(directory, `${label}.ass`);
 
-  await fs.writeFile(assPath, sceneSubtitleAss(text, CARD_SECONDS, FRAME_WIDTH, FRAME_HEIGHT, "photo-card", { card: CARD_LAYOUT }), "utf8");
+  await fs.writeFile(assPath, sceneSubtitleAss(text, CARD_SECONDS, FRAME_WIDTH, FRAME_HEIGHT, "photo-card", { card: CARD_LAYOUT }, undefined, reveal), "utf8");
   /*
    * 🔴 The moment is now part of the measurement, and saying so is the point. A card's body lines arrive
    * in turn, so "what does this card look like" has no answer without a time attached — these pairs read the
@@ -91,6 +91,11 @@ async function inkRowCentres(directory: string, label: string, text: string, atS
     if (last && y - last.at(-1)! <= 6) last.push(y); else bands.push([y]);
   });
   return bands.filter((band) => band.length > 3).map((band) => (band[0]! + band.at(-1)!) / 2);
+}
+
+/** The same measurement with the reveal switched off — what pictures 2..N of a card are given. */
+async function inkRowCentresWithoutReveal(directory: string, label: string, text: string, atSeconds: number): Promise<number[]> {
+  return inkRowCentres(directory, label, text, atSeconds, false);
 }
 
 const CARD_TEXT = "제목 줄입니다\n첫째 줄입니다\n둘째 줄입니다\n셋째 줄입니다";
@@ -184,5 +189,34 @@ describe("how a card's lines arrive", () => {
     const later = await inkRowCentres(root, "single-late", SINGLE_LINE_CARD, CARD_SECONDS - 0.2);
     expect(first).toHaveLength(2);
     expect(later).toEqual(first);
+  }, 180000);
+});
+
+describe("a card with several pictures reveals once, not once per picture", () => {
+  /**
+   * 🔴 **The interaction found before this feature was built, not after.** Subtitles are burned per scene, so
+   * a card holding several pictures would replay the line-by-line reveal on each one: read three lines, watch
+   * them vanish, read them again. The reveal exists to keep pace with somebody reading, and restarting it
+   * takes their place away.
+   *
+   * The text stays on every picture — in a news reel the text *is* the content, and losing it halfway is worse
+   * than any animation. So the first picture reveals and the rest open with everything already up.
+   *
+   * Measured on frames rather than on the `.ass` file, because what is being promised is what a person sees.
+   */
+  it("shows the whole text from the first frame of a later picture", async ({ skip }) => {
+    if (!await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false)) skip();
+    const root = await plainFrame();
+
+    // The first picture: at 0.1s only the heading and the first line are up.
+    const first = await inkRowCentres(root, "reveal-first", CARD_TEXT, 0.1);
+    // A later picture carries the same text with reveal off — everything is there immediately.
+    const later = await inkRowCentresWithoutReveal(root, "reveal-later", CARD_TEXT, 0.1);
+
+    expect(first.length).toBeLessThan(4);
+    expect(later).toHaveLength(4);
+    // 🔴 And in the same places: the block does not move because the reveal was switched off.
+    const settled = await inkRowCentres(root, "reveal-settled", CARD_TEXT);
+    expect(later).toEqual(settled);
   }, 180000);
 });

@@ -47,7 +47,7 @@ async function start() {
 describe("photo card creation over HTTP", () => {
   it("names a taken project name as taken, instead of calling the finished card a failed write", async () => {
     const { base, assetId, root } = await start();
-    const body = JSON.stringify({ projectId: "card_one", assetId, quote: "불광불급", clipDurationSeconds: 5, aspectRatio: "9:16" });
+    const body = JSON.stringify({ projectId: "card_one", assetIds: [assetId], quote: "불광불급", clipDurationSeconds: 5, aspectRatio: "9:16" });
     const post = () => fetch(`${base}${API_ROUTES.photoCards}`, { method: "POST", headers: { "content-type": "application/json" }, body });
 
     expect((await post()).status).toBe(201);
@@ -62,7 +62,7 @@ describe("photo card creation over HTTP", () => {
   // The first card must still be there afterwards: a refused second press is not a reason to disturb it.
   it("leaves the card the first press made exactly as it was", async () => {
     const { base, assetId, root } = await start();
-    const body = JSON.stringify({ projectId: "card_one", assetId, quote: "불광불급", clipDurationSeconds: 5, aspectRatio: "9:16" });
+    const body = JSON.stringify({ projectId: "card_one", assetIds: [assetId], quote: "불광불급", clipDurationSeconds: 5, aspectRatio: "9:16" });
     const post = () => fetch(`${base}${API_ROUTES.photoCards}`, { method: "POST", headers: { "content-type": "application/json" }, body });
     await post();
     const picture = path.join(root, "projects", "card_one", "images", "scene1.png");

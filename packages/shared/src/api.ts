@@ -2068,11 +2068,35 @@ export interface DeleteAssetOwnedFileResponse {
  */
 export interface CreatePhotoCardRequest {
   projectId: string;
-  assetId: string;
+  /**
+   * The pictures, in the order they are shown — one scene each.
+   *
+   * 🔴 **A list rather than one id, and N scenes rather than one scene holding N pictures.** The merge already
+   * walks scenes and concatenates them, so this reuses that path without changing a line of it, and every
+   * picture gets the existing Ken Burns push for free. A scene that held several images would need new code at
+   * exactly the place `d=frames` once produced a 625-second card.
+   *
+   * 🟠 **The finished card is now `scenes × clipDurationSeconds` long.** A photo card used to be one scene, so
+   * its length was the hold; three pictures at ten seconds is thirty. Choosing pictures is choosing the length,
+   * and the screen has to say so.
+   *
+   * 🔴 캡틴D chose hard cuts between them (Cowork Round 934 §1), which is why no crossfade exists: the join is
+   * `-c copy` and a transition there would mean re-encoding every seam.
+   */
+  readonly assetIds: readonly string[];
   quote: string;
   clipDurationSeconds: PhotoCardDurationSeconds;
   aspectRatio: AspectRatio;
 }
+
+/**
+ * The most pictures one card may hold.
+ *
+ * 🟠 A bound rather than a preference: each picture is a scene, each scene is an encode, and the finished file
+ * grows with it. Twelve at the longest hold is two minutes — already past what this app makes — so the number
+ * is the point where "a card" stops being a card rather than a limit anybody should meet.
+ */
+export const PHOTO_CARD_MAX_PICTURES = 12;
 
 export interface CreatePhotoCardResponse {
   project: Project;
