@@ -94,20 +94,24 @@ describe("App", () => {
   });
 
   /**
-   * 🟠 **This pair was not deleted, it was moved.** It used to say two things — the app names itself, and the
-   * app boots far enough to show an empty list — and the first stopped being true when the wordmark left the
-   * header for the rail (Cowork Round 951). What stopped being true is *where* the app says its name and
-   * whether that is a heading, not *whether* it says it.
+   * 🟠 이 짝은 원래 「앱 이름이 보인다」였습니다. **지우기 전에 무슨 말을 하고 있었는지 한 번 적습니다**
+   * (946 §2 의 규칙, CLI 951 §0 의 요청).
    *
-   * So the name is still asserted, at the wordmark, and the heading role is not: every screen carries its own
-   * `<h1>`, and repeating the app's name as a second one put two headings on every page. Splitting the check
-   * in two also keeps the second half honest — "the list loaded" is what actually proves the app booted, and
-   * it was riding along behind a heading assertion that could have carried it.
+   * 그게 붙들고 있던 건 사실 **「앱이 뜨고 첫 화면이 그려진다」**였습니다 — 앱 이름은 그걸 확인할 때 마침
+   * 제일 위에 있던 글자였을 뿐입니다. 2026-09-19 에 목록 화면의 그 `<h1>` 을 뺐습니다: 한 화면에 앱 이름
+   * `h1` 과 목록 제목이 둘 다 있어서 **화면의 제목이 작업과 무관한 쪽**이었고, 앱 이름은 이미 왼쪽 워드마크가
+   * 늘 말하고 있습니다.
+   *
+   * 🔴 그래서 「앱 이름」이 아니라 **「목록 화면이 자기 제목을 단다」**로 바꿔 답니다. 그냥 지우면 남는 건
+   * 아래 줄(`아직 생성된 프로젝트가 없습니다`)뿐인데, 그건 **비어 있을 때만** 참이라 프로젝트가 하나라도
+   * 생기면 이 경로를 아무도 안 지킵니다.
    */
-  it("names itself at the wordmark, and boots far enough to show the empty list", async () => {
+  it("첫 화면이 목록 자신의 제목을 단다 — 앱 이름이 아니라", async () => {
     vi.stubGlobal("fetch", createFakeBackend());
     render(<App />);
-    expect(screen.getByText("PRISMFORGE")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "단기 프로젝트" })).toBeTruthy();
+    // 🟠 앱 이름은 왼쪽 워드마크의 몫입니다. 목록 화면 본문에 다시 나타나면 h1 이 둘인 상태로 돌아간 것입니다.
+    expect(screen.queryByRole("heading", { name: "AI Animation Studio" })).toBeNull();
     await screen.findByText("아직 생성된 프로젝트가 없습니다.");
   });
 

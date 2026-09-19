@@ -11,15 +11,13 @@ import {
   startInstagramLogin,
   toInstagramConnectionDisplayError,
 } from "../api/instagramConnectionApi.js";
-import { primaryButton } from "./ui/surfaces.js";
+import { outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   status: InstagramConnectionStatus;
   onStatusChange: (status: InstagramConnectionStatus) => void;
 }
 
-const outlineButton =
-  "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent";
 const fieldClass =
   "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 

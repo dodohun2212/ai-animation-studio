@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { PROVIDER_KEY_NOTES, type ProviderCredentialStatus } from "@ai-animation-studio/shared";
 import { disconnectProvider, reconnectProvider, saveProviderCredential, toDisplayError } from "../api/providerSettingsApi.js";
 import { validateCredentialInput } from "../validation/credential.js";
+import { outlineButton } from "./ui/surfaces.js";
 
 interface Props {
   label: string; status: ProviderCredentialStatus;
@@ -20,7 +21,6 @@ interface Props {
 const statusText = (status: ProviderCredentialStatus) =>
   !status.configured ? "저장된 키 없음" : status.connected ? "키 저장됨 · 이 앱에서 사용" : "키 저장됨 · 사용 안 함";
 const statusTone = (status: ProviderCredentialStatus) => !status.configured ? "text-slate-400" : status.connected ? "text-emerald-300" : "text-amber-300";
-const outlineButton = "rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent";
 
 export function ProviderCredentialCard({ label, status, onStatusChange, acquireMutation = () => true, releaseMutation = () => {}, disabled = false, onPendingChange = () => {} }: Props) {
   const [value, setValue] = useState("");
