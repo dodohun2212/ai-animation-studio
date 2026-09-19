@@ -13,7 +13,20 @@ import * as path from "node:path";
  */
 const STALE_LOCK_MS = 60_000;
 const ACQUIRE_RETRY_MS = 50;
-const ACQUIRE_TIMEOUT_MS = 10_000;
+/**
+ * How long a second arrival waits for the lock before giving up.
+ *
+ * 🟠 Exported because **six tests assert against it and used to write their own number.** Each of them proves
+ * the same thing — that a refusal came back *without* waiting for the holder — and each expressed it as
+ * `Date.now() - startedAt < 2_000`. Two seconds is an arbitrary slice of this, so those assertions measured
+ * the machine rather than the behaviour: on a busy one (three packages running, ffmpeg encoding) a couple of
+ * filesystem operations can cross it, and the failure then reads `expected 2314 to be less than 2000`, which
+ * tells the next person nothing about locks.
+ *
+ * Tied to this constant instead, the bound follows the thing it is about: if the wait ever changes, the tests
+ * that care about not waiting change with it.
+ */
+export const ACQUIRE_TIMEOUT_MS = 10_000;
 /** Comfortably inside STALE_LOCK_MS, so a live holder is never mistaken for a dead one even if a refresh is missed. */
 const HEARTBEAT_MS = 15_000;
 

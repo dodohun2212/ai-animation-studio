@@ -6,6 +6,7 @@ import { toEpisodeDetail } from "./episode-detail.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
 import { withProjectLock } from "../videos/project-lock.js";
+import { ACQUIRE_TIMEOUT_MS } from "../videos/project-lock.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
@@ -140,7 +141,13 @@ describe("EpisodeScriptsService", () => {
     });
 
     expect(refusal).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+      /*
+       * 🟠 Bound to the lock's own wait, not to a wall-clock guess. What this asserts is that the refusal
+       * came back **without waiting for the holder**; two seconds was an arbitrary slice of that wait, so on a
+       * busy machine it failed for reasons that had nothing to do with locking and said so in a message nobody
+       * could act on. Half the timeout still fails decisively if the call really waits it out.
+       */
+    expect(Date.now() - startedAt).toBeLessThan(ACQUIRE_TIMEOUT_MS / 2);
     // get() answers from the outline when no script file exists, so "not found" is the wrong question — ask
     // whether a script was written, which is what a refused generation must not have done.
     expect((await subject.get("long", 1)).episode.script).toBeUndefined();

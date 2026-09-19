@@ -15,6 +15,7 @@ import { OpenAiBudget } from "../providers/openai-budget.js";
 import { ImageReviewService } from "./image-review.service.js";
 import { CONTINUITY_REFERENCE_NOTE, NO_LEGIBLE_TEXT_RULE } from "./image-prompt.js";
 import { withProjectLock } from "../videos/project-lock.js";
+import { ACQUIRE_TIMEOUT_MS } from "../videos/project-lock.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const roots: string[] = [];
@@ -81,7 +82,13 @@ describe("provider-free generated image review", () => {
 
     expect(sameScene).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
     expect(otherScene).not.toMatchObject({ response: { code: "PROJECT_LOCKED" } });
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+      /*
+       * 🟠 Bound to the lock's own wait, not to a wall-clock guess. What this asserts is that the refusal
+       * came back **without waiting for the holder**; two seconds was an arbitrary slice of that wait, so on a
+       * busy machine it failed for reasons that had nothing to do with locking and said so in a message nobody
+       * could act on. Half the timeout still fails decisively if the call really waits it out.
+       */
+    expect(Date.now() - startedAt).toBeLessThan(ACQUIRE_TIMEOUT_MS / 2);
   });
 
 

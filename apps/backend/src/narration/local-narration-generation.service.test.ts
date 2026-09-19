@@ -7,6 +7,7 @@ import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { parseShortProjectSettings, applyShortProjectSettings, toShortProjectSettings } from "../projects/project-settings.js";
 import { LocalNarrationGenerationService } from "./local-narration-generation.service.js";
 import { withProjectLock } from "../videos/project-lock.js";
+import { ACQUIRE_TIMEOUT_MS } from "../videos/project-lock.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -47,7 +48,13 @@ describe("provider-free local narration generation", () => {
     });
 
     expect(refusal).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+      /*
+       * 🟠 Bound to the lock's own wait, not to a wall-clock guess. What this asserts is that the refusal
+       * came back **without waiting for the holder**; two seconds was an arbitrary slice of that wait, so on a
+       * busy machine it failed for reasons that had nothing to do with locking and said so in a message nobody
+       * could act on. Half the timeout still fails decisively if the call really waits it out.
+       */
+    expect(Date.now() - startedAt).toBeLessThan(ACQUIRE_TIMEOUT_MS / 2);
     expect((await projects.findById("narr")).generated_narrations.filter(Boolean)).toHaveLength(0);
   });
 

@@ -11,6 +11,7 @@ import { withProjectLock } from "../videos/project-lock.js";
 import { NarrationReviewService } from "./narration-review.service.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import type { probeAudioDurationSeconds } from "./audio-duration.js";
+import { ACQUIRE_TIMEOUT_MS } from "../videos/project-lock.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const roots: string[] = [];
@@ -56,7 +57,13 @@ describe("NarrationReviewService", () => {
 
     expect(sameScene).toMatchObject({ response: { code: "PROJECT_LOCKED" } });
     expect(otherScene).not.toMatchObject({ response: { code: "PROJECT_LOCKED" } });
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+      /*
+       * 🟠 Bound to the lock's own wait, not to a wall-clock guess. What this asserts is that the refusal
+       * came back **without waiting for the holder**; two seconds was an arbitrary slice of that wait, so on a
+       * busy machine it failed for reasons that had nothing to do with locking and said so in a message nobody
+       * could act on. Half the timeout still fails decisively if the call really waits it out.
+       */
+    expect(Date.now() - startedAt).toBeLessThan(ACQUIRE_TIMEOUT_MS / 2);
   });
 
 
