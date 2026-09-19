@@ -3,11 +3,36 @@ import {
   type NewsFetchArticleRequest,
   type NewsFetchArticleResponse,
   type NewsReelSetupResponse,
+  type CreateNewsSummaryRequest,
+  type CreateNewsSummaryResponse,
+  type NewsArticleInput,
+  isCreateNewsSummaryResponse,
   isNewsFetchArticleResponse,
   isNewsReelSetupResponse,
 } from "@ai-animation-studio/shared";
 
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
+
+/**
+ * What a person reads for each refusal the summary route can send.
+ *
+ * 🔴 Five sentences rather than one, because **each leaves a different next action** — and two of them are
+ * opposites that must never be collapsed: "today's allowance is gone" means wait, and "the ledger cannot be
+ * read" means open that file, pressing again does the same thing. Giving the second one the first one's advice
+ * is how somebody sits waiting for a midnight that will not fix anything.
+ *
+ * 🟠 Kept here as well as on the server, not instead of it. The backend's sentences are what a person sees
+ * today; this table is what `error-code-reach` asks for — that a screen can say *something* about every code
+ * the backend can throw — and it is also what shows if the two ever drift, because a code answered by both is
+ * a code somebody is looking at.
+ */
+const SUMMARY_ERRORS: Record<string, string> = {
+  NEWS_ARTICLE_INVALID: "요약할 기사가 올바르지 않습니다. 본문 전체가 들어 있는지 보아 주세요.",
+  NEWS_SUMMARY_KEY_MISSING: "요약에 쓸 Gemini 키가 없습니다. API 설정에서 넣어 주세요.",
+  NEWS_DAILY_LIMIT_REACHED: "오늘 쓸 수 있는 요약 횟수를 다 썼습니다. 이 앱이 막고 있는 것이고, 내일 다시 쓰실 수 있습니다.",
+  NEWS_LEDGER_UNREADABLE: "사용 기록 파일을 읽을 수 없어 오늘 쓴 횟수를 확인하지 못했습니다. 확인하기 전에는 요약을 부르지 않습니다. 다시 누르셔도 같은 결과이니 news_call_usage.json 을 확인해 주세요.",
+  NEWS_SUMMARY_FAILED: "요약을 받지 못했습니다. 다시 누르시면 오늘 쓸 수 있는 횟수를 한 번 더 씁니다.",
+};
 
 export class NewsApiError extends Error {
   readonly code: string;
@@ -39,9 +64,12 @@ async function read<T>(url: string, init: RequestInit | undefined, guard: (value
     if (isServerUnavailable(response.status, code)) {
       throw new NewsApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
     }
-    const message = typeof (body as { message?: unknown } | null)?.message === "string"
-      ? (body as { message: string }).message
-      : INTERNAL_ERROR.message;
+    /* 🟠 The screen's own sentence wins over the server's for a code this app knows. They say the same thing
+       today — and on the day they stop, the one a person reads is the one somebody can see while editing the
+       screen, rather than a string arriving from a process they are not looking at. */
+    const carriedMessage = (body as { message?: unknown } | null)?.message;
+    const message = SUMMARY_ERRORS[code]
+      ?? (typeof carriedMessage === "string" ? carriedMessage : INTERNAL_ERROR.message);
     throw new NewsApiError(code, message);
   }
   if (!guard(body)) throw new NewsApiError(INTERNAL_ERROR.code, INTERNAL_ERROR.message);
@@ -80,4 +108,25 @@ export function fetchNewsArticle(url: string): Promise<NewsFetchArticleResponse>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   }, isNewsFetchArticleResponse);
+}
+
+/**
+ * Ask the server for a summary. **This is the one call in this screen that costs the day's allowance.**
+ *
+ * 🔴 Every refusal is an exception here, unlike `fetchNewsArticle` — and the difference is real rather
+ * than stylistic. The fetch's four outcomes are all *answers*: the server did the work and the page was what it
+ * was. Here there is either a summary or nothing, and the reason it is nothing changes what the person should
+ * do next — which is what `NewsApiError.code` carries (`NEWS_DAILY_LIMIT_REACHED`, `NEWS_LEDGER_UNREADABLE`,
+ * `NEWS_SUMMARY_KEY_MISSING`, `NEWS_SUMMARY_FAILED`, `NEWS_ARTICLE_INVALID`).
+ *
+ * 🟠 A summary that invented a figure is **not** a failure and does not throw. It comes back with `check`,
+ * because the person has to see *which* figure. The card button is what stays shut.
+ */
+export function createNewsSummary(article: NewsArticleInput): Promise<CreateNewsSummaryResponse> {
+  const request: CreateNewsSummaryRequest = { article };
+  return read(API_ROUTES.newsSummaries, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  }, isCreateNewsSummaryResponse);
 }

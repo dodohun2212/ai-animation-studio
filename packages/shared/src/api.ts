@@ -2662,17 +2662,44 @@ export type NewsFetchArticleResponse =
   | { outcome: "unreachable"; sourceUrl: string }
   | { outcome: "refused"; reason: NewsFetchRefusalReason; publishers: NewsPublisher[] };
 
+export interface CreateNewsSummaryRequest {
+  article: NewsArticleInput;
+}
+
+/**
+ * A summary the provider wrote, and what checking it against the article produced.
+ *
+ * 🔴 **The check travels with the summary and is never a gate on returning it.** A summary that invented a
+ * figure is exactly what somebody needs to see — refusing to hand it back would leave them with "something was
+ * wrong" and no way to know what. What is gated is the *card*: the screen's button stays shut while `missing`
+ * is non-empty, which is where the refusal has always lived.
+ *
+ * 🔴 `dailyCalls` comes back on **every** answer, including the ones that failed, because the number a person
+ * needs before pressing again is the number after this press. A screen that updates it only on success would
+ * count down more slowly than the provider does.
+ */
+export interface CreateNewsSummaryResponse {
+  summary: string;
+  check: NewsSummaryCheck;
+  dailyCalls: NewsDailyCallCount;
+  /**
+   * 🟠 True when the provider answered with more than `NEWS_SUMMARY_MAX_CHARS` characters.
+   *
+   * Reported rather than trimmed. Cutting a summary to length can slice a number in half — `4,000` becoming
+   * `4,0` — and the checker would then see a figure the provider never wrote and call it invented. Handing the
+   * whole thing back with a flag costs nothing, wastes no call, and leaves the shortening to the person, who
+   * can see which sentence to drop.
+   */
+  tooLong?: true;
+}
+
 /*
- * 🟠 The request/response pair for `POST /news/summaries` is **not here yet, on purpose** (CLI Round 910).
- *
- * It was written and then taken back out the same evening, because two of this repo's own guards refused it and
- * both were right: `route-shape-coverage` (a client route with no handler — and it has no exemption list, which
- * is the point of it) and `contract-request-coverage` (nothing in the app sends the field). A summary route
- * whose server half does not exist is a contract the app can compile against and never reach.
- *
- * So the shape above — the article, and what checking it produced — lands now because `checkNewsSummary` on the
- * server actually returns it. The request, the response and `API_ROUTES.newsSummaries` land in the same commit
- * as the controller that serves them, and the paid summariser behind it waits on 캡틴D's approval.
+ * 🟢 The shapes above landed with the controller that serves them (CLI Round 943), which is what Round 910
+ * said would happen and why they were taken back out of `28794b2`. Two of this repo's guards refused the
+ * client half on its own and both were right: `route-shape-coverage` (a client route with no handler — it has
+ * no exemption list, which is the point of it) and `contract-request-coverage` (nothing in the app sends the
+ * field). The rule that came out of it is kept here because the next person to add a route will want it:
+ * **a route's request, response, `API_ROUTES` entry and handler go in one commit.**
  */
 
 /**
@@ -3458,6 +3485,8 @@ export const API_ROUTES = {
   newsReelSetup: "/news/setup",
   /** Fetch one article by address. Free — the paid summary is a separate route that waits on 캡틴D. */
   newsArticle: "/news/article",
+  /** The one paid-capable call in this feature. Free tier, but the count is ours and closes first. */
+  newsSummaries: "/news/summaries",
   /** One subtitle font file by name, so a card preview can draw with the same bytes FFmpeg burns in. */
   subtitleFont: (name: string) => `/fonts/${name}`,
   providerSettings: "/settings/providers",
@@ -3649,6 +3678,42 @@ export function isNewsFetchArticleResponse(value: unknown): value is NewsFetchAr
     default:
       return false;
   }
+}
+
+/**
+ * 🔴 The guard exists for `check`, and for one property of it: `missing` has to agree with `claims`.
+ *
+ * The screen decides whether the card button opens from `missing`, and the sentence it shows about what went
+ * wrong comes from the same list. If a response could disagree with itself, a summary carrying an invented
+ * figure could arrive with an empty `missing` and be handed to the card flow as clean. `assertNewsSummaryCheck`
+ * already refuses that on the server; this refuses it again at the boundary, because the two ends are allowed
+ * to be different programs.
+ */
+export function isCreateNewsSummaryResponse(value: unknown): value is CreateNewsSummaryResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.summary !== "string" || !candidate.summary.trim()) return false;
+
+  const check = candidate.check as NewsSummaryCheck | undefined;
+  if (typeof check !== "object" || check === null) return false;
+  const isClaim = (claim: unknown): claim is NewsClaimCheck =>
+    typeof claim === "object" && claim !== null
+    && ["number", "date", "quote"].includes((claim as NewsClaimCheck).kind)
+    && typeof (claim as NewsClaimCheck).text === "string" && !!(claim as NewsClaimCheck).text.trim()
+    && typeof (claim as NewsClaimCheck).found === "boolean";
+  if (!Array.isArray(check.claims) || !check.claims.every(isClaim)) return false;
+  if (!Array.isArray(check.missing) || !check.missing.every(isClaim)) return false;
+  const notFound = check.claims.filter((claim) => !claim.found);
+  if (check.missing.length !== notFound.length) return false;
+  if (check.missing.some((item, index) => item.text !== notFound[index]?.text || item.kind !== notFound[index]?.kind)) return false;
+
+  const calls = candidate.dailyCalls as NewsDailyCallCount | undefined;
+  if (typeof calls !== "object" || calls === null) return false;
+  if (!Number.isInteger(calls.used) || calls.used < 0 || !Number.isInteger(calls.limit) || calls.limit <= 0) return false;
+
+  // 🟠 `tooLong` is either absent or literally `true`. A `false` would be a third state saying the same thing
+  // as absent, and two ways to say one thing is how a screen ends up checking only one of them.
+  return !("tooLong" in candidate) || candidate.tooLong === true;
 }
 
 export function assertVideoGenerationApproval(request: StartVideoGenerationRequest): void {

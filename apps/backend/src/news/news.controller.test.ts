@@ -3,8 +3,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isNewsFetchArticleResponse, isNewsReelSetupResponse } from "@ai-animation-studio/shared";
+import { NEWS_SUMMARY_MAX_CHARS, isCreateNewsSummaryResponse, isNewsFetchArticleResponse, isNewsReelSetupResponse } from "@ai-animation-studio/shared";
 
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { NewsCallQuota } from "./news-call-quota.js";
 import { NewsController } from "./news.controller.js";
 
@@ -17,7 +18,7 @@ afterEach(async () => {
 async function controller(): Promise<{ controller: NewsController; root: string }> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "news-controller-"));
   roots.push(root);
-  return { controller: new NewsController(new NewsCallQuota(root)), root };
+  return { controller: new NewsController(new NewsCallQuota(root), keyStore("test-key")), root };
 }
 
 const article = (body: string) => `<!doctype html><html><head><meta property="og:title" content="제목">
@@ -142,5 +143,138 @@ describe("news article route", () => {
     for (const body of [{}, { url: 42 }, null, { url: "   " }]) {
       expect(await news.article(body)).toMatchObject({ outcome: "refused", reason: "unsupported_address" });
     }
+  });
+});
+
+/** A settings repository that answers with whatever key the test wants, and never touches disk. */
+function keyStore(value: string | null): ProviderSettingsRepository {
+  return { read: async () => value } as unknown as ProviderSettingsRepository;
+}
+
+const ARTICLE = {
+  title: "물가 상승률 3.2%로 둔화",
+  body: "통계청은 3.2%라고 밝혔다. ".repeat(40),
+  publisher: "연합뉴스",
+  publishedAt: "2026-09-19T09:00:00+09:00",
+  sourceUrl: "https://www.yna.co.kr/view/1",
+};
+
+async function summariser(key: string | null = "test-key"): Promise<{ controller: NewsController; root: string }> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "news-summary-"));
+  roots.push(root);
+  return { controller: new NewsController(new NewsCallQuota(root), keyStore(key)), root };
+}
+
+describe("news summary route", () => {
+  it("returns the summary with what checking it produced, in a shape the client's guard accepts", async () => {
+    const { controller: news } = await summariser();
+    news.callProvider = async () => "통계청에 따르면 물가 상승률은 3.2%로 둔화됐다.";
+
+    const result = await news.summarise({ article: ARTICLE });
+
+    expect(isCreateNewsSummaryResponse(result)).toBe(true);
+    expect(result.check.missing).toHaveLength(0);
+    expect(result.dailyCalls).toEqual({ used: 1, limit: 10 });
+  });
+
+  /**
+   * 🔴 The check travels back; it is **not** a gate on returning the summary. Somebody who is told only
+   * "something was wrong" cannot fix anything — they need to see which figure was invented. The refusal lives
+   * on the card button, where it always has.
+   */
+  it("returns an invented figure rather than hiding it, and says which one", async () => {
+    const { controller: news } = await summariser();
+    news.callProvider = async () => "물가 상승률이 7.8%로 올랐다.";
+
+    const result = await news.summarise({ article: ARTICLE });
+
+    expect(result.summary).toContain("7.8%");
+    expect(result.check.missing.map((claim) => claim.text)).toContain("7.8%");
+  });
+
+  /**
+   * 🔴 A failed call still counts. It reached the provider and consumed whatever they count, and a cap that
+   * only counted successes would let a failing retry loop run all day — the exact shape the cap exists to stop.
+   */
+  it("books a failed call against the day", async () => {
+    const { controller: news, root } = await summariser();
+    news.callProvider = async () => { throw new Error("provider down"); };
+
+    await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
+    expect(await new NewsCallQuota(root).usedToday()).toBe(1);
+  });
+
+  /** And the day's allowance closing is our refusal, which the message has to say — not Google's. */
+  it("refuses once the day's allowance is gone, and names whose limit it is", async () => {
+    const { controller: news, root } = await summariser();
+    const quota = new NewsCallQuota(root);
+    for (let call = 0; call < 10; call++) await quota.record(true);
+    news.callProvider = async () => { throw new Error("must not be called"); };
+
+    await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({
+      response: { code: "NEWS_DAILY_LIMIT_REACHED" },
+    });
+    // 🔴 And nothing went out: the eleventh call must not reach them at all.
+    expect(await quota.usedToday()).toBe(10);
+  });
+
+  /**
+   * 🔴 D-036 at this route's own door. An unreadable ledger is not an empty one, and the one thing that must
+   * not happen is a call going out because we could not tell how many had already gone.
+   */
+  it("refuses rather than calling when the ledger cannot be read", async () => {
+    const { controller: news, root } = await summariser();
+    await fs.writeFile(path.join(root, "news_call_usage.json"), "{ not json");
+    let called = false;
+    news.callProvider = async () => { called = true; return "요약"; };
+
+    await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_LEDGER_UNREADABLE" } });
+    expect(called).toBe(false);
+  });
+
+  /**
+   * 🟠 No key means no call, so it must not cost a call. Checked before the quota deliberately: booking one
+   * would charge somebody for a request that never left this machine.
+   */
+  it("says which key is missing, and does not spend the day's count finding out", async () => {
+    const { controller: news, root } = await summariser(null);
+    await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_KEY_MISSING" } });
+    expect(await new NewsCallQuota(root).usedToday()).toBe(0);
+  });
+
+  /**
+   * 🔴 `checkNewsSummary` is only ever true **inside the text it was given**, so a two-line stub produces a
+   * summary that passes against a stub. That is the falsely-green case, and it must not cost a call to find.
+   */
+  it("refuses an article too short to check a summary against, before calling", async () => {
+    const { controller: news, root } = await summariser();
+    let called = false;
+    news.callProvider = async () => { called = true; return "요약"; };
+
+    await expect(news.summarise({ article: { ...ARTICLE, body: "물가가 둔화됐다." } }))
+      .rejects.toMatchObject({ response: { code: "NEWS_ARTICLE_INVALID" } });
+    expect(called).toBe(false);
+    expect(await new NewsCallQuota(root).usedToday()).toBe(0);
+  });
+
+  /**
+   * 🟠 Reported, never trimmed. Cutting to length can slice `4,000` into `4,0`, and the checker would then see
+   * a figure the provider never wrote and call it invented — the guard firing on our own edit.
+   */
+  it("flags a summary over the card's limit instead of cutting it", async () => {
+    const { controller: news } = await summariser();
+    const long = `통계청은 3.2%라고 밝혔다. `.repeat(40);
+    news.callProvider = async () => long;
+
+    const result = await news.summarise({ article: ARTICLE });
+    expect(result.tooLong).toBe(true);
+    expect(result.summary).toBe(long);
+    expect(result.summary.length).toBeGreaterThan(NEWS_SUMMARY_MAX_CHARS);
+  });
+
+  it("does not flag a summary that fits", async () => {
+    const { controller: news } = await summariser();
+    news.callProvider = async () => "통계청은 3.2%라고 밝혔다.";
+    expect((await news.summarise({ article: ARTICLE })).tooLong).toBeUndefined();
   });
 });
