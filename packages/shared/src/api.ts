@@ -2536,6 +2536,81 @@ export interface NewsSummaryCheck {
   missing: NewsClaimCheck[];
 }
 
+/**
+ * A publisher this app is willing to fetch from.
+ *
+ * 🔴 **This travels so the screen can say it, never so the screen can decide with it.** The decision stays on
+ * the server, because the host that matters is the one a redirect finally lands on and a screen cannot see that
+ * (CLI Round 929 §2). But withholding the list does not prevent a second copy of it — it *guarantees* one, in
+ * hand-written prose on an empty screen, where nothing checks it and the day a publisher is added it goes
+ * quietly wrong (Cowork Round 931 §2). Two copies of a safety-relevant fact is the argument this repository
+ * already made about the checker itself; the same argument points the other way here.
+ *
+ * The screen is stopped from gating on it by a pair, not by ignorance: a domain that is *not* on this list must
+ * still reach the server when the button is pressed.
+ *
+ * `host` is what a pasted address can be matched against; `name` is what a person can read. Both come from one
+ * place on the server, so neither can drift from the other.
+ */
+export interface NewsPublisher {
+  host: string;
+  name: string;
+}
+
+/**
+ * How many summary calls today has already used.
+ *
+ * 🔴 **`null` is not "there is room" — it is "we cannot tell, so we will not call".** The ledger refuses rather
+ * than answering zero when it cannot be read (D-036), and that refusal has to survive the trip to the screen in
+ * the same direction it has on the server. A screen that renders a missing count as an empty budget would undo
+ * the guard at the last step. The button is closed on `null`, and the screen says why.
+ */
+export interface NewsDailyCallCount {
+  used: number;
+  limit: number;
+}
+
+/**
+ * What the news reel screen needs the moment it opens, before anybody types anything.
+ *
+ * 🟠 The two facts are independent on purpose. A ledger file that cannot be read has nothing to do with which
+ * publishers we accept, so a broken ledger must not also blank the list — one failure should break one thing.
+ */
+export interface NewsReelSetupResponse {
+  publishers: NewsPublisher[];
+  /** `null` when the ledger could not be read. See NewsDailyCallCount — this is never "you have room". */
+  dailyCalls: NewsDailyCallCount | null;
+}
+
+/** Why the server would not fetch an address. Separate values because the screen says three different things. */
+export type NewsFetchRefusalReason =
+  | "publisher_not_allowed"
+  | "private_address"
+  | "unsupported_address"
+  | "too_many_redirects";
+
+export interface NewsFetchArticleRequest {
+  url: string;
+}
+
+/**
+ * What came back from trying to fetch one article.
+ *
+ * 🔴 **`body_not_found` is deliberately not a refusal and not an error.** The server knocked, got a page, and
+ * could not tell which part of it was the article — it did its job and one step is left for the person (Cowork
+ * Round 931 §4). Calling that "실패" would be us misdescribing our own work, and more practically it sends the
+ * screen down the wrong branch: a refusal means *try something else*, this means *paste the body here*, with
+ * the address, publisher and date already filled in so nothing is retyped.
+ *
+ * `refused` carries the publisher list again even though the screen already has it: a refusal is a statement
+ * about this moment, and a screen that has been open a while may be holding an older one.
+ */
+export type NewsFetchArticleResponse =
+  | { outcome: "article"; article: NewsArticleInput }
+  | { outcome: "body_not_found"; sourceUrl: string; publisher: string; title: string; publishedAt: string | null }
+  | { outcome: "unreachable"; sourceUrl: string }
+  | { outcome: "refused"; reason: NewsFetchRefusalReason; publishers: NewsPublisher[] };
+
 /*
  * 🟠 The request/response pair for `POST /news/summaries` is **not here yet, on purpose** (CLI Round 910).
  *
@@ -3328,6 +3403,10 @@ export const API_ROUTES = {
   legacyReferenceMigration: "/assets/legacy-migration",
   backfillGeneratedImages: "/assets/backfill-generated-images",
   photoCards: "/photo-cards",
+  /** What the news reel screen reads when it opens: today's count and which publishers we will fetch from. */
+  newsReelSetup: "/news/setup",
+  /** Fetch one article by address. Free — the paid summary is a separate route that waits on 캡틴D. */
+  newsArticle: "/news/article",
   /** One subtitle font file by name, so a card preview can draw with the same bytes FFmpeg burns in. */
   subtitleFont: (name: string) => `/fonts/${name}`,
   providerSettings: "/settings/providers",
@@ -3453,6 +3532,71 @@ export function assertNewsSummaryCheck(check: NewsSummaryCheck): void {
   const notFound = check.claims.filter((claim) => !claim.found);
   if (check.missing.length !== notFound.length || check.missing.some((item, index) => item !== notFound[index])) {
     throw new Error("`missing` must be exactly the claims whose `found` is false, in order.");
+  }
+}
+
+const isPublisher = (value: unknown): value is NewsPublisher =>
+  typeof value === "object" && value !== null
+  && typeof (value as NewsPublisher).host === "string" && !!(value as NewsPublisher).host.trim()
+  && typeof (value as NewsPublisher).name === "string" && !!(value as NewsPublisher).name.trim();
+
+/**
+ * 🔴 The guard is here for one field, and it is `dailyCalls`.
+ *
+ * A response whose `dailyCalls` key is simply **absent** would read as `undefined`, and `undefined` is the shape
+ * a screen is most likely to treat as "nothing to worry about". `null` is a statement — *the ledger could not be
+ * read, so no call may be made* — and losing the difference between "said null" and "said nothing" turns the
+ * most conservative answer the server has into the most permissive one the screen can draw. So the key must be
+ * present, and the only two things it may be are a pair of numbers or `null`.
+ *
+ * This is the distinction `colors: null` already draws on the card preview: a value of null and a missing key
+ * are different facts and only one of them is an answer.
+ */
+export function isNewsReelSetupResponse(value: unknown): value is NewsReelSetupResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (!Array.isArray(candidate.publishers) || !candidate.publishers.every(isPublisher)) return false;
+  if (!("dailyCalls" in candidate)) return false;
+  const calls = candidate.dailyCalls;
+  if (calls === null) return true;
+  if (typeof calls !== "object") return false;
+  const { used, limit } = calls as NewsDailyCallCount;
+  return Number.isInteger(used) && used >= 0 && Number.isInteger(limit) && limit > 0;
+}
+
+/**
+ * 🟠 Checks the `outcome` tag hard, because every branch below it is drawn differently and an unknown tag
+ * silently falling through to the friendliest branch is how a refusal gets rendered as a blank article form.
+ */
+export function isNewsFetchArticleResponse(value: unknown): value is NewsFetchArticleResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  const str = (key: string) => typeof candidate[key] === "string" && !!(candidate[key] as string).trim();
+  switch (candidate.outcome) {
+    case "article": {
+      const article = candidate.article as NewsArticleInput | undefined;
+      return typeof article === "object" && article !== null
+        && ["title", "body", "publisher", "publishedAt", "sourceUrl"].every(
+          (key) => typeof article[key as keyof NewsArticleInput] === "string" && !!article[key as keyof NewsArticleInput].trim(),
+        );
+    }
+    case "body_not_found":
+      // 🟠 `publishedAt` may genuinely be null and `title` may genuinely be empty — plenty of pages say neither,
+      // and refusing the whole response over a missing headline would turn the paste branch into a dead end.
+      // Absent is still not allowed: a key that is not there is not an answer.
+      return str("sourceUrl") && str("publisher")
+        && typeof candidate.title === "string"
+        && "publishedAt" in candidate && (candidate.publishedAt === null || typeof candidate.publishedAt === "string");
+    case "unreachable":
+      return str("sourceUrl");
+    case "refused":
+      // The reason is checked against the four the screen draws, not merely for being a string — an unknown
+      // reason would reach a branch nobody wrote and render as whichever one happens to be last.
+      return ["publisher_not_allowed", "private_address", "unsupported_address", "too_many_redirects"]
+        .includes(candidate.reason as string)
+        && Array.isArray(candidate.publishers) && candidate.publishers.every(isPublisher);
+    default:
+      return false;
   }
 }
 

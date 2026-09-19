@@ -14,6 +14,7 @@ import { LongProjectsModule } from "./long-projects/long-projects.module.js";
 import { NarrationModule } from "./narration/narration.module.js";
 import { AudioModule } from "./audio/audio.module.js";
 import { InstagramModule } from "./instagram/instagram.module.js";
+import { NewsModule } from "./news/news.module.js";
 
-@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule, ImagesModule, VideosModule, LongProjectsModule, NarrationModule, AudioModule, InstagramModule], controllers: [HealthController], providers: [{ provide: APP_FILTER, useClass: UnexpectedErrorFilter }] })
+@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule, ImagesModule, VideosModule, LongProjectsModule, NarrationModule, AudioModule, InstagramModule, NewsModule], controllers: [HealthController], providers: [{ provide: APP_FILTER, useClass: UnexpectedErrorFilter }] })
 export class AppModule {}
