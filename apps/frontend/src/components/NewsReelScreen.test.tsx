@@ -240,6 +240,30 @@ describe("NewsReelScreen", () => {
     expect(screen.getByTestId("news-fetch")).not.toBeDisabled();
   });
 
+  /**
+   * 🔴 **이 짝은 「지금 없는 것」을 붙듭니다 — 그래서 없는 것이 생기는 날 웁니다.**
+   *
+   * `GET /news/setup` 은 「오늘 몇 번 불렀나 / 상한」을 같이 줍니다. 그런데 이 화면에는 **그 수를 깎는 버튼이
+   * 없습니다** — 요약은 아직 사람이 손으로 씁니다. 그 상태에서 「오늘 2 / 10」을 띄우면 **일어나지도 않는 일의
+   * 잔량**을 말하는 셈이고, 사람은 무엇이 깎는지 화면에서 찾지 못합니다.
+   *
+   * 🟠 그래서 두 줄이 **함께** 서 있습니다: 건수도 없고, 그 건수를 쓰는 버튼도 없다. 유료 요약이 들어오는 날
+   * 누군가 버튼만 붙이면 **아래쪽이 먼저 빨개져서**, 건수와 `null` 처리(「예산 있음」이 아니라 「모르니까 안
+   * 부른다」)를 같이 넣게 만듭니다. 주석은 그날 아무도 안 깨웁니다 — CLI Round 937 §2.
+   */
+  it("shows no call count while nothing on this screen spends one", async () => {
+    renderScreen();
+    await screen.findByTestId("news-publishers");
+
+    // 건수가 응답에 실려 왔는데도(SETUP.dailyCalls) 화면에는 없습니다.
+    expect(screen.queryByTestId("news-daily-calls")).toBeNull();
+    /* 🟠 testid 없이 그려도 잡히게 「2 / 10」 모양을 같이 봅니다. `/10/` 처럼 넓게 잡으면 무관한 글자에
+       걸려서, 이 짝이 **엉뚱한 이유로** 빨개집니다 — 그런 짝은 다음 사람이 지워 버립니다. */
+    expect(screen.queryByText(/2\s*\/\s*10/)).toBeNull();
+    // 🔴 그리고 그 이유: 이 수를 깎는 버튼이 아직 없습니다. 이 줄이 이 짝의 자물쇠입니다.
+    expect(screen.queryByTestId("news-summarize")).toBeNull();
+  });
+
   it("waits for both halves before saying anything about the summary", () => {
     renderScreen();
     expect(screen.getByTestId("news-check-idle")).toBeTruthy();
