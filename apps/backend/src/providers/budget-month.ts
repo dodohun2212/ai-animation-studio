@@ -21,3 +21,20 @@ export function isInBudgetMonth(timestamp: string, now: Date): boolean {
   if (Number.isNaN(at.getTime())) return false;
   return at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth();
 }
+
+/**
+ * Whether a ledger entry belongs to the day a per-day allowance is currently counting.
+ *
+ * Local, for the reason above and not a new one: a person's "today" ends when their clock says midnight, and a
+ * daily cap that reopens at 09:00 KST is the same wall the month version left standing. Sharing this file is
+ * the point — the two windows are the same rule at two sizes, and splitting them is how one gets fixed.
+ *
+ * 🟠 This intentionally does **not** try to match a provider's own reset (Gemini's daily quota resets on its
+ * own schedule, which we cannot see). It counts *our* cap, which exists to stop a runaway rather than to track
+ * theirs — ours is set below theirs so ours closes first (Round 926).
+ */
+export function isOnBudgetDay(timestamp: string, now: Date): boolean {
+  const at = new Date(timestamp);
+  if (Number.isNaN(at.getTime())) return false;
+  return at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth() && at.getDate() === now.getDate();
+}
