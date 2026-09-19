@@ -39,6 +39,12 @@ const REFUSAL_MESSAGE: Record<NewsFetchRefusalReason, string> = {
   private_address: "이 주소는 기사가 아니라 이 컴퓨터나 같은 네트워크 안을 가리킵니다. 주소를 다시 확인해 주세요.",
   unsupported_address: "이 주소로는 기사를 가져올 수 없습니다. https 로 시작하는 기사 주소를 넣어 주세요.",
   too_many_redirects: "주소가 계속 다른 곳으로 넘겨서 끝까지 따라가지 못했습니다. 기사 본문 주소를 직접 넣어 주세요.",
+  /**
+   * 🟠 CLI Round 940 에서 실측으로 갈라져 나온 갈래입니다. 조선일보 첫 페이지가 3.3MB 라 여기 걸리는데,
+   * `unsupported_address` 에 묶여 있을 때는 **이미 https 로 시작하는 주소**를 두고 「https 로 시작하는 주소를
+   * 넣어 주세요」라고 말했습니다. 여기서 할 일은 다른 갈래와 달라서 — **첫 화면 말고 기사 하나를 가리키는 것**.
+   */
+  page_too_large: "이 주소는 기사 하나가 아니라 목록이나 첫 화면으로 보입니다. 읽고 싶은 기사를 열어서 그 주소를 넣어 주세요.",
 };
 
 type Setup =

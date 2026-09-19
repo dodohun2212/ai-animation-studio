@@ -233,7 +233,7 @@ describe("news article fetch", () => {
   it("refuses a response too large to be an article", async () => {
     const { call } = scriptedFetch({ "https://www.yna.co.kr/big": { body: "가".repeat(5000) } });
     expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/big", { fetch: call, maxBytes: 1000 })))
-      .toBe("unsupported_address");
+      .toBe("page_too_large");
   });
 
   /** The refusal happens before any connection — a disallowed address must not even be knocked on. */
@@ -299,7 +299,7 @@ describe("news article fetch, when the other end does not cooperate", () => {
     const call = vi.fn(async () => new Response(endless, { status: 200 })) as unknown as typeof globalThis.fetch;
 
     expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/endless", { fetch: call, maxBytes: 4096 })))
-      .toBe("unsupported_address");
+      .toBe("page_too_large");
     expect(cancelled).toBe(true);
     // And it stopped near the cap rather than somewhere far past it.
     expect(produced).toBeLessThan(4096 * 4);
@@ -317,7 +317,7 @@ describe("news article fetch, when the other end does not cooperate", () => {
     const call = vi.fn(async () => new Response("짧다", { status: 200, headers: { "content-length": "999999" } })) as unknown as typeof globalThis.fetch;
 
     expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/huge", { fetch: call, maxBytes: 1024 })))
-      .toBe("unsupported_address");
+      .toBe("page_too_large");
   });
 
   /**
@@ -327,7 +327,7 @@ describe("news article fetch, when the other end does not cooperate", () => {
   it("is not fooled by a content-length that understates the body", async () => {
     const call = vi.fn(async () => new Response("가".repeat(5000), { status: 200, headers: { "content-length": "10" } })) as unknown as typeof globalThis.fetch;
     expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/liar", { fetch: call, maxBytes: 1024 })))
-      .toBe("unsupported_address");
+      .toBe("page_too_large");
   });
 
   /**
@@ -338,6 +338,62 @@ describe("news article fetch, when the other end does not cooperate", () => {
     // 1000 characters, 3000 bytes: under the cap by the old measure, over it by the real one.
     const call = vi.fn(async () => new Response("가".repeat(1000), { status: 200 })) as unknown as typeof globalThis.fetch;
     expect(await refusal(fetchNewsArticle("https://www.yna.co.kr/korean", { fetch: call, maxBytes: 2000 })))
-      .toBe("unsupported_address");
+      .toBe("page_too_large");
+  });
+});
+
+describe("news article fetch, when the page is not UTF-8", () => {
+  /** EUC-KR bytes for 한국 — what a publisher that never moved to UTF-8 actually sends. */
+  const EUC_KR_한국 = new Uint8Array([0xC7, 0xD1, 0xB1, 0xB9]);
+  // `.buffer`, because a Uint8Array view is not a BodyInit in this TypeScript's DOM lib even though it is one
+  // at runtime — and vitest never notices, since it does not typecheck. tsc caught this, as it did 28794b2.
+  const respond = (bytes: Uint8Array, headers: Record<string, string>) =>
+    vi.fn(async () => new Response(bytes.buffer as ArrayBuffer, { status: 200, headers })) as unknown as typeof globalThis.fetch;
+
+  /**
+   * 🔴 **Assuming UTF-8 is not a harmless default.** Measured against the real sites (Round 940): MBC serves
+   * `text/html` with no charset at all, and those bytes read as UTF-8 gave a title of replacement characters.
+   *
+   * A mangled body is worse than ugly. `checkNewsSummary` looks for the summary's numbers and quotations
+   * **inside the body**, so every genuine claim would come back missing and the person would be told their
+   * accurate summary was invented — the guard firing on the one case it exists to let through.
+   */
+  it("reads the charset the publisher declares in its header", async () => {
+    const call = respond(EUC_KR_한국, { "content-type": "text/html; charset=euc-kr" });
+    const { body } = await fetchNewsArticle("https://www.yna.co.kr/a", { fetch: call });
+    expect(body).toBe("한국");
+    expect(body).not.toContain("�");
+  });
+
+  /** A page that omits the header usually says it in the document instead. */
+  it("falls back to the charset in the document when the header does not say", async () => {
+    const page = new Uint8Array([...new TextEncoder().encode('<html><head><meta charset="euc-kr"></head><body>'), ...EUC_KR_한국]);
+    const call = respond(page, { "content-type": "text/html" });
+    expect((await fetchNewsArticle("https://www.yna.co.kr/a", { fetch: call })).body).toContain("한국");
+  });
+
+  it("still treats an unlabelled page as UTF-8, which is the right default", async () => {
+    const call = respond(new TextEncoder().encode("<html>한국</html>"), { "content-type": "text/html" });
+    expect((await fetchNewsArticle("https://www.yna.co.kr/a", { fetch: call })).body).toContain("한국");
+  });
+
+  /** A label TextDecoder will not take is not a reason to hand back nothing. */
+  it("does not fail on a charset nobody has heard of", async () => {
+    const call = respond(new TextEncoder().encode("<html>한국</html>"), { "content-type": "text/html; charset=x-made-up" });
+    expect((await fetchNewsArticle("https://www.yna.co.kr/a", { fetch: call })).body).toContain("한국");
+  });
+});
+
+describe("news article fetch, when the page is a section front", () => {
+  /**
+   * 🔴 Its own refusal, because it is its own instruction. Measured (Round 940): 조선일보's front page is 3.3MB
+   * and lands here — and folded into `unsupported_address` the person was told 「https 로 시작하는 기사 주소를
+   * 넣어 주세요」 about an address that already began with https. A refusal that does not name the next step
+   * is a dead end, and the next step here is to open one article.
+   */
+  it("says the page was too big, not that the address was wrong", async () => {
+    const call = vi.fn(async () => new Response("가".repeat(5000), { status: 200 })) as unknown as typeof globalThis.fetch;
+    expect(await refusal(fetchNewsArticle("https://www.chosun.com/", { fetch: call, maxBytes: 1024 })))
+      .toBe("page_too_large");
   });
 });

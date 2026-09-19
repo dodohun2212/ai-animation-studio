@@ -66,9 +66,28 @@ describe("article extraction", () => {
     expect(ARTICLE_MIN_BODY_CHARS).toBeGreaterThan(200);
   });
 
-  /** No recognised container at all: nothing, so the person pastes. Never the whole page. */
-  it("returns nothing rather than falling back to the page body", () => {
-    expect(extractArticle(page(`<div class="mystery"><p>${filler("알 수 없는 구조")}</p></div>`)).body).toBeUndefined();
+  /**
+   * 🟠 **No recognised container falls back to the prose, not to the page** — and the difference is the whole
+   * rule. Measured (Round 940), the real containers are `content90`, `end-body`, `news_body`, `article-view`:
+   * there is no convention to learn, only a list to keep extending, so an unknown name must not mean failure.
+   * What it must also not mean is sweeping the document, so the fallback takes **paragraphs**, which is what
+   * prose is shaped like.
+   */
+  it("falls back to the paragraphs when no container is recognised", () => {
+    const article = extractArticle(page(`<div class="mystery"><p>${filler("알 수 없는 구조")}</p></div>`));
+    expect(article.body).toContain("알 수 없는 구조");
+  });
+
+  /**
+   * 🔴 And the half that pair used to hold, now stated directly: **a page with no prose on it is still
+   * nothing.** A wall of headlines and menu items has plenty of text and not one sentence; taking it would hand
+   * `checkNewsSummary` a page of other stories' numbers to vouch with, which is the failure this file exists
+   * to prevent. Short items and linked items are both excluded, for the same reason and by different tests.
+   */
+  it("still returns nothing for a page that is all headlines and menus", () => {
+    const headlines = Array.from({ length: 40 }, (_, index) => `<p><a href="/n${index}">코스피 ${index}.8% 급등</a></p>`).join("");
+    const menu = Array.from({ length: 40 }, (_, index) => `<p>메뉴 ${index}</p>`).join("");
+    expect(extractArticle(page(`<div class="mystery">${headlines}${menu}</div>`)).body).toBeUndefined();
   });
 
   /**

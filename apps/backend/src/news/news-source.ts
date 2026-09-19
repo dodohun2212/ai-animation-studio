@@ -51,7 +51,16 @@ export type NewsSourceRefusal =
   /** An address that points back inside this machine or network. Never shown as "try a different one". */
   | "private_address"
   /** The chain of redirects did not settle. */
-  | "too_many_redirects";
+  | "too_many_redirects"
+  /**
+   * The page is bigger than we will read.
+   *
+   * 🔴 Its own value because it is its own instruction. Measured on the real sites (Round 940): 조선일보's front
+   * page is **3.3MB**, so this fires — and under `unsupported_address` the person was told 「https 로 시작하는
+   * 기사 주소를 넣어 주세요」 about an address that already did. The thing to do here is different from every
+   * other refusal: **point at the article, not at the section front**.
+   */
+  | "page_too_large";
 
 export class NewsSourceRefusedError extends Error {
   constructor(readonly reason: NewsSourceRefusal, readonly host?: string) {
@@ -178,8 +187,36 @@ export const NEWS_FETCH_TIMEOUT_MS = 10_000;
  * 🟠 Bytes, not characters, which is what the constant's name always said. `"가"` is three bytes of UTF-8 and
  * one character, so the old check let a Korean page reach three times the stated ceiling.
  */
+/**
+ * Which character set the bytes are in.
+ *
+ * 🔴 **Not always UTF-8, and assuming so is not a harmless default.** Measured against the real sites (Round
+ * 940): MBC serves `text/html` with **no charset at all**, and decoding those bytes as UTF-8 produced a title
+ * of replacement characters. A mangled body is not merely ugly — `checkNewsSummary` looks for the summary's
+ * numbers and quotations *inside it*, so every real claim would come back missing and the person would be told
+ * their accurate summary was invented.
+ *
+ * The header first, because it is the publisher's own statement. Then the document's own `<meta>`, which is
+ * where a page that omits the header usually says it — read out of the raw bytes as Latin-1, since finding the
+ * declaration is exactly the thing we cannot do until we know it. UTF-8 last, as the default it should be.
+ */
+function charsetOf(response: Response, bytes: Uint8Array): string {
+  const declared = /charset\s*=\s*["']?([\w-]+)/i.exec(response.headers.get("content-type") ?? "")?.[1];
+  if (declared) return declared.toLowerCase();
+  // 2KB is past every <meta> that matters and short enough to be free.
+  const head = new TextDecoder("latin1").decode(bytes.subarray(0, 2048));
+  const meta = /<meta[^>]+charset\s*=\s*["']?([\w-]+)/i.exec(head)?.[1];
+  return (meta ?? "utf-8").toLowerCase();
+}
+
+/** A label `TextDecoder` will not take is not a reason to hand back nothing — UTF-8 is the better guess. */
+function decodeWith(charset: string, bytes: Uint8Array): string {
+  try { return new TextDecoder(charset).decode(bytes); }
+  catch { return new TextDecoder("utf-8").decode(bytes); }
+}
+
 async function readBounded(response: Response, maxBytes: number, host: string): Promise<string> {
-  const tooBig = () => new NewsSourceRefusedError("unsupported_address", host);
+  const tooBig = () => new NewsSourceRefusedError("page_too_large", host);
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) throw tooBig();
 
@@ -204,7 +241,7 @@ async function readBounded(response: Response, maxBytes: number, host: string): 
   const joined = new Uint8Array(total);
   let at = 0;
   for (const chunk of chunks) { joined.set(chunk, at); at += chunk.byteLength; }
-  return new TextDecoder("utf-8").decode(joined);
+  return decodeWith(charsetOf(response, joined), joined);
 }
 
 /**

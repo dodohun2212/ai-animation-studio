@@ -2582,12 +2582,21 @@ export interface NewsReelSetupResponse {
   dailyCalls: NewsDailyCallCount | null;
 }
 
-/** Why the server would not fetch an address. Separate values because the screen says three different things. */
+/**
+ * Why the server would not fetch an address.
+ *
+ * Separate values because each one leaves the person a **different thing to do**, and a refusal that does not
+ * name the next step is a dead end. `page_too_large` was split out after measuring the real sites (Round 940):
+ * 조선일보's front page is 3.3MB, and folded into `unsupported_address` it told somebody to 「https 로 시작하는
+ * 기사 주소를 넣어 주세요」 about an address that already began with https. What they actually need to hear is
+ * "that is a section front — give me the article".
+ */
 export type NewsFetchRefusalReason =
   | "publisher_not_allowed"
   | "private_address"
   | "unsupported_address"
-  | "too_many_redirects";
+  | "too_many_redirects"
+  | "page_too_large";
 
 export interface NewsFetchArticleRequest {
   url: string;
@@ -3592,7 +3601,7 @@ export function isNewsFetchArticleResponse(value: unknown): value is NewsFetchAr
     case "refused":
       // The reason is checked against the four the screen draws, not merely for being a string — an unknown
       // reason would reach a branch nobody wrote and render as whichever one happens to be last.
-      return ["publisher_not_allowed", "private_address", "unsupported_address", "too_many_redirects"]
+      return ["publisher_not_allowed", "private_address", "unsupported_address", "too_many_redirects", "page_too_large"]
         .includes(candidate.reason as string)
         && Array.isArray(candidate.publishers) && candidate.publishers.every(isPublisher);
     default:

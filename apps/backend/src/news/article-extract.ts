@@ -111,6 +111,36 @@ function decodeEntities(text: string): string {
     .replace(/&[a-z]+;/gi, (entity) => ENTITIES[entity.toLowerCase()] ?? entity);
 }
 
+/**
+ * The article's prose, found without knowing what anybody calls their container.
+ *
+ * 🔴 **Adding names was the wrong answer, and measuring showed why.** Against the real sites (Round 940) the
+ * containers are `content90`, `end-body`, `news_body`, `article-view`, `wrap-container` — there is no
+ * convention to learn, only a list to keep extending, and every publisher not yet on it fails silently. The
+ * same objection as the related-block strip, one level up.
+ *
+ * So the structural question again: **article prose is paragraphs**. A `<p>` carrying forty characters or more
+ * is a sentence somebody wrote; navigation, bylines, tags and related links are not that shape. Collecting
+ * those skips container selection entirely — which is the part that cannot be done reliably.
+ *
+ * 🟠 Deliberately a **fallback**, tried only after the named containers. A recognised container is a stronger
+ * statement about where the article is than a heuristic over the whole page, and using it first keeps the
+ * common case exact. This only runs where the alternative is giving up.
+ *
+ * 🔴 This does not rescue everything, and measuring says so plainly: MBC's article page is 4KB with 162
+ * characters of text, SBS's has 81. The body is drawn by JavaScript and **is not in the document at all** — no
+ * parser reaches it, which is exactly why the paste path is not a fallback but a main road.
+ */
+const PROSE_MIN_PARAGRAPH_CHARS = 40;
+
+function proseParagraphs(html: string): string {
+  return [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map((match) => match[1] ?? "")
+    .filter((inner) => textLengthOf(inner) >= PROSE_MIN_PARAGRAPH_CHARS)
+    .map((inner) => stripTags(inner))
+    .join("\n");
+}
+
 /** Paragraph and line breaks become newlines so sentences do not fuse; everything else just goes. */
 function stripTags(html: string): string {
   return decodeEntities(
@@ -167,5 +197,11 @@ export function extractArticle(html: string): ExtractedArticle {
     if (body.length < ARTICLE_MIN_BODY_CHARS) continue;
     return { ...found, body };
   }
+
+  // No container we recognise. Rather than adding another name to a list that can never be finished, ask the
+  // structural question — and put the whole page through the same link filter first, so a page of headlines
+  // cannot become a body.
+  const prose = proseParagraphs(dropLinkOnlyBlocks(STRIP_PATTERNS.reduce((text, strip) => text.replace(strip, " "), html)));
+  if (prose.length >= ARTICLE_MIN_BODY_CHARS) return { ...found, body: prose };
   return found;
 }
