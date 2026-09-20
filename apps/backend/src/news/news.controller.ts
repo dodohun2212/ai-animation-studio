@@ -4,6 +4,7 @@ import {
   NEWS_SUMMARY_MAX_CHARS,
   assertNewsSummaryCheck,
   checkNewsSummary,
+  type CreateNewsReelCardTextResponse,
   type CreateNewsSummaryResponse,
   type NewsArticleInput,
   type NewsFetchArticleResponse,
@@ -14,7 +15,8 @@ import {
 
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ARTICLE_MIN_BODY_CHARS, extractArticle } from "./article-extract.js";
-import { summariseArticle } from "./gemini-summary-adapter.js";
+import { summariseArticle, writeNewsReelCardText } from "./gemini-summary-adapter.js";
+import { parseNewsReelCardText } from "./news-reel-card-text.js";
 import { NewsCallQuota, NewsDailyQuotaExceededError, NewsQuotaLedgerUnreadableError } from "./news-call-quota.js";
 import { fetchAllFeeds } from "./news-feed.js";
 import { NEWS_SOURCE_HOSTS, NewsSourceRefusedError, fetchNewsArticle } from "./news-source.js";
@@ -92,6 +94,8 @@ export class NewsController {
   fetchArticle: typeof fetchNewsArticle = fetchNewsArticle;
   /** The provider call, replaceable for the same reason and never assigned by shipping code. */
   callProvider: typeof summariseArticle = summariseArticle;
+  /** The card-text call, replaceable for the same reason and never assigned by shipping code. */
+  callCardProvider: typeof writeNewsReelCardText = writeNewsReelCardText;
   /** The feed read, replaceable for the same reason — four publishers' servers, never reached from a test. */
   fetchFeeds: typeof fetchAllFeeds = fetchAllFeeds;
 
@@ -242,6 +246,62 @@ export class NewsController {
       // Reported, never trimmed: cutting to length can slice `4,000` into `4,0`, and the checker would then
       // see a figure the provider never wrote and call it invented.
       ...(summary.length > NEWS_SUMMARY_MAX_CHARS ? { tooLong: true as const } : {}),
+    };
+  }
+
+  /**
+   * The card's four lines, from one article.
+   *
+   * 🟠 **Same five steps, same order, same reasons as `summarise` above** — article first so a body we cannot
+   * use costs nothing, `preflight()` before anything goes out, the call, `record()` whether it worked or not,
+   * then the check. The one thing that differs is what is asked for.
+   *
+   * 🔴 **The check runs on the four lines, not on a paragraph about them.** These lines are what gets burned
+   * under a real publisher's name, so these are the words that have to be found in the article. Checking a
+   * summary and then burning something else would be checking the wrong text.
+   *
+   * 🔴 **Nothing here is a gate, and nothing here is trimmed.** A line that ran long, a box the model skipped,
+   * a sentence it wrote outside the labels — all of it comes back as it arrived. The call was paid for; a
+   * refusal at this point spends the money and returns nothing, while the screen's four boxes already count
+   * characters and are where a person finishes the job.
+   */
+  @Post(API_ROUTES.newsReelCardText)
+  async cardText(@Body() body: unknown): Promise<CreateNewsReelCardTextResponse> {
+    const article = validArticle(body);
+
+    const apiKey = (await this.settings.read("gemini"))?.trim();
+    if (!apiKey) throw newsSummaryKeyMissing();
+
+    try {
+      await this.quota.preflight();
+    } catch (error) {
+      if (error instanceof NewsDailyQuotaExceededError) throw newsDailyLimitReached(error.used, error.limit);
+      if (error instanceof NewsQuotaLedgerUnreadableError) throw newsLedgerUnreadable();
+      throw error;
+    }
+
+    let answer: string;
+    try {
+      answer = await this.callCardProvider(article, apiKey);
+    } catch {
+      await this.quota.record(false).catch(() => undefined);
+      throw newsSummaryFailed();
+    }
+    await this.quota.record(true);
+
+    const parsed = parseNewsReelCardText(answer);
+    // 🟠 The lines joined, because the checker looks inside one text — and a figure invented in the caption is
+    // no better than one invented in the headline.
+    const check = checkNewsSummary(Object.values(parsed.values).join("\n"), article.body);
+    assertNewsSummaryCheck(check);
+
+    return {
+      values: parsed.values,
+      missing: parsed.missing,
+      repeated: parsed.repeated,
+      ignored: parsed.ignored,
+      check,
+      dailyCalls: { used: await this.quota.usedToday(), limit: await this.quota.limit() },
     };
   }
 }

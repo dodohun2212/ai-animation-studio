@@ -333,3 +333,100 @@ describe("what the screen is told about each publisher", () => {
     expect(bodyOf("imbc.com")).not.toBe(bodyOf("donga.com"));
   });
 });
+
+/**
+ * 🔴 The paid route that fills the card's four boxes. Same five steps as the summary, same money, same
+ * refusals — the one thing that differs is what the provider is asked for, and that is exactly the thing the
+ * first real reel got wrong (a summary cut into pieces, 271 characters into a line that holds 15).
+ */
+describe("news reel card text route", () => {
+  const ANSWER = [
+    "제목1: 물가 오름세 한풀 꺾여",
+    "제목2: 3.2%로 둔화",
+    "자막1: 통계청 9월 발표",
+  ].join("\n");
+
+  it("returns the boxes the provider filled, and the day's count with them", async () => {
+    const { controller: news } = await summariser();
+    news.callCardProvider = async () => ANSWER;
+
+    const result = await news.cardText({ article: ARTICLE });
+
+    expect(result.values["headline.line1"]).toBe("물가 오름세 한풀 꺾여");
+    expect(result.values["headline.line2"]).toBe("3.2%로 둔화");
+    expect(result.missing, "자막 둘째 줄은 없어도 됩니다").toEqual([]);
+    expect(result.dailyCalls).toEqual({ used: 1, limit: NEWS_SUMMARY_DAILY_CALL_LIMIT });
+  });
+
+  /**
+   * 🔴 **대조가 카드의 줄 위에서 돕니다.** 구워지는 것이 이 줄들이니, 기사에서 찾아야 하는 것도 이 줄들입니다.
+   * 요약을 검사하고 다른 것을 구우면 엉뚱한 글을 검사한 것입니다.
+   */
+  it("checks the lines themselves, so a figure invented in the caption is caught too", async () => {
+    const { controller: news } = await summariser();
+    news.callCardProvider = async () => "제목1: 물가 오름세 한풀 꺾여\n제목2: 3.2%로 둔화\n자막1: 지난해는 7.8%였다";
+
+    const result = await news.cardText({ article: ARTICLE });
+
+    expect(result.check.missing.map((claim) => claim.text)).toContain("7.8%");
+    expect(result.values["caption.line1"], "지어낸 줄도 돌려줍니다 — 감추면 고칠 수가 없습니다").toContain("7.8%");
+  });
+
+  /** 🔴 돈이 나간 답입니다. 한 칸이 비어 왔다고 통째로 거절하면 돈은 나가고 남는 게 없습니다. */
+  it("hands back an incomplete answer and names the box that is missing", async () => {
+    const { controller: news } = await summariser();
+    news.callCardProvider = async () => "물론입니다!\n제목1: 물가 오름세 한풀 꺾여\n자막1: 통계청 9월 발표";
+
+    const result = await news.cardText({ article: ARTICLE });
+
+    expect(result.missing).toEqual(["headline.line2"]);
+    expect(result.ignored, "못 읽은 줄도 버렸다고 말합니다").toEqual(["물론입니다!"]);
+    expect(result.values["headline.line1"], "읽은 것은 그대로 옵니다").toBeTruthy();
+  });
+
+  /** 🔴 길이는 여기서 안 자릅니다 — 자르면 사람은 무엇을 잃었는지 모른 채 칸을 받습니다. */
+  it("does not trim a line that ran long", async () => {
+    const { controller: news } = await summariser();
+    const long = "가".repeat(40);
+    news.callCardProvider = async () => `제목1: ${long}\n제목2: 3.2%로 둔화\n자막1: 통계청 9월 발표`;
+
+    const result = await news.cardText({ article: ARTICLE });
+
+    expect(result.values["headline.line1"]).toBe(long);
+  });
+
+  it("books a failed call against the day here too", async () => {
+    const { controller: news } = await summariser();
+    news.callCardProvider = async () => { throw new Error("provider down"); };
+
+    await expect(news.cardText({ article: ARTICLE })).rejects.toThrow();
+    const after = await summariserUsed(news);
+    expect(after, "부른 것은 부른 것입니다").toBe(1);
+  });
+
+  /** 🔴 키가 없으면 나간 요청이 없습니다 — 안 나간 요청을 하루에서 깎으면 사람이 손해를 봅니다. */
+  it("spends nothing when there is no key", async () => {
+    const { controller: news } = await summariser(null);
+    let called = false;
+    news.callCardProvider = async () => { called = true; return ANSWER; };
+
+    await expect(news.cardText({ article: ARTICLE })).rejects.toThrow();
+    expect(called).toBe(false);
+    expect(await summariserUsed(news)).toBe(0);
+  });
+
+  /** 🟠 본문이 너무 짧으면 대조가 무의미합니다 — 그걸 알아내는 데 돈을 쓰지 않습니다. */
+  it("refuses a body too short to check before anything is spent", async () => {
+    const { controller: news } = await summariser();
+    let called = false;
+    news.callCardProvider = async () => { called = true; return ANSWER; };
+
+    await expect(news.cardText({ article: { ...ARTICLE, body: "짧다." } })).rejects.toThrow();
+    expect(called).toBe(false);
+  });
+});
+
+/** The day's count as the route itself would read it. */
+async function summariserUsed(news: NewsController): Promise<number> {
+  return (news as unknown as { quota: { usedToday: () => Promise<number> } }).quota.usedToday();
+}

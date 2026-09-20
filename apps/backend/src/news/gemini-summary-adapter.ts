@@ -1,6 +1,7 @@
 import { NEWS_SUMMARY_MAX_CHARS, type NewsArticleInput } from "@ai-animation-studio/shared";
 
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
+import { newsReelCardPrompt } from "./news-reel-card-text.js";
 
 /**
  * The one paid-capable call in the news reel, and the only place a provider is spoken to.
@@ -125,6 +126,27 @@ export async function summariseArticle(
   apiKey: string,
   deps: GeminiSummaryDeps = {},
 ): Promise<string> {
+  return askGemini(prompt(article), apiKey, deps);
+}
+
+/**
+ * Ask for a news reel card's four lines instead of a summary.
+ *
+ * 🔴 **The same request, the same retry, the same day's count — a different question.** What differs is the
+ * prompt and nothing else, which is the point: two ways of reaching this provider would mean two places for
+ * the timeout, the one 5xx retry and the model name to drift apart, and the model name has already been wrong
+ * twice (see {@link GEMINI_SUMMARY_MODEL}).
+ */
+export async function writeNewsReelCardText(
+  article: NewsArticleInput,
+  apiKey: string,
+  deps: GeminiSummaryDeps = {},
+): Promise<string> {
+  return askGemini(newsReelCardPrompt(article), apiKey, deps);
+}
+
+/** One request to the provider, with the retry and the timeout the whole feature shares. */
+async function askGemini(promptText: string, apiKey: string, deps: GeminiSummaryDeps): Promise<string> {
   const call = deps.fetch ?? globalThis.fetch;
   // D-016: a test process must never reach a real provider with whatever key happens to sit on disk.
   assertRealNetworkCallAllowed("Gemini", call);
@@ -135,7 +157,7 @@ export async function summariseArticle(
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt(article) }] }],
+          contents: [{ parts: [{ text: promptText }] }],
           // Low temperature is not a safety measure either; it just makes the model stick closer to the text.
           generationConfig: { temperature: 0.2 },
         }),
