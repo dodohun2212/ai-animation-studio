@@ -51,7 +51,10 @@ export function GeneratedImagesSection() {
           them, and concluded the library had never collected them. They were four rows further down. A count
           that hides which kinds it is counting answers a question nobody asked. */}
       <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-100">
-        만든 이미지 {total}장
+        {/* 🔴 「만든 이미지 98장」은 **보관함이 가진 것이 아닙니다** — 프로젝트에 있는 파일을 여기서 모아 보기만
+            합니다. 그런데 바로 아래에 보관함 자기 숫자가 있어서 두 숫자가 한 뭉치로 읽혔습니다. 무엇의 98장인지
+            **이름에 넣습니다.** 본문에만 적혀 있으면 펼친 사람만 압니다. */}
+        프로젝트가 만든 장면 이미지 {total}장
         {Boolean(projects.length) && Boolean(episodes.length) && (
           <span data-testid="generated-images-split" className="ml-2 text-sm font-normal text-slate-400 tabular-nums">
             단편 {projects.length} · 장기 회차 {episodes.length}
