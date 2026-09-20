@@ -2963,6 +2963,30 @@ export interface CreateNewsReelCardTextResponse {
 }
 
 /**
+ * Everything a news reel is: the pictures it holds, the card that goes over them, and how long each is held.
+ *
+ * 🔴 **Pictures come from the Asset Library, the same way a photo card's do.** Both things 캡틴D chose to burn
+ * — our own topic pictures and free-licence photographs (Cowork Round 1026 §2) — are files this app already
+ * keeps there, so nothing new has to be invented to hold them. 🟠 What is *not* settled by this shape is which
+ * pictures exist: the topic list and which free-photo sites to draw from are still 캡틴D's to choose, and
+ * neither touches this request. If that choice ever stops being "a file in the library", this is one field.
+ *
+ * 🔴 **The article's own picture is still not here.** `NewsFeedItem.imageUrl` reaches the picking screen and
+ * stops; a press photograph is used whole rather than quoted, and a settlement costs more than a picture does.
+ */
+export interface CreateNewsReelRequest {
+  projectId: string;
+  readonly assetIds: readonly string[];
+  card: NewsReelCard;
+  clipDurationSeconds: PhotoCardDurationSeconds;
+  aspectRatio: AspectRatio;
+}
+
+export interface CreateNewsReelResponse {
+  project: Project;
+}
+
+/**
  * One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset
  * Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's
  * doc comment for that distinction). "upload" is the only source, permanently — not a placeholder for a later
@@ -3751,6 +3775,8 @@ export const API_ROUTES = {
   newsFeed: "/news/feed",
   /** The card's four lines, written by the provider from one article. Paid-capable, and counted against the same day as the summary. */
   newsReelCardText: "/news/card-text",
+  /** Make a project from a finished card and the pictures it goes over. Free — no provider, no key. */
+  newsReels: "/news/reels",
   /** One subtitle font file by name, so a card preview can draw with the same bytes FFmpeg burns in. */
   subtitleFont: (name: string) => `/fonts/${name}`,
   providerSettings: "/settings/providers",

@@ -877,3 +877,60 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
   }, 180000);
 
 });
+
+/**
+ * A news reel scene brings its whole overlay with it — two bands and four lines — so the merge draws that
+ * instead of the photo card's subtitle. The branch is worth a pair of its own because both paths write a file
+ * called `scene1.ass` into the same place: a merge that took the wrong one would produce a video that looks
+ * finished and is missing its bands (CLI Round 1043).
+ */
+describe("a scene carrying a news reel card", () => {
+  const CARD = {
+    publisher: "연합뉴스",
+    headline: { line1: "검찰청 폐지 하루 만에", line2: "후속 법률 51건 통과" },
+    caption: { line1: "9월 17일 국회 본회의", line2: null },
+    creditRequired: false,
+  } as const;
+
+  it("draws the card's own overlay, bands and all", async () => {
+    const ass = new Map<string, string>();
+    const { finalPath, fontsDir } = await setup();
+
+    await new FfmpegMergeEngine(runner([], ass), fontsDir)
+      .merge([{ clip: "card.png", stillDurationSeconds: 5, newsReelCard: CARD }], 5, finalPath, "9:16");
+
+    const written = [...ass.values()].join("\n");
+    expect(written, "언론사 띠가 그려집니다").toContain("Style: Band,");
+    expect(written, "노란 줄이 자기 색을 씁니다").toContain("Style: HeadlineAccent,");
+    expect(written).toContain("후속 법률 51건 통과");
+  });
+
+  /**
+   * 🔴 포토카드의 글은 **한 글자도 안 섞여야** 합니다. 섞이면 카드의 자막 띠 **밑에** 같은 말이 한 번 더
+   * 구워지고, 그건 화면에서야 보입니다.
+   */
+  it("does not also draw the photo card's subtitle over it", async () => {
+    const ass = new Map<string, string>();
+    const { finalPath, fontsDir } = await setup();
+
+    await new FfmpegMergeEngine(runner([], ass), fontsDir)
+      .merge([{ clip: "card.png", stillDurationSeconds: 5, subtitleText: "여기 있으면 안 됩니다", newsReelCard: CARD }], 5, finalPath, "9:16");
+
+    const written = [...ass.values()].join("\n");
+    expect(written).not.toContain("여기 있으면 안 됩니다");
+    expect(written, "포토카드의 본문 스타일은 안 나옵니다").not.toContain("Style: Body,");
+  });
+
+  /** 🟠 카드가 없는 장면은 하나도 안 바뀝니다 — 이 갈림길이 기존 포토카드를 건드리지 않았다는 반쪽입니다. */
+  it("leaves an ordinary photo card exactly as it was", async () => {
+    const ass = new Map<string, string>();
+    const { finalPath, fontsDir } = await setup();
+
+    await new FfmpegMergeEngine(runner([], ass), fontsDir)
+      .merge([{ clip: "card.png", stillDurationSeconds: 5, subtitleText: "오늘의 문장" }], 5, finalPath, "9:16");
+
+    const written = [...ass.values()].join("\n");
+    expect(written).toContain("오늘의 문장");
+    expect(written).not.toContain("Style: Band,");
+  });
+});
