@@ -54,13 +54,21 @@ export function toNewsReelDisplayError(error: unknown): { code: string; message:
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
 /**
- * Checked down to the one field the caller acts on — the screen sends the person to this project's merge
- * screen, so a missing id would navigate nowhere and look like the button did nothing.
+ * Checked down to the two fields the caller acts on.
+ *
+ * The id, because the screen sends the person to this project's merge screen and a missing one would navigate
+ * nowhere and look like the button did nothing.
+ *
+ * And the card, because a reel that came back without it is not a reel: it is an ordinary project that will
+ * merge into a plain picture with no bands and no headline on it. That is not hypothetical — the merge had
+ * exactly that defect until the card was threaded through to it (CLI Round 1045), and it looked like success
+ * the whole way.
  */
 function isCreateNewsReelResponse(value: unknown): value is CreateNewsReelResponse {
   if (!isRecord(value)) return false;
   const project = value.project;
-  return isRecord(project) && typeof project.id === "string" && project.id.trim().length > 0;
+  if (!isRecord(project) || typeof project.id !== "string" || project.id.trim().length === 0) return false;
+  return isRecord(project.newsReelCard);
 }
 
 export async function createNewsReel(request: CreateNewsReelRequest): Promise<CreateNewsReelResponse> {

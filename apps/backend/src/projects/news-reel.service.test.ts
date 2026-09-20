@@ -135,4 +135,21 @@ describe("news reel creation", () => {
       response: { code: "NEWS_REEL_INVALID_REQUEST" },
     });
   });
+  /**
+   * 🔴 화면이 **「이건 그림이지 영상이 아니다」**를 알아야 합니다. 이걸 안 보내면 병합 화면이 승인 수로 버튼을
+   * 막고, 서버가 거절하는 `frameFit`·`audio.clipVolume` 을 보냅니다 — **만들어 놓고 못 굽습니다.**
+   *
+   * 🟠 포토카드의 두 칸은 **안 옵니다**: 뉴스 릴에는 자막 슬라이더도 장면 자막도 없습니다.
+   */
+  it("tells a screen it is a card, and does not lend it the photo card's controls", async () => {
+    const { service, assetId } = await setup();
+
+    const { project } = await service.create(request(assetId));
+
+    expect(project.newsReelCard).toEqual(CARD);
+    expect(project.photoCard, "포토카드가 아닙니다").toBeUndefined();
+    expect(project.subtitleLayout, "자막 슬라이더가 없습니다").toBeUndefined();
+    expect(project.sceneSubtitleLayout, "장면 자막도 없습니다").toBeUndefined();
+  });
 });
+

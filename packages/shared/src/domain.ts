@@ -1,4 +1,11 @@
+import type { NewsReelCard } from "./api.js";
 import type { WorkflowState } from "./workflow.js";
+
+/*
+ * 🟠 The card type is imported back from `api.ts`, which imports values from here — a cycle on paper and
+ * none at runtime, because a type-only import is erased. The alternative was a second copy of the shape,
+ * and this contract has spent a good deal of effort on not having two of anything.
+ */
 
 /**
  * Deliberately a plain `number` rather than a fixed literal union: a scene number is bounded by a project's own
@@ -700,6 +707,23 @@ export interface ProjectSummary {
    * looks the same.
    */
   photoCard?: boolean;
+  /**
+   * The news reel card this project carries, if it is one.
+   *
+   * 🔴 **The card itself rather than a second flag beside `photoCard`.** Two booleans can disagree; one fact
+   * cannot. A screen asks "are this project's scenes held pictures?" as `photoCard === true || newsReelCard
+   * !== undefined` — which is exactly what the server's own `pictureCardFor` asks — and gets the headline to
+   * show while it is at it.
+   *
+   * 🔴 **It is not `photoCard`, and must not be read as one.** A photo card has a subtitle slider and colours
+   * sampled off its picture; a news reel has neither, because its text sits in its own bands in its own
+   * colours. Sending `photoCard: true` for a reel would make a screen offer controls the merge refuses.
+   *
+   * 🟠 What a screen has to do differently for one, all of it because there are no clips: do not send
+   * `frameFit` or `audio.clipVolume` (both refused), do not gate the button on approved scenes (there are
+   * none), and do not offer the scene subtitle (the card draws its own text). CLI Round 1047.
+   */
+  newsReelCard?: NewsReelCard;
   /**
    * Where this card's text sits and how big it is — the values its last merge used, or the defaults for a card
    * that has never been merged with a choice.

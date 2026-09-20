@@ -156,6 +156,7 @@ export function storedSceneSubtitleLayout(stored: StoredProject): SceneSubtitleL
 }
 
 export function toApiSummary(stored: StoredProject): ProjectSummary {
+  const newsReelCard = newsReelCardFor(stored);
   return {
     id: stored.project_id,
     topic: stored.topic,
@@ -168,9 +169,15 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     // Exactly one of the two, decided by the same flag the merge branches on: a card has text and no scenes,
     // a project has scenes and no card text. A screen reading the wrong field gets undefined, not the other
     // layout's numbers — which is the whole reason these are two fields and not one.
+    /* 🔴 Exactly one of the three, and a news reel is the third. It has no subtitle slider of its own and no
+       scene subtitle to place, because its text lives in its own bands — so it gets neither layout, and what
+       it gets instead is the card. That is the one fact a screen needs from here: pictures rather than clips,
+       plus the headline to show (CLI Round 1047). */
     ...(photoCardFor(stored)
       ? { photoCard: true, subtitleLayout: storedSubtitleLayout(stored) }
-      : { sceneSubtitleLayout: storedSceneSubtitleLayout(stored) }),
+      : newsReelCard !== undefined
+        ? { newsReelCard }
+        : { sceneSubtitleLayout: storedSceneSubtitleLayout(stored) }),
     ...(usedAudioFor(stored) !== undefined ? { usedAudio: usedAudioFor(stored) } : {}),
     ...(stored.instagram_post ? { instagramPost: {
       mediaId: stored.instagram_post.media_id,
