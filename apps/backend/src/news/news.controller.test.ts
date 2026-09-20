@@ -7,7 +7,7 @@ import { NEWS_SUMMARY_MAX_CHARS, isCreateNewsSummaryResponse, isNewsFetchArticle
 
 import { NEWS_SOURCE_HOSTS } from "./news-source.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
-import { NewsCallQuota } from "./news-call-quota.js";
+import { NewsCallQuota, NEWS_SUMMARY_DAILY_CALL_LIMIT } from "./news-call-quota.js";
 import { NewsController } from "./news.controller.js";
 
 const roots: string[] = [];
@@ -33,7 +33,7 @@ describe("news setup route", () => {
     const { controller: news } = await controller();
     const setup = await news.setup();
     expect(isNewsReelSetupResponse(setup)).toBe(true);
-    expect(setup.dailyCalls).toEqual({ used: 0, limit: 10 });
+    expect(setup.dailyCalls).toEqual({ used: 0, limit: NEWS_SUMMARY_DAILY_CALL_LIMIT });
   });
 
   it("names every publisher, with a readable name beside the host", async () => {
@@ -175,7 +175,7 @@ describe("news summary route", () => {
 
     expect(isCreateNewsSummaryResponse(result)).toBe(true);
     expect(result.check.missing).toHaveLength(0);
-    expect(result.dailyCalls).toEqual({ used: 1, limit: 10 });
+    expect(result.dailyCalls).toEqual({ used: 1, limit: NEWS_SUMMARY_DAILY_CALL_LIMIT });
   });
 
   /**
@@ -209,14 +209,14 @@ describe("news summary route", () => {
   it("refuses once the day's allowance is gone, and names whose limit it is", async () => {
     const { controller: news, root } = await summariser();
     const quota = new NewsCallQuota(root);
-    for (let call = 0; call < 10; call++) await quota.record(true);
+    for (let call = 0; call < NEWS_SUMMARY_DAILY_CALL_LIMIT; call++) await quota.record(true);
     news.callProvider = async () => { throw new Error("must not be called"); };
 
     await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({
       response: { code: "NEWS_DAILY_LIMIT_REACHED" },
     });
     // 🔴 And nothing went out: the eleventh call must not reach them at all.
-    expect(await quota.usedToday()).toBe(10);
+    expect(await quota.usedToday()).toBe(NEWS_SUMMARY_DAILY_CALL_LIMIT);
   });
 
   /**

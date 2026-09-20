@@ -20,8 +20,20 @@ import { isOnBudgetDay } from "../providers/budget-month.js";
  *
  * The number lives above the provider's own limit being unknown on purpose. 캡틴D reads their console; ours is
  * set below whatever it says, and this file never records a number they did not confirm.
+ *
+ * 🟢 **10 → 30, on 2026-09-20, and the reason is a fact 캡틴D stated rather than a guess.** Asked directly,
+ * they confirmed: 「결제 방법을 아직 설정 안했긴해」. With no billing method on the project there is no
+ * mechanism by which this key can be charged — the thing the low number was bounding cannot happen today.
+ *
+ * 🔴 **So this number is conditional, and the condition is written here because it will change.** The moment
+ * billing is attached to that project the old reasoning returns in full and this should go back down. It is
+ * not a limit anybody outgrew; it is a bound on a risk that is currently absent.
+ *
+ * 🟠 Why 30 and not "off": the count still catches the thing it was really for. Today alone it caught two
+ * wrong model names and a provider outage burning calls — a runaway retry loop looks exactly like that, and
+ * 30 stops one within a day while leaving room to actually make a few reels and fail a few times.
  */
-export const NEWS_SUMMARY_DAILY_CALL_LIMIT = 10;
+export const NEWS_SUMMARY_DAILY_CALL_LIMIT = 30;
 
 export class NewsDailyQuotaExceededError extends Error {
   constructor(readonly used: number, readonly limit: number) {

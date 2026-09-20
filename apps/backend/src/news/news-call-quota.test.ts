@@ -114,8 +114,16 @@ describe("news call quota", () => {
     await expect(fs.readFile(path.join(root, "api_budget_usage.json"), "utf8")).rejects.toThrow();
   });
 
-  /** The shipped number is the alarm 캡틴D's one-reel-a-day sits well under — not an estimate of use. */
+  /**
+   * The shipped number is the alarm 캡틴D's one-reel-a-day sits well under — not an estimate of use.
+   *
+   * 🔴 **A range, not the literal.** This used to read `toBe(10)`, which measured the number rather than the
+   * claim above it: raising the limit for a stated reason (2026-09-20, no billing attached) broke a pair whose
+   * own sentence says the exact value is not the point. What has to stay true is that one reel and its retries
+   * fit comfortably, and that it is still an alarm — a limit nobody can reach is not one.
+   */
   it("ships a limit that leaves room for a reel's retries", async () => {
-    expect(NEWS_SUMMARY_DAILY_CALL_LIMIT).toBe(10);
+    expect(NEWS_SUMMARY_DAILY_CALL_LIMIT, "한 편 만들고 몇 번 실패해도 되어야 합니다").toBeGreaterThanOrEqual(5);
+    expect(NEWS_SUMMARY_DAILY_CALL_LIMIT, "닿을 수 없는 한도는 경보가 아닙니다").toBeLessThanOrEqual(50);
   });
 });
