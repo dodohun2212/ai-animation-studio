@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { CollapsibleCard } from "./CollapsibleCard.js";
 import { getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleWorld } from "../api/longStoryBibleApi.js";
-import { outlineButton } from "./ui/surfaces.js";
+import { outlineButton, smallDangerOutlineButton } from "./ui/surfaces.js";
 
 interface Props { projectId: string; }
 type DisplayError = { code: string; message: string };
@@ -150,7 +150,7 @@ export function StoryWorldCard({ projectId }: Props) {
               </label>
               <button
                 type="button"
-                className="mt-5 rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+                className={`mt-5 ${smallDangerOutlineButton}`}
                 disabled={pending}
                 onClick={() => change(shown.filter((_, position) => position !== index))}
               >

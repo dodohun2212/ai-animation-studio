@@ -76,6 +76,21 @@ export const dangerOutlineButton =
   "rounded border border-rose-400/40 px-4 py-2 text-sm text-rose-300 transition-[color,background-color,border-color] hover:border-rose-400/60 hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-50 disabled:hover:border-rose-400/40 disabled:hover:bg-transparent disabled:hover:text-rose-300";
 
 /**
+ * 줄 안에 들어가는 작은 위험 버튼 — 「삭제」 · 「제거」 · 「지우기」 · 「폴더에서 빼기」.
+ *
+ * 🔴 2026-09-20: 일곱 벌이 있었고 **이름이 다섯, 몸통이 넷**이었습니다(`smallDangerButton` ·
+ * `smallRemoveButton` · `dangerButton` · 인라인 둘). 🟠 이름이 제각각이라 **이름으로 찾는 방법에 안 걸렸고**,
+ * 999 를 서버에서 확인하다 「폴더 삭제」 옆의 「폴더에서 빼기」가 혼자 알약인 걸 보고 알았습니다.
+ *
+ * 🟢 다섯을 여기로 모읍니다. 🔴 **나머지 둘은 안 모읍니다** — `AudioLibraryScreen` 의 삭제 확인과
+ * `StoryPromptScreen` 의 `confirm-regenerate` 는 **확인 상자 안에서 실제로 그 일을 하는 버튼**이고,
+ * `font-semibold` 는 그래서 붙어 있습니다. **차이가 파일이 아니라 역할을 따라가므로 남깁니다**(Round 999 §2).
+ * 그쪽은 별도의 `dangerConfirmButton` 자리이고, 앱의 확인 상자를 전부 센 다음에 할 일입니다.
+ */
+export const smallDangerOutlineButton =
+  "rounded border border-rose-400/40 px-3 py-1 text-xs text-rose-300 transition-[color,background-color,border-color] hover:border-rose-400/60 hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-50 disabled:hover:border-rose-400/40 disabled:hover:bg-transparent disabled:hover:text-rose-300";
+
+/**
  * The one call to action per screen.
  *
  * 🔴 2026-09-19: 보라→자홍 그라데이션에 형광 그림자까지 얹혀 있던 버튼을 **뼈색 판에 검은 글자**로

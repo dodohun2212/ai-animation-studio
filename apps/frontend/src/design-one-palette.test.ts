@@ -114,7 +114,7 @@ describe("화면 색은 한 군데에서만 정해진다", () => {
    * 적기 시작하면 여기서 빨개집니다. 열한 개가 네 가지로 갈라진 건 **한 번에 그렇게 된 게 아니라** 한 사람씩
    * 자기 파일에 적어서 그렇게 됐습니다.
    */
-  it("버튼은 한 군데에서만 정의된다 — 열아홉 벌이 여덟 가지로 갈라져 있었다", async () => {
+  it("이름 있는 버튼은 한 군데에서만 정의된다 — 스물넷이 열한 가지로 갈라져 있었다", async () => {
     const root = path.dirname(url.fileURLToPath(import.meta.url));
     const files = await sourceFiles(root);
 
@@ -122,7 +122,17 @@ describe("화면 색은 한 군데에서만 정해진다", () => {
      * 🟠 이름을 **표로** 둡니다. 다음에 또 하나가 갈라지기 시작하면 (`dangerOutlineButton`, `primaryButton` …)
      * 여기 한 줄을 더하는 것으로 끝나고, 짝을 새로 쓸 필요가 없습니다.
      */
-    const SHARED = ["outlineButton", "smallOutlineButton", "dangerOutlineButton"] as const;
+    const SHARED = ["outlineButton", "smallOutlineButton", "dangerOutlineButton", "smallDangerOutlineButton"] as const;
+
+    /*
+     * 🔴 **이 표가 못 보는 것**: 이름 없이 `className="…"` 에 바로 적힌 버튼. 작은 장미 버튼 일곱 벌 중 둘이
+     * 그랬고(Round 1000), 그래서 이름으로 찾는 이 짝에 **안 걸려서 손으로 세야 했습니다.** 🟠 인라인까지
+     * 잡으려면 `border-rose-400` 같은 색 문자열을 세야 하는데, 그러면 **오류 문구(`text-rose-400`)까지**
+     * 걸립니다. 걸러내려면 짝이 CSS 를 읽기 시작해야 하고, 그건 짝이 할 일이 아닙니다.
+     *
+     * 🟢 그래서 이 짝의 약속은 **「이름이 있는 것은 하나뿐이다」**까지입니다. 인라인을 막는 건 규칙이 아니라
+     * 습관이고, 규칙이 못 하는 자리를 규칙인 척하지 않습니다.
+     */
 
     const localCopies: string[] = [];
     for (const relativePath of files) {

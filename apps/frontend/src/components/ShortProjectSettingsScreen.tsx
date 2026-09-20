@@ -24,7 +24,7 @@ import { createStoryPromptDraftPreview, toStoryDisplayError } from "../api/story
 import { Spinner } from "./Spinner.js";
 import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
-import { cardSectionWide as cardSection, dangerOutlineButton, outlineButton, primaryButton, scrollList, smallOutlineButton } from "./ui/surfaces.js";
+import { cardSectionWide as cardSection, dangerOutlineButton, outlineButton, primaryButton, scrollList, smallDangerOutlineButton, smallOutlineButton } from "./ui/surfaces.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
@@ -67,8 +67,6 @@ const inlineInput =
   "rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const smallAddButton =
   "rounded-full border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
-const smallRemoveButton =
-  "rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
 /**
  * "This section saves on every click."
  *
@@ -405,7 +403,7 @@ function CastEditor({ projectId, onLeadChange }: { projectId: string; onLeadChan
                   onBlur={() => saveMember(member.assetId)}
                 />
               </label>
-              <button type="button" className={smallRemoveButton} disabled={saving} onClick={() => removeMember(member.assetId)}>
+              <button type="button" className={smallDangerOutlineButton} disabled={saving} onClick={() => removeMember(member.assetId)}>
                 제거
               </button>
             </li>
@@ -760,7 +758,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
               {atmosphereAssetIds.map((assetId) => (
                 <li key={assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5">
                   <span className="text-sm text-slate-300">{assetId}</span>
-                  <button type="button" className={smallRemoveButton} disabled={saving} onClick={() => removeAtmosphere(assetId)}>
+                  <button type="button" className={smallDangerOutlineButton} disabled={saving} onClick={() => removeAtmosphere(assetId)}>
                     제거
                   </button>
                 </li>
@@ -825,7 +823,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
                       onBlur={() => saveSceneReferencePurpose(item.assetId)}
                     />
                   </label>
-                  <button type="button" className={smallRemoveButton} disabled={saving} onClick={() => removeSceneReference(item.assetId)}>
+                  <button type="button" className={smallDangerOutlineButton} disabled={saving} onClick={() => removeSceneReference(item.assetId)}>
                     제거
                   </button>
                 </li>

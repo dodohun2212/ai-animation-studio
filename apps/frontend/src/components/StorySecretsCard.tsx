@@ -3,7 +3,7 @@ import type { LongStoryBible, LongStoryBibleCollection, LongStoryBibleItem, Long
 
 import { CollapsibleCard } from "./CollapsibleCard.js";
 import { createLongStoryBibleItem, deleteLongStoryBibleItem, getLongProjectStoryBible, toLongStoryBibleDisplayError, updateLongStoryBibleItem } from "../api/longStoryBibleApi.js";
-import { outlineButton, smallOutlineButton } from "./ui/surfaces.js";
+import { outlineButton, smallDangerOutlineButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props { projectId: string; }
 type DisplayError = { code: string; message: string };
@@ -30,8 +30,6 @@ function itemInput(item: LongStoryBibleItem): LongStoryBibleItemInput {
 
 const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const smallRemoveButton =
-  "rounded-full border border-rose-400/30 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
 
 /**
  * 비밀·복선 — moved here from 등장인물·설정집.
@@ -165,7 +163,7 @@ export function StorySecretsCard({ projectId }: Props) {
                       >
                         수정
                       </button>
-                      <button type="button" className={smallRemoveButton} disabled={pending} onClick={() => setDeleteTarget({ collection, item })}>
+                      <button type="button" className={smallDangerOutlineButton} disabled={pending} onClick={() => setDeleteTarget({ collection, item })}>
                         삭제
                       </button>
                     </div>

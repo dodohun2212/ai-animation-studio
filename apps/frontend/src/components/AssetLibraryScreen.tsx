@@ -5,7 +5,7 @@ import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, dangerOutlineButton, outlineButton, primaryButton, scrollList, smallOutlineButton } from "./ui/surfaces.js";
+import { cardSection, dangerOutlineButton, outlineButton, primaryButton, scrollList, smallDangerOutlineButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
 /**
@@ -111,8 +111,6 @@ const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const smallAddButton =
   "rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300 hover:border-emerald-400/60 hover:bg-emerald-500/15 disabled:opacity-50";
-const smallRemoveButton =
-  "rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300 hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
@@ -1174,7 +1172,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                         >
                           대표 이미지로 정하기
                         </button>
-                        <button type="button" className={smallRemoveButton} disabled={folderMutationPending} onClick={() => void unlinkAssetFromFolder(child.assetId)}>
+                        <button type="button" className={smallDangerOutlineButton} disabled={folderMutationPending} onClick={() => void unlinkAssetFromFolder(child.assetId)}>
                           폴더에서 빼기
                         </button>
                       </div>
