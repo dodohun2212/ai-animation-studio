@@ -177,6 +177,27 @@ export interface ExtractedArticle {
 }
 
 /**
+ * 🔴 **The headline again, as the body's first line.**
+ *
+ * 캡틴D, first real run: 「본문이랑 제목이랑 같게 뜸」. Measured against live articles the same hour —
+ * 경향, 한겨레 and SBS all repeat the headline inside the body container, 연합뉴스 and 뉴시스 do not. So it
+ * is most publishers, not one, and the person sees their headline twice in a box they are about to summarise.
+ *
+ * 🟠 **Exact match only, and only the first line.** A looser rule was measured and rejected: dropping leading
+ * lines that do not end like a sentence also eats 뉴시스's `[서울=뉴시스] …` dateline, 103 characters of real
+ * article. The headline repeated verbatim is unambiguous; anything beyond that is guessing at furniture, and
+ * guessing wrong costs body rather than noise.
+ */
+function withoutRepeatedTitle(body: string, title: string): string {
+  const headline = title.trim();
+  if (!headline) return body;
+  const lines = body.split("\n");
+  const first = lines.findIndex((line) => line.trim().length > 0);
+  if (first < 0 || lines[first]!.trim() !== headline) return body;
+  return lines.slice(first + 1).join("\n").trimStart();
+}
+
+/**
  * Whatever could be read from the page, with `body` present only when it could be read **confidently**.
  *
  * No body is not an error. The server did its job: it knocked, it got a page, it could not tell which part was
@@ -193,7 +214,7 @@ export function extractArticle(html: string): ExtractedArticle {
     if (!container) continue;
     const stripped = STRIP_PATTERNS.reduce((text, strip) => text.replace(strip, " "), container);
     // Names first, then structure — two independent defences, because the first one's failures are silent.
-    const body = stripTags(dropLinkOnlyBlocks(stripped));
+    const body = withoutRepeatedTitle(stripTags(dropLinkOnlyBlocks(stripped)), found.title);
     if (body.length < ARTICLE_MIN_BODY_CHARS) continue;
     return { ...found, body };
   }
@@ -202,6 +223,7 @@ export function extractArticle(html: string): ExtractedArticle {
   // structural question — and put the whole page through the same link filter first, so a page of headlines
   // cannot become a body.
   const prose = proseParagraphs(dropLinkOnlyBlocks(STRIP_PATTERNS.reduce((text, strip) => text.replace(strip, " "), html)));
-  if (prose.length >= ARTICLE_MIN_BODY_CHARS) return { ...found, body: prose };
+  const trimmed = withoutRepeatedTitle(prose, found.title);
+  if (trimmed.length >= ARTICLE_MIN_BODY_CHARS) return { ...found, body: trimmed };
   return found;
 }

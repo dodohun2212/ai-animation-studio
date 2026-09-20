@@ -155,3 +155,34 @@ describe("article extraction, when the block names are ones we never guessed", (
     expect(article.body!).toContain("기획재정부 자료");
   });
 });
+
+/**
+ * 캡틴D, first real run: 「본문이랑 제목이랑 같게 뜸」. Measured the same hour on live articles — 경향, 한겨레
+ * and SBS repeat the headline as the body's first line; 연합뉴스 and 뉴시스 do not.
+ */
+describe("the headline is not the body's first line", () => {
+  const page = (body: string) => `<html><head><meta property="og:title" content="물가 3.2%로 둔화"></head>
+    <body><article>${body}</article></body></html>`;
+  const sentence = "통계청은 3.2%라고 밝혔다. ".repeat(30);
+
+  it("drops the headline when the body opens with it", () => {
+    const extracted = extractArticle(page(`<p>물가 3.2%로 둔화</p><p>${sentence}</p>`));
+    expect(extracted.body!.startsWith("물가 3.2%로 둔화")).toBe(false);
+    expect(extracted.body).toContain("통계청은");
+  });
+
+  /**
+   * 🔴 Exact match only. A looser rule — dropping leading lines that do not end like a sentence — was measured
+   * and rejected because it eats 뉴시스's `[서울=뉴시스] …` dateline, 103 characters of real article.
+   */
+  it("keeps a first line that merely resembles the headline", () => {
+    const extracted = extractArticle(page(`<p>물가 3.2%로 둔화됐다고 한다</p><p>${sentence}</p>`));
+    expect(extracted.body!.startsWith("물가 3.2%로 둔화됐다고")).toBe(true);
+  });
+
+  /** 🟠 The publishers that never repeated it must come back byte for byte. */
+  it("changes nothing when the body does not open with the headline", () => {
+    const extracted = extractArticle(page(`<p>[서울=뉴시스] 반복되는 사건으로</p><p>${sentence}</p>`));
+    expect(extracted.body!.startsWith("[서울=뉴시스]")).toBe(true);
+  });
+});

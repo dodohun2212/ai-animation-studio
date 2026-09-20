@@ -56,7 +56,13 @@ const PUBLISHER_FACTS: Record<string, { name: string; body: NewsPublisherBody }>
   "hankookilbo.com": { name: "한국일보", body: "address" },
   "kbs.co.kr": { name: "KBS", body: "unknown" },
   "imbc.com": { name: "MBC", body: "paste" },
-  "sbs.co.kr": { name: "SBS", body: "paste" },
+  /*
+   * 🔴 `paste` → `address`, measured 2026-09-20 on a live article: the body comes back at 2,537 characters,
+   * eighteen sentences of it. The old classification came from sampling before the feed existed and has been
+   * telling people 「본문은 붙여넣어야 합니다」 about a publisher that parses fine — a warning that costs
+   * somebody the work it claims to save them.
+   */
+  "sbs.co.kr": { name: "SBS", body: "address" },
   "ytn.co.kr": { name: "YTN", body: "paste" },
 };
 
