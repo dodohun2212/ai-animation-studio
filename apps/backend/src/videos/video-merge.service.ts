@@ -11,7 +11,7 @@ import { Injectable } from "@nestjs/common";
 import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, MERGE_FRAME_FOR_ASPECT, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type GetPhotoCardSubtitleColorsResponse, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 import { cardImagePath } from "../projects/card-image-path.js";
-import { photoCardFor, storedSceneSubtitleLayout, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
+import { newsReelCardFor, photoCardFor, pictureCardFor, storedSceneSubtitleLayout, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
 import { cssColour } from "./card-palette.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
@@ -133,7 +133,7 @@ function resolveSubtitleLayout(project: StoredProject, request: unknown): PhotoC
 function resolveSceneSubtitleLayout(project: StoredProject, request: unknown): SceneSubtitleLayout {
   const stored = storedSceneSubtitleLayout(project);
   if (!isObject(request) || request.sceneSubtitleLayout === undefined) return stored;
-  if (photoCardFor(project)) throw videoMergeInvalidRequest("sceneSubtitleLayout does not apply to photo cards.");
+  if (pictureCardFor(project)) throw videoMergeInvalidRequest("sceneSubtitleLayout does not apply to photo cards.");
   const asked = request.sceneSubtitleLayout;
   if (!isObject(asked) || Object.keys(asked).some((key) => !["scale", "center"].includes(key))) throw videoMergeInvalidRequest();
   const merged = {
@@ -153,7 +153,7 @@ function resolveSceneSubtitleLayout(project: StoredProject, request: unknown): S
  */
 function resolveFrameFit(project: StoredProject, request: unknown): FrameFit {
   if (!isObject(request) || request.frameFit === undefined) return "pad";
-  if (photoCardFor(project)) throw videoMergeInvalidRequest("frameFit does not apply to photo cards.");
+  if (pictureCardFor(project)) throw videoMergeInvalidRequest("frameFit does not apply to photo cards.");
   if (!isFrameFit(request.frameFit)) throw videoMergeInvalidRequest(`frameFit must be ${FRAME_FITS.join(", ")}.`);
   return request.frameFit;
 }
@@ -192,7 +192,7 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
   if (audio.startSeconds !== undefined && (typeof audio.startSeconds !== "number" || !Number.isFinite(audio.startSeconds) || audio.startSeconds < 0)) throw videoMergeInvalidRequest("audio.startSeconds must be a non-negative number.");
   if (audio.clipVolume !== undefined && (typeof audio.clipVolume !== "number" || !Number.isFinite(audio.clipVolume) || audio.clipVolume < 0 || audio.clipVolume > 1)) throw videoMergeInvalidRequest("audio.clipVolume must be between 0 and 1.");
   // A photo card has a still, not a clip: there is no clip sound for the field to reach (MergeAudioSettings.clipVolume).
-  if (audio.clipVolume !== undefined && photoCardFor(project)) throw videoMergeInvalidRequest("audio.clipVolume does not apply to photo cards.");
+  if (audio.clipVolume !== undefined && pictureCardFor(project)) throw videoMergeInvalidRequest("audio.clipVolume does not apply to photo cards.");
   return {
     mode: audio.mode,
     ...(usesBgm(audio.mode) ? { trackId: audio.trackId as string } : {}),
@@ -285,13 +285,19 @@ export class LocalVideoMergeService {
       // The clip's sound joins only where the clip has a track to give (measured, as VideoReview.clip is): a
       // scene without one is merged as before rather than failing the whole reel over a missing stream.
       const clipAudioVolume = stillDurationSeconds === undefined && clipVolume > 0 && (await probeClipFacts(clips[index]!, this.runner))?.hasAudio ? clipVolume : undefined;
+      /*
+       * 🔴 The card travels with **every** picture, not only the first. A reel's words are the reel — losing
+       * the headline halfway through would be losing the thing somebody is watching — and the merge burns
+       * subtitles per scene, so each one has to carry it.
+       */
+      const newsReelCard = newsReelCardFor(project);
       return stillDurationSeconds !== undefined
         /*
          * 🔴 `revealSubtitle` only on the first picture. The text stays on every one — in a news reel the
          * text is the content — but the line-by-line reveal must not start over each time the picture
          * changes, or somebody reading loses their place three times in a row.
          */
-        ? { clip: clips[index]!, narrationAudioPath, subtitleText, stillDurationSeconds, revealSubtitle: index === 0, ...(subtitleLayout ? { subtitleLayout } : {}) }
+        ? { clip: clips[index]!, narrationAudioPath, subtitleText, stillDurationSeconds, revealSubtitle: index === 0, ...(subtitleLayout ? { subtitleLayout } : {}), ...(newsReelCard ? { newsReelCard } : {}) }
         : { clip: clips[index]!, narrationAudioPath, subtitleText, ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(clipAudioVolume !== undefined ? { clipAudioVolume } : {}) };
     }));
   }
@@ -327,11 +333,11 @@ export class LocalVideoMergeService {
     // card would have had to be created again, under a new name, to move one number (Cowork Round 440).
     //
     // Published is the one exception, and it is its own refusal: see videoMergeAlreadyPublished.
-    const remakeableCard = project.workflow_state === WorkflowState.Completed && photoCardFor(project);
+    const remakeableCard = project.workflow_state === WorkflowState.Completed && pictureCardFor(project);
     if (remakeableCard && project.instagram_post) throw videoMergeAlreadyPublished();
     if (project.workflow_state === WorkflowState.Completed && !remakeableCard) throw videoMergeAlreadyCompleted();
     if (!remakeableCard && project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
-    if (photoCardFor(project)) {
+    if (pictureCardFor(project)) {
       /*
        * Every picture, in scene order. A card used to be one picture and one scene; it is now one scene per
        * picture, which reuses `merge()`'s existing walk-and-concatenate without changing a line of it — and

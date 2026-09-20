@@ -1,4 +1,4 @@
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, WorkflowState, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, WorkflowState, type NewsReelCard, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
 
 import { generationSourceOfVideoRecords } from "../videos/generation-source.js";
 import { LEGACY_VIDEO_JOB_ID } from "../videos/legacy-job.js";
@@ -85,6 +85,31 @@ function usedAudioFor(stored: StoredProject): ProjectSummary["usedAudio"] {
  */
 export function photoCardFor(stored: StoredProject): boolean {
   return stored.lore_context.photo_card === true;
+}
+
+/**
+ * The news reel card written on this project, or `undefined` for anything that is not one.
+ *
+ * A reel is the same kind of owner a photo card is — a short project whose scenes are held pictures — and it
+ * is told apart by carrying a card rather than by a second boolean. The card is the thing the merge needs
+ * anyway, so a flag beside it would be a second fact that can disagree with the first.
+ */
+export function newsReelCardFor(stored: StoredProject): NewsReelCard | undefined {
+  const card = stored.lore_context.news_reel_card as Record<string, unknown> | undefined;
+  const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+  return record(card) && record(card.headline) && record(card.caption) ? (card as unknown as NewsReelCard) : undefined;
+}
+
+/**
+ * Whether this project's scenes are held pictures rather than clips.
+ *
+ * 🔴 The question the merge actually asks in most places, and the two kinds answer it the same way: there are
+ * no video clips, no approvals and no scene subtitle, and the previous final video is archived rather than
+ * refused. Where a branch is about the **photo card's own controls** — its subtitle slider, its sampled
+ * colours — it still asks `photoCardFor`, because a news reel has neither.
+ */
+export function pictureCardFor(stored: StoredProject): boolean {
+  return photoCardFor(stored) || newsReelCardFor(stored) !== undefined;
 }
 
 /**
