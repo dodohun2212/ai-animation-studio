@@ -577,6 +577,22 @@ describe("NewsReelScreen 기사 사진", () => {
     expect(image.getAttribute("alt"), "제목이 곧 설명입니다").toBe("");
   });
 
+  it("keeps the space even when there is no picture, so the titles stay in one column", async () => {
+    /* 🔴 **이게 이 설계의 핵심인데 짝이 없었습니다**(CLI Round 1013 §1: 자리를 없애도 서른셋이 전부 초록).
+       110 줄 중 **48 줄(44%)만** 그림이 있습니다 — 자리가 사라지면 **62 줄이 왼쪽으로 밀려** 목록이
+       들쭉날쭉해지고, 백열 줄을 훑는 일이 그만큼 어려워집니다. */
+    const noImage = { ...FEED_ITEM, imageUrl: null };
+    const withImage = { ...FEED_ITEM, url: "https://www.yna.co.kr/view/AKR2", imageUrl: "https://img.yna.co.kr/a.jpg" };
+    stubRoutes({ "GET /news/feed": { items: [withImage, noImage], unavailable: [] } });
+    renderScreen();
+
+    await screen.findByTestId(`news-feed-item-${noImage.url}`);
+    const empty = screen.getByTestId(`news-feed-slot-${noImage.url}`);
+    expect(empty, "자리는 그림이 없어도 남습니다").toBeTruthy();
+    expect(empty.textContent, "🔴 그 자리에 글자를 쓰면 「못 가져왔다」가 됩니다").toBe("");
+    expect(empty.className).toBe(screen.getByTestId(`news-feed-slot-${withImage.url}`).className);
+  });
+
   it("draws nothing at all when the feed gave no picture", async () => {
     /* 🔴 빈 자리에 테두리나 아이콘을 그리면 **「못 가져왔다」로 읽힙니다.** 그건 저쪽 편집 판단이지 이 화면이
        실패한 게 아닙니다 — 절반이 그렇습니다. */
