@@ -1,14 +1,16 @@
 import {
   API_ROUTES,
+  type CreateNewsSummaryRequest,
+  type CreateNewsSummaryResponse,
+  isCreateNewsSummaryResponse,
+  isNewsFeedResponse,
+  isNewsFetchArticleResponse,
+  isNewsReelSetupResponse,
+  type NewsArticleInput,
+  type NewsFeedResponse,
   type NewsFetchArticleRequest,
   type NewsFetchArticleResponse,
   type NewsReelSetupResponse,
-  type CreateNewsSummaryRequest,
-  type CreateNewsSummaryResponse,
-  type NewsArticleInput,
-  isCreateNewsSummaryResponse,
-  isNewsFetchArticleResponse,
-  isNewsReelSetupResponse,
 } from "@ai-animation-studio/shared";
 
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
@@ -102,6 +104,20 @@ async function read<T>(url: string, init: RequestInit | undefined, guard: (value
  */
 export function getNewsReelSetup(): Promise<NewsReelSetupResponse> {
   return read(API_ROUTES.newsReelSetup, undefined, isNewsReelSetupResponse);
+}
+
+/**
+ * 오늘 들어온 기사 목록.
+ *
+ * 🔴 **여기 한 행은 「더 믿을 수 있는 길」이 아닙니다.** 누르면 주소 칸이 채워질 뿐이고, 본문은 여전히
+ * `fetchNewsArticle` 로 갑니다 — 같은 허용 목록, 같은 리다이렉트 검사. **주소를 손으로 치는 수고가 없어지는
+ * 것뿐**입니다.
+ *
+ * 🟠 목록을 못 받아도 화면은 그대로 씁니다 — 주소를 손으로 넣는 길이 원래 길이고, 이건 지름길입니다.
+ * 그래서 화면이 이 실패를 **빨간 상자가 아니라 한 줄**로 말합니다.
+ */
+export function getNewsFeed(): Promise<NewsFeedResponse> {
+  return read(API_ROUTES.newsFeed, undefined, isNewsFeedResponse);
 }
 
 /**

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, type NewsClaimCheck, type NewsDailyCallCount, type NewsFetchRefusalReason, type NewsPublisher, type NewsPublisherBody } from "@ai-animation-studio/shared";
-import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsSummary, fetchNewsArticle, getNewsReelSetup } from "../api/newsApi.js";
+import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, type NewsClaimCheck, type NewsDailyCallCount, type NewsFeedItem, type NewsFetchRefusalReason, type NewsPublisher, type NewsPublisherBody } from "@ai-animation-studio/shared";
+import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsSummary, fetchNewsArticle, getNewsFeed, getNewsReelSetup } from "../api/newsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { Spinner } from "./Spinner.js";
 import { cardSectionRoomy as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
@@ -55,6 +56,27 @@ type Setup =
   | { status: "loading" }
   | { status: "ready"; publishers: NewsPublisher[] }
   | { status: "error" };
+
+/**
+ * 기사 목록의 세 상태.
+ *
+ * 🟠 `error` 가 화면을 막지 않습니다 — 주소를 손으로 넣는 길이 **원래 길**이고 목록은 지름길입니다.
+ * 지름길이 막혔다고 큰길을 빨갛게 칠하지 않습니다.
+ */
+type Feed =
+  | { status: "loading" }
+  | { status: "ready"; items: NewsFeedItem[]; unavailable: NewsPublisher[] }
+  | { status: "error" };
+
+/**
+ * 기사 한 줄에 적을 시각.
+ *
+ * 🔴 `publishedAt` 이 `null` 인 건 **오류가 아니라 피드가 안 줬다는 것**입니다. 「알 수 없음」이라고 쓰면
+ * 화면이 못 한 일처럼 읽히고, 빈칸으로 두면 줄이 흔들립니다 — **없다는 걸 그대로** 적습니다.
+ */
+export function feedItemTime(publishedAt: string | null): string {
+  return publishedAt === null ? "시각 없음" : formatDateTime(publishedAt);
+}
 
 /** 가져오기 한 번의 결과 — 네 갈래가 화면에서 서로 다른 모양이라 값도 따로 듭니다. */
 type FetchNotice =
@@ -129,6 +151,7 @@ const PUBLISHER_GROUP_ORDER: NewsPublisherBody[] = ["address", "varies", "unknow
 
 export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   const [setup, setSetup] = useState<Setup>({ status: "loading" });
+  const [feed, setFeed] = useState<Feed>({ status: "loading" });
   const [url, setUrl] = useState("");
   const [fetching, setFetching] = useState(false);
   const [notice, setNotice] = useState<FetchNotice | null>(null);
@@ -159,6 +182,16 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         setDailyCalls(response.dailyCalls);
       })
       .catch(() => { if (live) setSetup({ status: "error" }); });
+    return () => { live = false; };
+  }, []);
+
+  /* 🟠 목록은 설정과 **따로** 불러옵니다. 하나가 남의 서버 여섯 곳을 두드리는 일이라 느리고, 그 느림이
+     언론사 목록까지 붙잡고 있을 이유가 없습니다. 둘 중 하나가 실패해도 다른 쪽은 그립니다. */
+  useEffect(() => {
+    let live = true;
+    getNewsFeed()
+      .then((response) => { if (live) setFeed({ status: "ready", items: response.items, unavailable: response.unavailable }); })
+      .catch(() => { if (live) setFeed({ status: "error" }); });
     return () => { live = false; };
   }, []);
 
@@ -292,6 +325,70 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
             {fetching ? "가져오는 중..." : "기사 가져오기"}
           </button>
         </div>
+
+        {/*
+          * 🔴 **오늘 들어온 기사.** 캡틴D: *「주소를 내가 직접 쳐야 하잖아. 그게 너무 귀찮은데」*
+          *
+          * 🟠 **누르면 주소 칸만 채웁니다 — 가져오기까지 하지 않습니다.** 가져오기는 성공하면 제목·본문·
+          * 언론사·날짜를 **덮어씁니다.** 아래에 본문을 붙여넣어 둔 사람이 목록을 잘못 누르면 그게 날아갑니다.
+          * 한 번 더 누르는 수고와, 붙여넣은 본문이 사라지는 일을 맞바꾸지 않습니다. 🟢 주소를 안 쳐도 되는
+          * 것이 원래 부탁받은 일이고, 그건 이걸로 끝납니다.
+          */}
+        {feed.status === "ready" && feed.items.length > 0 && (
+          <div className="mt-4 border-t border-white/10 pt-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-xs text-slate-500">오늘 들어온 기사 — 누르면 위 주소 칸에 들어갑니다</p>
+              <span className="type-mono text-[11px] text-bone-faint" data-testid="news-feed-count">{feed.items.length}</span>
+            </div>
+
+            {/* 🔴 **목록이 조용히 짧으면 화면이 오늘을 잘못 말하는 것입니다.** 빠진 언론사를 이름으로
+                말하고, 그쪽은 주소를 손으로 넣으면 여전히 됩니다. */}
+            {feed.unavailable.length > 0 && (
+              <p className="mt-2 text-[11px] leading-relaxed text-amber-300" data-testid="news-feed-unavailable">
+                지금 안 들어오는 곳: {feed.unavailable.map((one) => one.name).join(" · ")} — 이 언론사 기사는 주소를 직접 넣어 주세요.
+              </p>
+            )}
+
+            <ul className="mt-2 max-h-72 space-y-1 overflow-y-auto pr-1" data-testid="news-feed">
+              {feed.items.map((item) => {
+                /* 🔴 **누르기 전에** 알아야 합니다 — 늘 붙여넣어야 하는 곳(SBS·MBC·YTN)은 주소가 채워져도
+                   본문이 안 따라옵니다. 누른 다음에 말하면 그건 안내가 아니라 변명입니다. */
+                const pasteNeeded = publishers.some((one) => one.host === item.host && one.body === "paste");
+                return (
+                  <li key={item.url}>
+                    <button
+                      type="button"
+                      data-testid={`news-feed-item-${item.url}`}
+                      className="w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-white/5"
+                      onClick={() => setUrl(item.url)}
+                    >
+                      <span className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="text-[11px] text-slate-500">{item.publisher}</span>
+                        <span className="type-mono text-[11px] text-bone-faint">{feedItemTime(item.publishedAt)}</span>
+                        {pasteNeeded && (
+                          <span className="text-[11px] text-slate-400" data-testid={`news-feed-paste-${item.url}`}>· 본문은 붙여넣어야 합니다</span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-sm leading-snug text-slate-200">{item.title}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* 🟠 목록이 없어도 **위의 주소 칸은 그대로 됩니다.** 그래서 한 줄이고, 빨갛지 않습니다. */}
+        {feed.status === "error" && (
+          <p className="mt-4 border-t border-white/10 pt-3 text-xs text-slate-500" data-testid="news-feed-error">
+            오늘 기사 목록을 못 불러왔습니다. 주소를 직접 넣으시면 그대로 됩니다.
+          </p>
+        )}
+        {feed.status === "ready" && feed.items.length === 0 && (
+          <p className="mt-4 border-t border-white/10 pt-3 text-xs text-slate-500" data-testid="news-feed-empty">
+            지금 들어온 기사가 없습니다. 주소를 직접 넣으시면 그대로 됩니다.
+          </p>
+        )}
 
         {fetching && <div className="mt-3"><Spinner label="기사를 가져오는 중..." /></div>}
 

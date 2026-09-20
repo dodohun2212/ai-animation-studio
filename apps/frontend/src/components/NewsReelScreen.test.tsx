@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { stubFetchByRoute } from "../api/testUtils.js";
-import { NewsReelScreen } from "./NewsReelScreen.js";
+import { NewsReelScreen, feedItemTime } from "./NewsReelScreen.js";
 
 const PUBLISHERS = [
   /* 🔴 Three answers, not two rows — the screen has to draw "주소만으로 됨", "늘 붙여넣기" and
@@ -15,9 +15,15 @@ const PUBLISHERS = [
 
 const SETUP = { publishers: PUBLISHERS, dailyCalls: { used: 2, limit: 10 } };
 
-/** 이 화면은 열리자마자 `GET /news/setup` 을 부릅니다 — 안 세워 두면 짝이 진짜 네트워크를 건드립니다. */
+/**
+ * 이 화면은 열리자마자 **둘을** 부릅니다 — `GET /news/setup` 과 `GET /news/feed`.
+ *
+ * 🟠 둘 다 세워 둡니다. 안 세우면 짝이 진짜 네트워크를 건드리고, 기사 목록은 **남의 서버 여섯 곳**입니다.
+ * 🟢 기본 목록은 **비어 있습니다** — 기존 짝들은 기사 목록에 대해 아무 주장도 안 하므로, 그것들이 목록의
+ * 내용에 따라 흔들리면 안 됩니다. 목록을 보는 짝은 자기 것을 실어서 옵니다.
+ */
 function stubRoutes(extra: Record<string, unknown> = {}, setup: unknown = SETUP): ReturnType<typeof vi.fn> {
-  const routes: Record<string, unknown> = { "GET /news/setup": setup };
+  const routes: Record<string, unknown> = { "GET /news/setup": setup, "GET /news/feed": { items: [], unavailable: [] } };
   const errors: Record<string, { status: number; body: unknown }> = {};
   for (const [key, value] of Object.entries(extra)) {
     if (value && typeof value === "object" && "status" in (value as object)) errors[key] = value as { status: number; body: unknown };
@@ -446,5 +452,73 @@ describe("NewsReelScreen", () => {
     // 기사 본문이 없으면 대조할 대상이 없습니다 — 그때 초록을 띄우면 아무 근거 없이 통과시킨 것입니다.
     expect(screen.getByTestId("news-check-idle")).toBeTruthy();
     expect(screen.queryByTestId("news-check-passed")).toBeNull();
+  });
+});
+
+const FEED_ITEM = {
+  title: "국회, 검찰청 폐지 후속 법률 51건 통과",
+  url: "https://www.yna.co.kr/view/AKR20260917000100001",
+  publisher: "연합뉴스",
+  host: "yna.co.kr",
+  publishedAt: "2026-09-17T09:12:00.000Z",
+};
+
+/**
+ * 🔴 캡틴D: *「뉴스 릴은 내가 직접 주소를 쳐야 하잖아. 그게 너무 귀찮은데」*
+ *
+ * 목록은 **주소를 치는 수고만** 없앱니다 — 본문은 여전히 같은 허용 목록과 같은 리다이렉트 검사를 지나
+ * `POST /news/article` 로 갑니다. 「더 믿을 수 있는 길」이 아닙니다.
+ */
+describe("NewsReelScreen 기사 목록", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("puts the address in the box when a row is pressed, and touches nothing else", async () => {
+    stubRoutes({ "GET /news/feed": { items: [FEED_ITEM], unavailable: [] } });
+    renderScreen();
+
+    fireEvent.click(await screen.findByTestId(`news-feed-item-${FEED_ITEM.url}`));
+
+    expect((screen.getByTestId("news-fetch-url") as HTMLInputElement).value).toBe(FEED_ITEM.url);
+    /* 🔴 **가져오기까지 하지 않습니다.** 가져오기는 성공하면 제목·본문을 덮어쓰고, 아래에 본문을 붙여넣어
+       둔 사람이 잘못 누르면 그게 날아갑니다. 한 번 더 누르는 수고와 맞바꾸지 않습니다. */
+    expect((screen.getByTestId("news-article") as HTMLTextAreaElement).value, "본문은 그대로입니다").toBe("");
+    expect(screen.queryByTestId("news-fetch-ok"), "누른 것만으로 가져오지 않습니다").toBeNull();
+  });
+
+  it("names the publishers that are not coming in today", async () => {
+    // 🔴 목록이 조용히 짧으면 **화면이 오늘을 잘못 말하는 것**입니다.
+    stubRoutes({ "GET /news/feed": { items: [FEED_ITEM], unavailable: [{ host: "imbc.com", name: "MBC", body: "paste" }] } });
+    renderScreen();
+
+    const line = await screen.findByTestId("news-feed-unavailable");
+    expect(line.textContent).toContain("MBC");
+    expect(line.textContent, "막다른 길로 두지 않습니다").toContain("주소를 직접 넣어");
+  });
+
+  it("says a row will still need pasting before it is pressed, not after", async () => {
+    /* 🔴 SBS·MBC·YTN 은 주소가 채워져도 본문이 안 따라옵니다. 누른 다음에 말하면 그건 안내가 아니라
+       변명입니다. `host` 가 `publisher` 옆에 실려 오는 이유가 이것입니다. */
+    const mbcItem = { ...FEED_ITEM, url: "https://imbc.com/news/1", publisher: "MBC", host: "imbc.com" };
+    stubRoutes({ "GET /news/feed": { items: [FEED_ITEM, mbcItem], unavailable: [] } });
+    renderScreen();
+
+    expect(await screen.findByTestId(`news-feed-paste-${mbcItem.url}`)).toBeTruthy();
+    expect(screen.queryByTestId(`news-feed-paste-${FEED_ITEM.url}`), "주소만으로 되는 곳에는 안 붙습니다").toBeNull();
+  });
+
+  it("keeps the typed-address path when the feed does not answer", async () => {
+    // 🟠 목록은 지름길입니다. 지름길이 막혔다고 큰길을 빨갛게 칠하지 않습니다.
+    stubRoutes({ "GET /news/feed": { status: 500, body: { code: "INTERNAL_ERROR" } } });
+    renderScreen();
+
+    expect((await screen.findByTestId("news-feed-error")).textContent).toContain("주소를 직접 넣으시면");
+    expect(screen.getByTestId("news-fetch-url"), "주소 칸은 그대로 있습니다").toBeTruthy();
+    expect(screen.queryByRole("alert"), "빨간 상자가 아닙니다").toBeNull();
+  });
+
+  it("says the feed gave no time rather than pretending it knows", () => {
+    // 🔴 `null` 은 오류가 아니라 **피드가 안 줬다**는 것입니다.
+    expect(feedItemTime(null)).toBe("시각 없음");
+    expect(feedItemTime("2026-09-17T09:12:00.000Z")).not.toBe("시각 없음");
   });
 });
