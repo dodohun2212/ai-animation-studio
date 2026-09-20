@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NEWS_REEL_TEXT_BOXES, NEWS_REEL_TEXT_FIELDS, type NewsReelCard } from "./api.js";
-import { checkNewsReelCardText, countNewsReelText, newsReelTextBox } from "./news-reel-card.js";
+import { HANGUL_WIDTH_RATIO, checkNewsReelCardText, countNewsReelText, newsReelCardGeometry, newsReelTextBox } from "./news-reel-card.js";
 
 const card = (over: Partial<NewsReelCard> = {}): NewsReelCard => ({
   publisher: "연합뉴스",
@@ -111,5 +111,67 @@ describe("news reel card text check", () => {
    */
   it("has room for two caption lines and no third", () => {
     expect(NEWS_REEL_TEXT_FIELDS.filter((field) => field.startsWith("caption."))).toEqual(["caption.line1", "caption.line2"]);
+  });
+});
+
+describe("news reel card geometry", () => {
+  const g = (captionLines: 1 | 2 = 2) => newsReelCardGeometry(1080, 1920, captionLines);
+
+  /**
+   * 🔴 이 계약이 「15자」라고 말하면 화면은 **15자가 꼭 맞는 크기**여야 한다. 96 을 손으로 적으면 한도가 13이
+   * 된 날 글자는 그대로고 줄만 헐거워지며, 그 어긋남은 **릴이 하나 나온 뒤에** 보인다.
+   */
+  it("sizes the letters so a full line is exactly as wide as the space it has", () => {
+    const { headlineSize, captionSize, usableWidth } = g();
+    const widthOf = (limit: number, size: number) => limit * size * HANGUL_WIDTH_RATIO;
+
+    expect(widthOf(NEWS_REEL_TEXT_BOXES["headline.line1"].limit, headlineSize)).toBeLessThanOrEqual(usableWidth);
+    expect(widthOf(NEWS_REEL_TEXT_BOXES["headline.line1"].limit + 1, headlineSize), "한 자 더는 안 들어갑니다").toBeGreaterThan(usableWidth);
+    expect(widthOf(NEWS_REEL_TEXT_BOXES["caption.line1"].limit, captionSize)).toBeLessThanOrEqual(usableWidth);
+    expect(widthOf(NEWS_REEL_TEXT_BOXES["caption.line1"].limit + 1, captionSize)).toBeGreaterThan(usableWidth);
+  });
+
+  /** 🟠 제목이 자막보다 커야 한다 — 제목은 낚고 자막은 설명한다. 한도가 좁을수록 글자가 커지므로 저절로 그렇다. */
+  it("makes the headline bigger than the caption, because the narrower box gets the bigger letters", () => {
+    expect(g().headlineSize).toBeGreaterThan(g().captionSize);
+  });
+
+  /**
+   * 🔴 릴스는 아래쪽을 자기 자막·버튼으로 덮는다 — 포토카드 슬라이더가 0.85 위에서 경고하는 그 자리다.
+   * 자막 띠가 거기 걸리면 **구워 놓고 안 보인다.**
+   */
+  it("keeps the caption band above the line Instagram covers", () => {
+    for (const lines of [1, 2] as const) {
+      const { captionBandY, captionBandHeight } = g(lines);
+      expect(captionBandY + captionBandHeight, `${lines}줄`).toBeLessThanOrEqual(Math.round(1920 * 0.84));
+    }
+  });
+
+  /** 🔴 겹치면 둘 다 못 읽는다. 이건 고른 값이 아니라 **지켜야 하는 것**이라 짝이 든다. */
+  it("never lets the bands and the lines touch each other", () => {
+    for (const lines of [1, 2] as const) {
+      const geometry = g(lines);
+      const { bandHeight, headlineSize, headline1Y, headline2Y, captionBandY, captionSize, caption1Y, caption2Y } = geometry;
+      expect(headline1Y - headlineSize / 2, "제목 첫 줄이 띠 밑에 있습니다").toBeGreaterThan(bandHeight);
+      expect(headline2Y - headlineSize / 2, "두 줄이 안 겹칩니다").toBeGreaterThan(headline1Y + headlineSize / 2 - 1);
+      expect(headline2Y + headlineSize / 2, "제목이 자막 띠를 안 침범합니다").toBeLessThan(captionBandY);
+      expect(caption1Y - captionSize / 2, "자막이 띠 안에 있습니다").toBeGreaterThanOrEqual(captionBandY);
+      if (lines === 2) {
+        expect(caption2Y + captionSize / 2).toBeLessThanOrEqual(captionBandY + geometry.captionBandHeight);
+      }
+    }
+  });
+
+  /** 🟠 한 줄짜리 자막은 띠도 얇다 — 안 쓰는 줄만큼 그림을 덜 가린다. */
+  it("gives a one-line caption a shorter band", () => {
+    expect(g(1).captionBandHeight).toBeLessThan(g(2).captionBandHeight);
+  });
+
+  /** 🟠 세로가 아니어도 답이 나와야 한다 — 1:1 도 4:5 도 이미 계약에 있다. */
+  it("answers for a square frame too, without anything leaving it", () => {
+    const square = newsReelCardGeometry(1080, 1080, 2);
+    expect(square.captionBandY + square.captionBandHeight).toBeLessThanOrEqual(Math.round(1080 * 0.84));
+    expect(square.headline2Y + square.headlineSize / 2).toBeLessThan(square.captionBandY);
+    expect(square.margin * 2 + square.usableWidth).toBe(1080);
   });
 });

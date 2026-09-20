@@ -29,8 +29,9 @@ export const QUOTE_FONT_FAMILY = "Noto Serif KR";
  */
 const PHOTO_CARD_REVEAL_SHARE = 0.5;
 
-/** ASS timestamp: H:MM:SS.CC (centiseconds), per the format's fixed field widths. */
-function timestamp(seconds: number): string {
+/** ASS timestamp: H:MM:SS.CC (centiseconds), per the format's fixed field widths. Exported so the news reel
+ * card builds its cues with the same clock rather than a second copy of this arithmetic. */
+export function timestamp(seconds: number): string {
   const clamped = Math.max(0, seconds);
   const hours = Math.floor(clamped / 3600);
   const minutes = Math.floor((clamped % 3600) / 60);
@@ -39,8 +40,8 @@ function timestamp(seconds: number): string {
   return `${hours}:${String(minutes).padStart(2, "0")}:${String(wholeSeconds).padStart(2, "0")}.${String(centiseconds).padStart(2, "0")}`;
 }
 
-/** ASS Dialogue text escaping: literal newlines become the format's own line-break token, braces would otherwise be read as inline override tags. */
-function escapeDialogueText(text: string): string {
+/** ASS Dialogue text escaping: literal newlines become the format's own line-break token, braces would otherwise be read as inline override tags. Exported for the news reel card, which writes Dialogue lines of its own. */
+export function escapeDialogueText(text: string): string {
   return text.replaceAll("{", "｛").replaceAll("}", "｝").replaceAll("\n", "\\N");
 }
 

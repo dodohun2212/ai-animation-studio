@@ -101,3 +101,113 @@ export function checkNewsReelCardText(card: NewsReelCard): NewsReelCardTextCheck
   const boxes = NEWS_REEL_TEXT_FIELDS.map((field) => newsReelTextBox(field, textAt(card, field)));
   return { boxes, refused: boxes.filter((box) => box.refusal !== null) };
 }
+
+/**
+ * One Hangul syllable's width, as a share of the font size — **measured, not assumed.**
+ *
+ * Drawn through ffmpeg into 1080×1920 with the bundled `NotoSansKR-*.ttf` and the ink counted in pixels, the
+ * ratio came out **0.63 at five different sizes** (52 · 64 · 72 · 80 · 96), and bold changed it by 0.1px
+ * (CLI Round 1021). A line with spaces in it measures *narrower* than this, so 0.63 is the worst case and the
+ * right number to size a box against.
+ *
+ * 🟠 Two earlier values were guesses and both were wrong: 1.00 (assumed, never drawn) and 0.77 (measured, but
+ * in the browser's preview font rather than the one that burns).
+ */
+export const HANGUL_WIDTH_RATIO = 0.63;
+
+/** The share of the frame's width kept clear on each side. */
+const SIDE_MARGIN_RATIO = 0.06;
+
+/**
+ * 🔴 **Nothing is drawn below this line.** Instagram's own caption, buttons and handle sit over the bottom of a
+ * reel, which is why the photo card's own centre slider warns above 0.85 — the same frame, the same overlay.
+ */
+const BOTTOM_SAFE_RATIO = 0.84;
+
+/** Every number a news reel card is drawn from, in output pixels. */
+export interface NewsReelCardGeometry {
+  /** Left and right margin. */
+  margin: number;
+  /** What a line actually has to fit in — the frame less both margins. */
+  usableWidth: number;
+  /** Horizontal centre; every line is placed by its own centre. */
+  centerX: number;
+  /** The publisher band across the top: it starts at y=0 and is this tall. */
+  bandHeight: number;
+  publisherSize: number;
+  /** Vertical centre of the publisher's name inside the band. */
+  publisherY: number;
+  headlineSize: number;
+  /** Vertical centre of each headline line. */
+  headline1Y: number;
+  headline2Y: number;
+  captionSize: number;
+  /** The caption band: this tall, with its top edge here. Its bottom sits on the safe line. */
+  captionBandHeight: number;
+  captionBandY: number;
+  /** Vertical centre of each caption line. The second is only drawn when there is one. */
+  caption1Y: number;
+  caption2Y: number;
+}
+
+/**
+ * Where a news reel card's bands and lines land.
+ *
+ * Here, beside the contract, for the reason `photoCardSubtitleGeometry` is: the renderer burns this into the
+ * video and a preview draws it before anything is rendered, and a preview that re-implements the arithmetic is
+ * a preview that can be wrong in silence — showing somebody a picture of a video that was never made.
+ *
+ * 🔴 **The font sizes are derived from the contract's own limits, never chosen.** A full line is exactly as
+ * wide as the space it has: `size = usableWidth / (limit × 0.63)`. That makes the box and the frame unable to
+ * disagree — change `headline.line1` to 13 characters and the letters grow so that 13 still fills the line,
+ * with no second number to remember. Typing `96` here instead would be the copy that goes wrong the day the
+ * limit moves, and it would go wrong *after* a reel had been made.
+ *
+ * 🟠 **The vertical placement is a choice, and is written here as one.** The band heights and the gap between
+ * the two headline lines were picked to look like the reels 캡틴D pointed at (Cowork Round 1018), not measured
+ * off a frame — what *is* pinned is that nothing overlaps, nothing leaves the frame, and nothing crosses
+ * {@link BOTTOM_SAFE_RATIO}. Cowork measures the real vertical positions once the screen draws them.
+ */
+export function newsReelCardGeometry(width: number, height: number, captionLineCount: 1 | 2): NewsReelCardGeometry {
+  const margin = Math.round(width * SIDE_MARGIN_RATIO);
+  const usableWidth = width - margin * 2;
+  const sizeFor = (limit: number): number => Math.floor(usableWidth / (limit * HANGUL_WIDTH_RATIO));
+
+  const headlineSize = sizeFor(NEWS_REEL_TEXT_BOXES["headline.line1"].limit);
+  const captionSize = sizeFor(NEWS_REEL_TEXT_BOXES["caption.line1"].limit);
+  // 🟠 The publisher is a label, not a line of the card — it reads at a little under half the headline.
+  const publisherSize = Math.round(headlineSize * 0.45);
+
+  const bandHeight = Math.round(publisherSize * 2.4);
+  const publisherY = Math.round(bandHeight / 2);
+
+  // 🟠 1.15 rather than the 1.00 libass uses for its own wrapping: these two lines are placed individually and
+  // are large, and at this size the auto spacing reads as one crowded block rather than two lines.
+  const headlineGap = Math.round(headlineSize * 1.15);
+  const headline1Y = bandHeight + Math.round(headlineSize * 1.1);
+  const headline2Y = headline1Y + headlineGap;
+
+  const captionGap = Math.round(captionSize * 1.25);
+  const captionPad = Math.round(captionSize * 0.7);
+  const captionBandHeight = captionPad * 2 + captionSize + (captionLineCount === 2 ? captionGap : 0);
+  const captionBandBottom = Math.round(height * BOTTOM_SAFE_RATIO);
+  const captionBandY = captionBandBottom - captionBandHeight;
+  const caption1Y = captionBandY + captionPad + Math.round(captionSize / 2);
+
+  return {
+    margin,
+    usableWidth,
+    centerX: Math.round(width / 2),
+    bandHeight,
+    publisherSize,
+    publisherY,
+    headlineSize,
+    headline1Y,
+    headline2Y,
+    captionSize,
+    captionBandHeight,
+    captionBandY,
+    caption1Y,
+    caption2Y: caption1Y + captionGap,
+  };
+}
