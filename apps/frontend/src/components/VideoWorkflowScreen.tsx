@@ -25,7 +25,7 @@ import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
+import { cardSection, dangerOutlineButton, outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 
 type SceneStatus = "completed" | "running" | "failed" | "pending";
 
@@ -76,8 +76,6 @@ const STATUS_LABEL: Record<GenerationProgressResponse["status"], string> = {
   interrupted: "중지됨",
 };
 
-const dangerOutlineButton =
-  "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
 const smallApproveButton =
   "rounded-full border border-emerald-400/30 px-3 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
 const smallAmberButton =

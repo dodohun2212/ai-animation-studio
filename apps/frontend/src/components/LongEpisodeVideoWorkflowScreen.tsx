@@ -14,7 +14,7 @@ import { sceneRemedyAdvice } from "../utils/sceneFailureAdvice.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
-import { cardSection, outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
+import { cardSection, dangerOutlineButton, outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props { projectId: string; episodeNumber: number; onBack: () => void; onOpenMerge: (projectId: string, episodeNumber: number) => void; }
@@ -34,7 +34,6 @@ type DisplayError = { code: string; message: string };
 type ErrorSubject = "video-step" | "progress" | "job" | "recover" | "approve";
 const LIMIT = 1000;
 
-const dangerOutlineButton = "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
 const smallAmberButton = "rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_0_12px_rgba(245,158,11,0.35)] disabled:opacity-50";
 const textareaClassName = "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 

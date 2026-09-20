@@ -59,6 +59,23 @@ export const smallOutlineButton =
   "rounded border border-line-strong px-3 py-1 text-xs text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50 disabled:hover:border-line-strong disabled:hover:bg-transparent disabled:hover:text-bone-dim";
 
 /**
+ * 되돌릴 수 없는 행동 — 지우기 · 끊기 · 원본 파일 삭제.
+ *
+ * 🔴 2026-09-20: 네 파일에 저마다 적혀 있었고 **몸통이 둘**이었습니다. 다른 하나는 `AssetLibraryScreen` 의
+ * 것으로, 채워진 배경(`bg-rose-500/10`)에 `font-medium` 과 `shadow-sm` 까지 붙어 **혼자 더 컸습니다.**
+ *
+ * 🟠 **왜 다른지 찾아봤습니다**(998 §2 에서 하마터면 쓸모 있는 차이를 버릴 뻔했으므로). 답: 그 파일의
+ * **예전 `outlineButton` 도 똑같이** `bg-white/[0.06] font-medium shadow-sm` 였습니다. 즉 **위험 버튼이라서**
+ * 다른 게 아니라 **그 파일 전체가 옛 모양**이었고, 997 에서 ordinary 쪽만 옮겨 이것만 남은 것입니다.
+ * **차이가 역할이 아니라 파일을 따라갑니다** — 그러면 지워도 되는 차이입니다.
+ *
+ * 🟠 장미색은 여기 하나뿐입니다. 위험은 **드물어야 눈에 띄므로**, 한 화면에 여러 개가 필요해지면 그건
+ * 버튼 문제가 아니라 그 화면이 위험한 일을 너무 많이 모아 둔 것입니다.
+ */
+export const dangerOutlineButton =
+  "rounded border border-rose-400/40 px-4 py-2 text-sm text-rose-300 transition-[color,background-color,border-color] hover:border-rose-400/60 hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-50 disabled:hover:border-rose-400/40 disabled:hover:bg-transparent disabled:hover:text-rose-300";
+
+/**
  * The one call to action per screen.
  *
  * 🔴 2026-09-19: 보라→자홍 그라데이션에 형광 그림자까지 얹혀 있던 버튼을 **뼈색 판에 검은 글자**로
