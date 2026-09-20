@@ -22,7 +22,7 @@ import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { resumeTarget, type ResumeTarget } from "../utils/resumeTarget.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { GenerationSourceBadge } from "./GenerationSourceNotice.js";
-import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { cardSection, outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -47,8 +47,6 @@ type ReviewLoadState =
   | { status: "error"; error: DisplayError }
   | { status: "ready"; reviews: ImageReview[]; budget?: BudgetPreview; retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview }; staleness?: SceneStaleness };
 
-const smallOutlineButton =
-  "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallApproveButton =
   "rounded-full border border-emerald-400/30 px-3 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
 const smallAmberButton =

@@ -105,6 +105,29 @@ describe("화면 색은 한 군데에서만 정해진다", () => {
     expect(css).toContain("--spectrum:");
   });
 
+  /**
+   * 🔴 `smallOutlineButton` 이라는 **같은 이름이 열한 파일에 저마다** 적혀 있었고, 몸통이 **네 가지**였습니다 —
+   * `py-1` 다섯, `py-1.5` 넷, 그리고 `bg-white/[0.06]` 에 `font-medium` 까지 붙은 것 둘. 한 화면에서 큰 버튼은
+   * 따뜻한 뼈색으로 옮겨 갔는데 작은 버튼만 차가운 회색에 남아 있었습니다.
+   *
+   * 🟠 이 짝이 붙드는 건 **「하나뿐이다」**입니다. 색이나 크기가 아니라 **개수** — 다음 화면이 또 자기 것을
+   * 적기 시작하면 여기서 빨개집니다. 열한 개가 네 가지로 갈라진 건 **한 번에 그렇게 된 게 아니라** 한 사람씩
+   * 자기 파일에 적어서 그렇게 됐습니다.
+   */
+  it("작은 ordinary 버튼은 한 군데에서만 정의된다 — 열한 벌이 네 가지로 갈라져 있었다", async () => {
+    const root = path.dirname(url.fileURLToPath(import.meta.url));
+    const files = await sourceFiles(root);
+
+    const localCopies: string[] = [];
+    for (const relativePath of files) {
+      if (relativePath.endsWith("ui/surfaces.ts")) continue;
+      const content = await fs.readFile(path.join(root, relativePath), "utf8");
+      if (/^const smallOutlineButton\s*=/m.test(content)) localCopies.push(relativePath);
+    }
+
+    expect(localCopies, "자기 파일에 다시 적지 말고 ui/surfaces.js 에서 가져오십시오").toEqual([]);
+  });
+
   it("그 블록이 실제로 많은 화면을 떠받치고 있다 — 지우면 안 되는 이유가 숫자로 남는다", async () => {
     const root = path.dirname(url.fileURLToPath(import.meta.url));
     const files = await sourceFiles(root);

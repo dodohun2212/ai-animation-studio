@@ -24,7 +24,7 @@ import { createStoryPromptDraftPreview, toStoryDisplayError } from "../api/story
 import { Spinner } from "./Spinner.js";
 import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
-import { cardSectionWide as cardSection, outlineButton, primaryButton, scrollList } from "./ui/surfaces.js";
+import { cardSectionWide as cardSection, outlineButton, primaryButton, scrollList, smallOutlineButton } from "./ui/surfaces.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 
 interface Props {
@@ -67,8 +67,6 @@ const inlineInput =
   "rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 const dangerOutlineButton =
   "rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50";
-const smallOutlineButton =
-  "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAddButton =
   "rounded-full border border-emerald-400/30 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50";
 const smallRemoveButton =

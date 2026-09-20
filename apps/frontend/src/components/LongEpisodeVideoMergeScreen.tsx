@@ -90,6 +90,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   const [sceneLayout, setSceneLayout] = useState<SceneSubtitleLayout>(DEFAULT_SCENE_SUBTITLE_LAYOUT);
+  /* 단편과 같은 이유로 따로 둡니다 — 슬라이더는 「다음에 구울 값」, 이건 「지금 영상이 구워진 값」입니다. */
+  const [savedSceneLayout, setSavedSceneLayout] = useState<SceneSubtitleLayout | undefined>(undefined);
   const [subtitledScenes, setSubtitledScenes] = useState<SubtitledScene[]>([]);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   /* 기본값은 「돌리지 않음」 — 캡틴D 가 고르기 전까지 결과가 지금과 같아야 합니다. 저장되지 않는 이 렌더
@@ -155,7 +157,10 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         if (cancelled) return;
         setSceneCount(response.episode.script?.scenes.length ?? null);
         setImageVersion(response.episode.updatedAt);
-        if (response.episode.sceneSubtitleLayout) setSceneLayout(response.episode.sceneSubtitleLayout);
+        if (response.episode.sceneSubtitleLayout) {
+          setSceneLayout(response.episode.sceneSubtitleLayout);
+          setSavedSceneLayout(response.episode.sceneSubtitleLayout);
+        }
         setSubtitledScenes(
           (response.episode.script?.scenes ?? [])
             .map((scene) => ({ number: scene.number, text: (scene.narration ?? "").trim() }))
@@ -235,6 +240,8 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
         rotatable && rotateClockwise ? true : undefined,
       );
       setResult(merged);
+      /* 방금 구운 값이 이제 「지금 영상의 값」입니다 — 안 옮기면 되돌리기 단추가 한 판 전 값으로 갑니다. */
+      if (sceneSubtitleAdjustable) setSavedSceneLayout(sceneLayout);
       setUsedAudio(merged.episode.usedAudio);
       setFinalVideoGenerationSource(merged.episode.finalVideoGenerationSource);
       setConfirmationOpen(false);
@@ -274,6 +281,7 @@ export function LongEpisodeVideoMergeScreen({ projectId, episodeNumber, onBack, 
           scenes={subtitledScenes}
           aspectRatio={aspectRatio}
           layout={sceneLayout}
+          savedLayout={savedSceneLayout}
           onChange={setSceneLayout}
           disabled={pending || confirmationOpen}
         />

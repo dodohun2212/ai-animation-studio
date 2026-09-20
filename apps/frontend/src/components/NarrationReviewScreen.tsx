@@ -21,7 +21,7 @@ import { narrationScenesToSpeak } from "../utils/narrationBilling.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
 import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { cardSection, outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -47,8 +47,6 @@ type LoadState =
       staleness?: SceneStaleness;
     };
 
-const smallOutlineButton =
-  "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton =
   "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
 export function NarrationReviewScreen({ projectId, onBack, onResume }: Props) {

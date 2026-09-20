@@ -24,7 +24,7 @@ import { StaleBadge } from "./ui/StaleBadge.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
-import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { cardSection, outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { GenerationSourceBadge } from "./GenerationSourceNotice.js";
 
@@ -50,7 +50,6 @@ const sceneSlotLabel = (status: string) => SCENE_SLOT_LABEL[status] ?? status;
 /** Moved to utils/longEpisodeLabels.ts — the video screen needs the same order, and two copies would drift. */
 const isBefore = isLongEpisodeStatusBefore;
 
-const smallOutlineButton = "rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton = "rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_0_12px_rgba(245,158,11,0.35)] disabled:opacity-50";
 /**
  * Why there is nothing to carry forward, in the words of the reason the server gave.

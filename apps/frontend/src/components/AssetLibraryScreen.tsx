@@ -5,7 +5,7 @@ import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, primaryButton, scrollList } from "./ui/surfaces.js";
+import { cardSection, primaryButton, scrollList, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
 /**
@@ -113,8 +113,6 @@ const outlineButton =
   "rounded-full border border-white/20 bg-white/[0.06] px-4 py-2 text-sm font-medium text-slate-100 shadow-sm hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const dangerOutlineButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-300 shadow-sm hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
-const smallOutlineButton =
-  "rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-xs font-medium text-slate-100 hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const smallAddButton =
   "rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300 hover:border-emerald-400/60 hover:bg-emerald-500/15 disabled:opacity-50";
 const smallRemoveButton =

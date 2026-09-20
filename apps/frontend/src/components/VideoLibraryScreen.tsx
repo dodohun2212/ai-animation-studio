@@ -16,7 +16,7 @@ import { CoverThumb } from "./ui/CoverThumb.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, outlineButton, riseInCard } from "./ui/surfaces.js";
+import { cardSection, outlineButton, riseInCard, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
   onBack: () => void;
@@ -45,8 +45,6 @@ function firstSlotFor(row: { photoCard?: true; finalVideoAvailable: boolean }): 
   return row.photoCard === true && row.finalVideoAvailable ? "final" : (1 as SceneNumber);
 }
 
-const smallOutlineButton =
-  "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton =
   "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
 function slotLabel(slot: Slot): string {

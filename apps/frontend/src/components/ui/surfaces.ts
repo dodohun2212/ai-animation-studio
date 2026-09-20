@@ -35,6 +35,21 @@ export const outlineButton =
   "rounded border border-line-strong px-4 py-2 text-sm text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50";
 
 /**
+ * 줄 안에 들어가는 작은 ordinary 버튼 — 표의 한 칸, 카드 머리, 목록의 한 줄.
+ *
+ * 🔴 2026-09-20: 이 이름이 **열한 파일에 저마다 적혀 있었고, 몸통이 네 가지**였습니다 — `py-1` 다섯,
+ * `py-1.5` 넷, 그리고 `bg-white/[0.06]` 에 `font-medium` 까지 붙은 것 둘. **같은 이름이 네 가지로 보였습니다.**
+ *
+ * 🟠 열한 개가 전부 `text-slate-300`·`text-slate-100`(차가운 회색 계단)에 머물러 있었습니다. 위의
+ * `outlineButton` 은 따뜻한 검정·뼈색으로 옮겨 갔는데 이것만 안 따라온 것이라, 한 화면에 큰 버튼과 작은
+ * 버튼이 **서로 다른 색 계통**으로 나란히 있었습니다.
+ *
+ * 🟢 높이는 `py-1` 로 맞춥니다 — 다섯 파일이 이미 그 값이고, 줄이 촘촘한 표에서 넘치지 않는 쪽입니다.
+ */
+export const smallOutlineButton =
+  "rounded border border-line-strong px-3 py-1 text-xs text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50";
+
+/**
  * The one call to action per screen.
  *
  * 🔴 2026-09-19: 보라→자홍 그라데이션에 형광 그림자까지 얹혀 있던 버튼을 **뼈색 판에 검은 글자**로

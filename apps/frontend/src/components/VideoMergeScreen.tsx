@@ -179,6 +179,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    * numbers if this screen ever read the wrong side (CLI Round 665 ⑥).
    */
   const [sceneLayout, setSceneLayout] = useState<SceneSubtitleLayout>(DEFAULT_SCENE_SUBTITLE_LAYOUT);
+  /* 🔴 장면 쪽에도 「지금 영상이 구워진 값」을 따로 둡니다. 카드 쪽에는 `savedLayout` 이 있었는데 여기만
+     없어서, 슬라이더를 살짝 움직여 본 사람에게 되돌릴 길이 **새로고침밖에** 없었습니다 — 캡틴D께서 카드에서
+     버그로 보셨던 바로 그 상황이 단편에 그대로 남아 있었습니다. */
+  const [savedSceneLayout, setSavedSceneLayout] = useState<SceneSubtitleLayout | undefined>(undefined);
   /**
    * Every scene that will actually carry a subtitle, with the line it carries.
    *
@@ -279,7 +283,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           setLayout(response.project.subtitleLayout);
           setSavedLayout(response.project.subtitleLayout);
         }
-        if (response.project.sceneSubtitleLayout) setSceneLayout(response.project.sceneSubtitleLayout);
+        if (response.project.sceneSubtitleLayout) {
+          setSceneLayout(response.project.sceneSubtitleLayout);
+          setSavedSceneLayout(response.project.sceneSubtitleLayout);
+        }
         setQuote(response.project.scenes[0]?.narration ?? "");
         setSubtitledScenes(
           response.project.scenes
@@ -374,6 +381,9 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       /* 🔴 방금 구운 값이 이제 「지금 영상의 값」입니다. 안 옮기면 「지금 영상의 값으로」 버튼이 **한 판 전**
          값으로 되돌려 놓고, 그건 이 버튼이 막으려던 바로 그 어긋남입니다. */
       if (photoCard) setSavedLayout(layout);
+      /* 카드와 같은 이유입니다 — 방금 구운 값이 이제 「지금 영상의 값」이고, 안 옮기면 그 버튼이 **한 판 전**
+         값으로 되돌려 놓습니다. */
+      if (sceneSubtitleAdjustable) setSavedSceneLayout(sceneLayout);
       // Back to showing the finished video: the request the button existed for has been made.
       setRemaking(false);
       setUnplayable(false);
@@ -483,6 +493,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           scenes={subtitledScenes}
           aspectRatio={aspectRatio}
           layout={sceneLayout}
+          savedLayout={savedSceneLayout}
           onChange={setSceneLayout}
           disabled={pending || confirmOpen}
         />

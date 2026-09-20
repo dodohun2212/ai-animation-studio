@@ -15,10 +15,10 @@ import { StatusChip } from "./ui/StatusChip.js";
 import { BudgetLine } from "./ui/BudgetLine.js";
 import { RetryCostNotice } from "./ui/RetryCostNotice.js";
 import { RegenerateInstructionField } from "./ui/RegenerateInstructionField.js";
-import { narrationLooksTooLong, narrationRunsTooLong } from "../utils/narrationLength.js";
 import { narrationScenesToSpeak } from "../utils/narrationBilling.js";
+import { narrationLooksTooLong, narrationRunsTooLong } from "../utils/narrationLength.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { cardSection, outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -41,8 +41,6 @@ type LoadState =
       retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview };
     };
 
-const smallOutlineButton =
-  "rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50";
 const smallAmberButton =
   "rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-50";
 /**
@@ -130,9 +128,18 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
   const withText = narrations.filter((item) => item.narration.trim());
   const missing = narrations.filter((item) => !item.narration.trim());
   /**
-   * 살 것을 세는 규칙은 `utils/narrationBilling.ts` 한 곳에 있습니다 — 짧은 프로젝트 화면도 같은 함수를 씁니다.
-   * 백엔드 두 서비스(`local-narration-generation` · `episode-narration`)가 같은 `stillGoodAudio` 를 쓰기
-   * 때문입니다. 왜 「문장이 있는 장면 수」가 아니라 「말해질 장면 수」인지는 그 파일의 주석에 있습니다.
+   * 🔴 **살 것을 세는 규칙은 `utils/narrationBilling.ts` 한 곳에 있습니다** — 짧은 프로젝트 화면도 같은
+   * 함수를 씁니다. 백엔드 두 서비스(`local-narration-generation` · `episode-narration`)가 같은
+   * `stillGoodAudio` 를 쓰기 때문입니다. 한쪽만 고쳐지면 **화면과 백엔드가 「무엇을 살지」에 대해 서로 다른
+   * 말을 합니다.**
+   *
+   * 🔴 「글이 있는 장면」과 「말해질 장면」은 다릅니다 — 이미 음성이 있고 글이 안 바뀐 장면은 **다시 안 삽니다.**
+   * 그걸 세면 더 비싸게 적히고, 그 수는 `BudgetLine` 의 `estimatedRequestCostUsd` 로 그대로 들어가서
+   * **낼 수 있는 돈인데도 예산에 걸려 막힙니다.** 과다 견적은 「안전한 쪽」이 아닙니다.
+   *
+   * 🟠 2026-09-20: 이 세 줄이 한 번 사라졌습니다(Cowork Round 994) — 팔레트 훑기가 **낡은 사본을 통째로
+   * 덮으면서** 같이 지워졌고, 타입은 통과했습니다(`withText.length` 도 `toSpeak.length` 도 숫자라서).
+   * 짝 셋이 **돈으로** 말해 준 덕에 잡혔습니다.
    */
   const toSpeak = narrationScenesToSpeak(withText, narrationStale);
   const reusedCount = withText.length - toSpeak.length;
@@ -287,8 +294,8 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
               </p>
             )}
 
-            {/* 살 게 0 장면이면 「0개 장면 음성을 만들까요?」 를 여는 버튼이 남습니다 — 누를 이유가 없는
-                버튼입니다. 버튼 대신 왜 만들 게 없는지, 그리고 어떻게 하면 다시 만들 수 있는지를 말합니다. */}
+            {/* 🔴 살 게 0 장면이면 「0개 장면 음성을 만들까요?」 를 여는 버튼이 남습니다 — **누를 이유가 없는
+                버튼**입니다. 버튼 대신 왜 만들 게 없는지, 그리고 어떻게 하면 다시 만들 수 있는지를 말합니다. */}
             {withText.length > 0 && toSpeak.length === 0 && !voiceOff && (
               <p data-testid="episode-narration-all-voiced" className="text-sm text-slate-300">
                 글이 있는 {withText.length}장면에 모두 음성이 있습니다 — 지금 만들 것이 없습니다. 문장을 고치면 그 장면만
@@ -332,7 +339,7 @@ export function LongEpisodeNarrationReviewScreen({ projectId, episodeNumber, onB
                 <p data-testid="episode-narration-generate-cost-estimate" className="text-xs text-slate-300 tabular-nums">
                   예상 비용: ${estimatedCost.toFixed(2)} ({toSpeak.length}장면 × ${TTS_ESTIMATED_COST_USD.toFixed(2)}) · 키가
                   연결되어 있을 때만 청구됩니다
-                  {/* 수가 장면 수보다 적은 이유를 그 자리에서 말합니다 — 안 그러면 「내레이션이 있는 장면 6」 옆의
+                  {/* 수가 장면 수보다 적은 이유를 그 자리에서 말합니다 — 안 그러면 「글이 있는 장면 3」 옆의
                       「2장면 × …」 이 오류로 보입니다. */}
                   {reusedCount > 0 && (
                     <span data-testid="episode-narration-generate-reused"> · 이미 음성이 있는 {reusedCount}장면은 빠졌습니다</span>

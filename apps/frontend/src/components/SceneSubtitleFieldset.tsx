@@ -27,8 +27,28 @@ interface Props {
   /** The project's shape — the preview is drawn at the merge's real frame for it (MERGE_FRAME_FOR_ASPECT), 1:1 and 4:5 included. */
   aspectRatio: AspectRatio;
   layout: SceneSubtitleLayout;
+  /**
+   * 🔴 **지금 영상이 구워진 값.** 슬라이더(`layout`)와 따로 받습니다 — 슬라이더는 「다음에 구울 값」이고
+   * 이건 「지금 아래에 보이는 영상이 쓴 값」이라, 하나로 합치면 **되돌릴 자리가 사라집니다.**
+   *
+   * 🟠 명언 카드 쪽에는 이게 있었고 여기만 없었습니다. 슬라이더를 살짝 움직여 본 사람에게 되돌릴 길이
+   * **새로고침밖에** 없었고, 「기본값으로」는 **공장 기본값**이라 이미 한 번 구운 프로젝트에서는 세 번째
+   * 자리입니다 — 슬라이더가 시작한 곳도 아니고 아래 영상이 보여 주는 값도 아닙니다.
+   */
+  savedLayout?: SceneSubtitleLayout;
   onChange: (layout: SceneSubtitleLayout) => void;
   disabled?: boolean;
+}
+
+/**
+ * 두 배치가 같은가.
+ *
+ * 🟠 명언 카드 쪽의 `sameLayout` 과 같은 일을 합니다. 🔴 **거기 것을 끌어다 쓰지 않습니다** — 두 배치는
+ * 모양이 같아도 다른 물건이고(카드는 0.40, 장면은 0.78 근처에서 삽니다), 한쪽 비교 함수가 다른 쪽 필드가
+ * 늘어나는 날 조용히 덜 보게 됩니다.
+ */
+function sameSceneLayout(a: SceneSubtitleLayout, b: SceneSubtitleLayout): boolean {
+  return a.scale === b.scale && a.center === b.center;
 }
 
 /** The long side of the frame the renderer works in. Sizes are said in these pixels, which is the unit a person can picture. */
@@ -52,7 +72,7 @@ const label = "flex items-baseline justify-between text-sm text-slate-300";
  * The bounds come from the shared ranges rather than being repeated, so a slider cannot reach a value the merge
  * would refuse.
  */
-export function SceneSubtitleFieldset({ previewImageUrl, scenes, aspectRatio, layout, onChange, disabled }: Props) {
+export function SceneSubtitleFieldset({ previewImageUrl, scenes, aspectRatio, layout, savedLayout, onChange, disabled }: Props) {
   /*
    * Drawn at the video's real size and scaled down, not laid out small.
    *
@@ -274,15 +294,30 @@ export function SceneSubtitleFieldset({ previewImageUrl, scenes, aspectRatio, la
             </p>
           </div>
 
-          <button
-            type="button"
-            data-testid="scene-subtitle-reset"
-            className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
-            disabled={disabled || atDefault}
-            onClick={() => onChange({ ...DEFAULT_SCENE_SUBTITLE_LAYOUT })}
-          >
-            기본값으로
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {/* 🔴 되돌릴 길. 아래 영상이 쓴 값과 슬라이더가 갈라져 있을 때만 나옵니다 — 같으면 되돌릴 게 없고,
+                저장된 값이 없는 첫 병합에서는 애초에 갈라질 것도 없습니다. */}
+            {savedLayout && !sameSceneLayout(layout, savedLayout) && (
+              <button
+                type="button"
+                data-testid="scene-subtitle-restore"
+                className="rounded border border-line-strong px-3.5 py-1.5 text-sm text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50"
+                disabled={disabled}
+                onClick={() => onChange({ ...savedLayout })}
+              >
+                지금 영상의 값으로
+              </button>
+            )}
+            <button
+              type="button"
+              data-testid="scene-subtitle-reset"
+              className="rounded border border-line-strong px-3.5 py-1.5 text-sm text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50"
+              disabled={disabled || atDefault}
+              onClick={() => onChange({ ...DEFAULT_SCENE_SUBTITLE_LAYOUT })}
+            >
+              기본값으로
+            </button>
+          </div>
         </div>
       </div>
 
