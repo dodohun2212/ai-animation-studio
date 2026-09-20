@@ -9,13 +9,14 @@ import {
   type NewsFetchArticleResponse,
   type NewsPublisher,
   type NewsPublisherBody,
-  type NewsReelSetupResponse,
+  type NewsReelSetupResponse,  type NewsFeedResponse,
 } from "@ai-animation-studio/shared";
 
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ARTICLE_MIN_BODY_CHARS, extractArticle } from "./article-extract.js";
 import { summariseArticle } from "./gemini-summary-adapter.js";
 import { NewsCallQuota, NewsDailyQuotaExceededError, NewsQuotaLedgerUnreadableError } from "./news-call-quota.js";
+import { fetchAllFeeds } from "./news-feed.js";
 import { NEWS_SOURCE_HOSTS, NewsSourceRefusedError, fetchNewsArticle } from "./news-source.js";
 import { newsDailyLimitReached, newsLedgerUnreadable, newsSummaryArticleInvalid, newsSummaryFailed, newsSummaryKeyMissing } from "./news-api.error.js";
 
@@ -85,6 +86,8 @@ export class NewsController {
   fetchArticle: typeof fetchNewsArticle = fetchNewsArticle;
   /** The provider call, replaceable for the same reason and never assigned by shipping code. */
   callProvider: typeof summariseArticle = summariseArticle;
+  /** The feed read, replaceable for the same reason — four publishers' servers, never reached from a test. */
+  fetchFeeds: typeof fetchAllFeeds = fetchAllFeeds;
 
   constructor(private readonly quota: NewsCallQuota, private readonly settings: ProviderSettingsRepository) {}
 
@@ -106,6 +109,22 @@ export class NewsController {
       if (!(error instanceof NewsQuotaLedgerUnreadableError)) throw error;
     }
     return { publishers: publishers(), dailyCalls };
+  }
+
+  /**
+   * Today's articles, so nobody types an address.
+   *
+   * 🔴 **Free, and it must stay that way.** Four RSS documents from the publishers themselves — no key, no
+   * account, no provider — so this route, like `newsArticle`, never touches the call ledger. The one paid step
+   * in this feature is still only the summary.
+   *
+   * 🟠 A publisher whose feed did not answer comes back in `unavailable` rather than taking the list down with
+   * it; `fetchAllFeeds` explains why. The screen can say which one is missing, and pasting one of its articles
+   * by hand still works exactly as before.
+   */
+  @Get(API_ROUTES.newsFeed)
+  async feed(): Promise<NewsFeedResponse> {
+    return this.fetchFeeds(publishers());
   }
 
   /**

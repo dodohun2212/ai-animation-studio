@@ -2712,6 +2712,41 @@ export type NewsFetchArticleResponse =
   | { outcome: "unreachable"; sourceUrl: string }
   | { outcome: "refused"; reason: NewsFetchRefusalReason; publishers: NewsPublisher[] };
 
+/**
+ * One article as a publisher's feed advertised it.
+ *
+ * 🔴 **Nothing here was read from the article.** The feed says a title, an address and a time; the body still
+ * has to be fetched through `newsArticle`, with the same allowlist and the same redirect checking. Clicking a
+ * row is exactly typing that address, saved the typing — it is not a second, more trusted way in.
+ *
+ * 🟠 `host` travels beside `publisher` so the screen can group these the way `NewsReelSetupResponse.publishers`
+ * is already grouped, without matching on a display name.
+ */
+export interface NewsFeedItem {
+  title: string;
+  url: string;
+  publisher: string;
+  host: string;
+  /** The feed's own timestamp, ISO 8601. `null` when it gave none or gave one we could not read. */
+  publishedAt: string | null;
+}
+
+/**
+ * What the article picker shows.
+ *
+ * 🔴 **One feed failing drops that publisher, not the list.** Feeds are other people's servers and one of them
+ * is always down; blanking the picker because 뉴시스 timed out would cost somebody the four publishers that
+ * did answer. Same asymmetry as the image library's Episode rows, for the same reason.
+ *
+ * 🟠 `unavailable` is carried rather than dropped silently: a picker that is quietly short is a picker that
+ * lies about what is available today. The screen can say which publisher is missing and let somebody paste its
+ * address by hand, which still works.
+ */
+export interface NewsFeedResponse {
+  items: NewsFeedItem[];
+  unavailable: NewsPublisher[];
+}
+
 export interface CreateNewsSummaryRequest {
   article: NewsArticleInput;
 }
@@ -3537,6 +3572,8 @@ export const API_ROUTES = {
   newsArticle: "/news/article",
   /** The one paid-capable call in this feature. Free tier, but the count is ours and closes first. */
   newsSummaries: "/news/summaries",
+  /** Today's articles from the publishers whose bodies we can read. Free — RSS, no key, no provider. */
+  newsFeed: "/news/feed",
   /** One subtitle font file by name, so a card preview can draw with the same bytes FFmpeg burns in. */
   subtitleFont: (name: string) => `/fonts/${name}`,
   providerSettings: "/settings/providers",
@@ -3696,6 +3733,29 @@ export function isNewsReelSetupResponse(value: unknown): value is NewsReelSetupR
   if (typeof calls !== "object") return false;
   const { used, limit } = calls as NewsDailyCallCount;
   return Number.isInteger(used) && used >= 0 && Number.isInteger(limit) && limit > 0;
+}
+
+/**
+ * 🔴 Every row is checked, and a bad row fails the whole answer rather than being dropped.
+ *
+ * The image library drops a malformed Episode row and keeps the rest, because a broken Episode must not cost
+ * somebody the pictures they came for. This is the other case: a row here is an **address the server will be
+ * sent to next**, and a list that quietly discards the ones it could not read is a list whose length nobody
+ * can reason about. There is nothing to salvage — the publisher can be pasted by hand.
+ */
+export function isNewsFeedResponse(value: unknown): value is NewsFeedResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (!Array.isArray(candidate.items) || !Array.isArray(candidate.unavailable)) return false;
+  if (!candidate.unavailable.every(isPublisher)) return false;
+  return candidate.items.every((item) => {
+    if (typeof item !== "object" || item === null) return false;
+    const row = item as Record<string, unknown>;
+    const text = (key: string) => typeof row[key] === "string" && !!(row[key] as string).trim();
+    if (!text("title") || !text("url") || !text("publisher") || !text("host")) return false;
+    if (!("publishedAt" in row)) return false;
+    return row.publishedAt === null || typeof row.publishedAt === "string";
+  });
 }
 
 /**
