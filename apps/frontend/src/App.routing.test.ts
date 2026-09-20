@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hashFromScreen, screenFromHash } from "./App.js";
+import { hashFromScreen, navSectionFor, screenFromHash } from "./App.js";
 
 /**
  * Screen position lives in the address bar so a reload lands where the person was. It used to live only in
@@ -73,5 +73,24 @@ describe("screen addresses", () => {
     const screen = screenFromHash(typed);
     expect(hashFromScreen(screen)).toBe("#/longEpisodeScript?projectId=12&episodeNumber=2");
     expect(screenFromHash(hashFromScreen(screen))).toEqual(screen);
+  });
+});
+
+/**
+ * 왼쪽 항목이 켜지는 자리. 주소와 같은 종류의 순수한 대응이라 여기 둡니다.
+ *
+ * 🔴 CLI Round 977 §3: 「만들기 화면에서도 왼쪽이 켜져 있다」는 결정이 주석에만 있었고, 그 줄을 지워도
+ * 짝이 하나도 안 빨갰습니다. 명언 카드를 둘로 가른 건 *「바로 들어가면 너무 복잡해」*를 푸는 일이었는데,
+ * 갈라 놓고 길을 안 켜 주면 **같은 문제의 다른 얼굴**이 됩니다.
+ */
+describe("sidebar highlight", () => {
+  it("keeps 명언 카드 lit while you are making one", () => {
+    expect(navSectionFor("photoCard")).toBe("photoCard");
+    expect(navSectionFor("photoCardCreate"), "만드는 내내 자기가 어디 있는지 보여야 합니다").toBe("photoCard");
+  });
+
+  it("lights a different item on a screen that is not a 명언 카드 one", () => {
+    // 이 반쪽이 없으면 위의 짝은 「navSectionFor 가 늘 photoCard 를 돌려준다」로도 초록입니다.
+    expect(navSectionFor("list")).toBe("short");
   });
 });

@@ -280,7 +280,14 @@ function NavIcon({ name }: { name: NavIconName }) {
 
 type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "newsReel" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
 
-function navSectionFor(name: Screen["name"]): NavSection | null {
+/**
+ * 어느 화면에서 **왼쪽 어느 항목이 켜지는가.**
+ *
+ * 🔴 내보내는 이유는 하나입니다 — 여기 적힌 결정들을 짝이 붙들 수 있게 하려고. CLI Round 977 §3 에서
+ * `photoCardCreate` 줄을 지워도 짝 여든다섯이 전부 초록이라는 게 드러났습니다. 주석은 맞는데 아무도
+ * 안 보는 줄이었고, 그런 줄은 「정리」 한 번에 조용히 사라집니다.
+ */
+export function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "assets") return "assets";
   if (name === "videoLibrary") return "videoLibrary";
   if (name === "audioLibrary") return "audioLibrary";
