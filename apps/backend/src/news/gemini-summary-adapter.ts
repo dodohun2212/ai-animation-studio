@@ -12,13 +12,20 @@ import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard
  */
 
 /**
- * 🟠 The free-tier model, named once.
+ * 🟢 The free-tier model, named once — **confirmed by the first real request, 2026-09-20.**
  *
- * 캡틴D chose the free tier (Cowork Round 936 §1), and this is the model that tier serves. It is written here
- * rather than guessed at each call site, and like the 4:5 image size before it, **the first real request is
- * what confirms it** — a wrong name is a 404 with nothing charged, which is the cheap way to be wrong.
+ * 캡틴D chose the free tier (Cowork Round 936 §1). This line used to say `gemini-2.0-flash`, written before any
+ * key existed and marked as unconfirmed: *「a wrong name is a 404 with nothing charged, which is the cheap way
+ * to be wrong」*. It was wrong, and it cost nothing — 캡틴D pressed 요약 and got 「요청을 받지 못했다」.
+ *
+ * Checked without spending anything: `GET /v1beta/models` with the key on disk answers 200 and lists 50
+ * models. `gemini-2.0-flash` is not among them; `gemini-2.5-flash` is.
+ *
+ * 🟠 **Pinned, not `gemini-flash-latest`.** The alias moves, and a summariser whose output changes on a day
+ * nobody deployed is a summariser nobody can check — `checkNewsSummary` compares against the article, so a
+ * silent model change becomes a silent change in what passes that check.
  */
-export const GEMINI_SUMMARY_MODEL = "gemini-2.0-flash";
+export const GEMINI_SUMMARY_MODEL = "gemini-2.5-flash";
 
 const ENDPOINT = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
