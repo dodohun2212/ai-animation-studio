@@ -437,8 +437,24 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
             </p>
           )}
           {publishers.length > 0 && (
-            <>
-              <p className="text-xs text-slate-500">넣을 수 있는 언론사</p>
+            /*
+             * 🔴 **접었습니다.** 캡틴D: *「너무 세로로 길잖아」*
+             *
+             * 이 목록은 네 무리 × (제목 + 설명 + 칩) 이라 펼쳐 두면 **170px 쯤**을 늘 씁니다. 🟠 그런데 이건
+             * **한 번 읽는 참고**입니다 — 「내 언론사가 되나」를 한 번 확인하면 그 뒤로는 안 봅니다.
+             *
+             * 🟢 그리고 이게 화면의 유일한 안내이던 때와 지금은 다릅니다: **위에 오늘 기사 목록이 생겼고**,
+             * 거기서 고르면 되는 곳만 나옵니다. 🔴 **안 지웁니다** — 목록에 없는 언론사를 직접 넣으려는 사람에게는
+             * 여전히 이게 유일한 답입니다(Cowork Round 931 §2: 여기 없으면 제가 손으로 같은 문장을 적게 되고
+             * 그 순간 목록이 두 벌이 됩니다).
+             *
+             * 🟠 `open` 을 안 줍니다 — 접힌 채로 시작합니다. 🟠 「거절」을 받은 사람에게는 **펼쳐진 채**로
+             * 보여야 하지만, 그 사람은 이미 빨간 상자 안에서 같은 목록을 받습니다(`news-fetch-refused`).
+             */
+            <details data-testid="news-publishers-disclosure">
+              <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-400">
+                넣을 수 있는 언론사 {publishers.length}곳
+              </summary>
               <div className="mt-2 space-y-3" data-testid="news-publishers">
                 {PUBLISHER_GROUP_ORDER.map((body) => {
                   const members = publishers.filter((one) => one.body === body);
@@ -459,7 +475,7 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
                   );
                 })}
               </div>
-            </>
+            </details>
           )}
         </div>
       </section>

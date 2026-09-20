@@ -522,3 +522,34 @@ describe("NewsReelScreen 기사 목록", () => {
     expect(feedItemTime("2026-09-17T09:12:00.000Z")).not.toBe("시각 없음");
   });
 });
+
+/**
+ * 🔴 캡틴D: *「너무 세로로 길잖아」*
+ *
+ * 언론사 목록은 네 무리 × (제목 + 설명 + 칩) 이라 펼쳐 두면 늘 170px 쯤을 씁니다. 🟠 **한 번 읽는
+ * 참고**이고, 이제 위에 오늘 기사 목록이 따로 있습니다. 🔴 **안 지웁니다** — 목록에 없는 언론사를 직접
+ * 넣으려는 사람에게는 여전히 유일한 답입니다.
+ */
+describe("NewsReelScreen 세로 길이", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("folds the publisher list, and says how many are in there", async () => {
+    stubRoutes();
+    renderScreen();
+
+    const disclosure = await screen.findByTestId("news-publishers-disclosure");
+    expect((disclosure as HTMLDetailsElement).open, "접힌 채로 엽니다").toBe(false);
+    expect(disclosure.textContent, "몇 곳인지는 접힌 채로도 보입니다").toContain(`${PUBLISHERS.length}곳`);
+  });
+
+  it("keeps the list itself, because a publisher that is not in today's feed has nowhere else to be read", async () => {
+    /* 🟠 이 반쪽이 없으면 위의 짝은 「목록을 아예 안 그린다」는 구현으로도 초록입니다 — 그러면 직접 주소를
+       넣으려는 사람이 **어디가 되는지 알 곳이 없어집니다.** */
+    stubRoutes();
+    renderScreen();
+
+    const list = await screen.findByTestId("news-publishers");
+    expect(list.textContent).toContain("연합뉴스");
+    expect(list.textContent).toContain("MBC");
+  });
+});
