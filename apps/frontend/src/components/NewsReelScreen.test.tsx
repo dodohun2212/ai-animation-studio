@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NEWS_REEL_TEXT_BOXES, type NewsReelTextField } from "@ai-animation-studio/shared";
 import { stubFetchByRoute } from "../api/testUtils.js";
 import { NewsReelScreen, feedItemTime } from "./NewsReelScreen.js";
 
@@ -783,5 +784,84 @@ describe("NewsReelScreen 기사 칸 접기", () => {
     await waitFor(() => {
       expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open).toBe(true);
     });
+  });
+});
+
+/**
+ * 릴에 박히는 네 줄.
+ *
+ * 🔴 **짝이 15·20 을 직접 안 적습니다.** 계약에서 읽어 와서 그 길이로 글자를 만듭니다 — 숫자를 여기 적으면
+ * 계약이 바뀌는 날 **짝이 옛 숫자를 지키게** 되고, 그때 빨개지는 건 화면이 아니라 짝입니다.
+ */
+describe("NewsReelScreen 릴 문구", () => {
+  beforeEach(() => { stubRoutes(); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const filler = (count: number): string => "가".repeat(count);
+  const limitOf = (field: NewsReelTextField): number => NEWS_REEL_TEXT_BOXES[field].limit;
+
+  it("counts against the contract's limit, not a number written into the screen", async () => {
+    renderScreen();
+    const limit = limitOf("headline.line1");
+
+    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: filler(limit) } });
+
+    /* 🟠 「limit/limit」 그대로입니다 — 꽉 찬 것은 넘은 것이 아닙니다. */
+    expect(screen.getByTestId("news-reel-headline1-count").textContent).toContain(`${limit}/${limit}`);
+    expect(screen.getByTestId("news-reel-headline1-count").textContent).not.toContain("넘었습니다");
+
+    /* 🔴 **한도가 다른 칸을 같이 칩니다.** 제목만 보면 화면이 15를 박아 넣어도 이 짝은 초록입니다 — 제목의
+       한도가 마침 15라서입니다. 실제로 주입해 보니 그랬습니다(CLI Round 1037 §1): 잡은 것은 이 짝이 아니라
+       자막을 치는 옆 짝이었고, 그건 우연이었습니다. **한 값만 치는 짝은 그 값이 맞는지만 압니다.** */
+    const captionLimit = limitOf("caption.line1");
+    expect(captionLimit, "두 칸의 한도가 달라야 이 짝이 뜻이 있습니다").not.toBe(limit);
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: filler(captionLimit) } });
+    expect(screen.getByTestId("news-reel-caption1-count").textContent).toContain(`${captionLimit}/${captionLimit}`);
+  });
+
+  it("says how far over, not just that it is over", async () => {
+    renderScreen();
+    const limit = limitOf("caption.line1");
+
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: filler(limit + 3) } });
+
+    /* 🔴 「넘었습니다」만 적으면 **얼마나 지울지**를 사람이 세어야 합니다. */
+    expect(screen.getByTestId("news-reel-caption1-count").textContent).toContain("3자 넘었습니다");
+  });
+
+  it("leaves an untouched box quiet — not yet written is not the same as wrong", async () => {
+    renderScreen();
+
+    for (const box of ["headline1", "headline2", "caption1", "caption2"]) {
+      expect(screen.getByTestId(`news-reel-${box}-count`).className).not.toContain("rose");
+    }
+  });
+
+  it("treats an empty second caption line as a one-line caption, not as a refusal", async () => {
+    renderScreen();
+
+    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "국회 본회의 통과" } });
+    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "검찰청 62년 만에 폐지" } });
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "재석 289명 중 180명 찬성" } });
+
+    /* 🔴 둘째 자막은 안 채웠습니다. 그래도 **넷이 다 찬 것**입니다 — 계약이 그 칸만 없어도 된다고 말합니다. */
+    expect(screen.getByTestId("news-reel-no-route").textContent).toContain("네 칸이 다 찼습니다");
+  });
+
+  it("counts a box of only spaces as empty, so it never becomes an empty string in the card", async () => {
+    renderScreen();
+
+    fireEvent.change(screen.getByTestId("news-reel-caption2"), { target: { value: "   " } });
+
+    /* 🔴 `""` 는 계약이 값으로 안 칩니다(CLI 1029 §3). 공백만 친 칸도 **없는 것**이라야 `null` 로 넘어갑니다. */
+    expect(screen.getByTestId("news-reel-caption2-count").textContent).toContain("0/");
+  });
+
+  it("does not offer a button it cannot honour — the route is not there yet", async () => {
+    renderScreen();
+
+    /* 🔴 안 눌리는 버튼은 「곧 됩니다」가 아니라 「내가 뭘 잘못했나」로 읽힙니다. */
+    expect(screen.queryByTestId("news-reel-create")).toBeNull();
+    expect(screen.getByTestId("news-reel-no-route").textContent).toContain("아직 서버에 없습니다");
   });
 });

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, type NewsClaimCheck, type NewsDailyCallCount, type NewsFeedItem, type NewsFetchRefusalReason, type NewsPublisher, type NewsPublisherBody } from "@ai-animation-studio/shared";
+import { NEWS_CHECK_SCOPE_NOTICE, NEWS_REEL_TEXT_FIELDS, checkNewsSummary, newsReelTextBox, type NewsClaimCheck, type NewsDailyCallCount, type NewsFeedItem, type NewsFetchRefusalReason, type NewsPublisher, type NewsPublisherBody, type NewsReelTextField } from "@ai-animation-studio/shared";
 import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsSummary, fetchNewsArticle, getNewsFeed, getNewsReelSetup } from "../api/newsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { Spinner } from "./Spinner.js";
 import { cardSectionRoomy as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
+import { CountedField, newsReelFieldValue } from "./ui/CountedField.js";
 
 interface Props {
   onBack: () => void;
@@ -193,6 +194,14 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
      아니라 **걸러서 찾는** 자리입니다. */
   const [feedQuery, setFeedQuery] = useState("");
 
+  /* 🔴 릴에 박히는 네 줄입니다. 한 덩어리 글이 아니라 **칸 넷**인 이유는 계약에 적혀 있습니다 — 제목 두 줄은
+     색이 갈리고(흰색·노란색), 그 끊는 자리는 활자가 아니라 **내용**이라서 감는 쪽이 정하면 안 됩니다.
+     🟠 자막 둘째 줄만 없어도 됩니다. 빈 칸은 `""` 가 아니라 `null` 로 계약에 넘어갑니다. */
+  const [headline1, setHeadline1] = useState("");
+  const [headline2, setHeadline2] = useState("");
+  const [caption1, setCaption1] = useState("");
+  const [caption2, setCaption2] = useState("");
+
   useEffect(() => {
     let live = true;
     getNewsReelSetup()
@@ -299,6 +308,20 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
     () => (feed.status === "ready" ? feed.items.filter((item) => matchesFeedQuery(item, feedQuery)) : []),
     [feed, feedQuery],
   );
+
+  /* 🔴 **숫자를 여기 안 적습니다** — `newsReelTextBox` 가 계약의 한도를 들고 옵니다(CLI 1029 §2). */
+  /* 🔴 **칸 이름도 여기 안 적습니다.** 넷을 배열에 손으로 늘어놓으면 `contract-value-sets` 가 잡습니다 —
+     베낀 목록은 **계약이 늘어난 날 조용히 안 늘어나서**, 다섯째 칸이 생기면 이 화면이 아무 말 없이 넷만
+     그립니다. 값은 칸 이름을 키로 한 표에 두고 순서는 계약에서 받습니다: 다섯째가 생기면 그날
+     **이 표에서 컴파일 에러**가 납니다(CLI Round 1037 §0). */
+  const reelValues: Record<NewsReelTextField, string> = {
+    "headline.line1": headline1,
+    "headline.line2": headline2,
+    "caption.line1": caption1,
+    "caption.line2": caption2,
+  };
+  const reelBoxes = NEWS_REEL_TEXT_FIELDS.map((field) => newsReelTextBox(field, newsReelFieldValue(reelValues[field])));
+  const reelRefused = reelBoxes.filter((box) => box.refusal !== null);
 
   const trimmedArticle = articleText.trim();
   /** 🟠 접힌 칸이 **비었는지 채워졌는지**를 접힌 채로 말해 줍니다 — 안 그러면 사람이 열어 봐야 압니다. */
@@ -680,6 +703,67 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
           onChange={(event) => setSummary(event.target.value)}
           placeholder="기사가 말하는 것만 적어 주세요."
         />
+      </section>
+
+      {/*
+        * 🔴 **릴에 박히는 네 줄.** 요약 칸과 다릅니다 — 요약은 **읽을 글**이고, 이 넷은 **화면에 박힐 글**입니다.
+        * 그래서 한도가 「읽기 좋은 길이」가 아니라 **글자가 화면 폭에 들어가는 수**이고, 그 수는 계약이 들고
+        * 옵니다(굽는 글꼴 실측 × 0.63 — CLI 1021 §1).
+        */}
+      <section className={cardSection} aria-label="릴 문구">
+        <h2 className="text-sm font-semibold text-slate-100">릴에 들어갈 글</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          제목 두 줄은 <strong className="text-slate-300">색이 갈립니다</strong> — 첫 줄은 흰색, 둘째 줄은 노란색입니다. 어디서 끊을지는 사람이 정합니다.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <CountedField
+            id="news-reel-headline1"
+            data-testid="news-reel-headline1"
+            field="headline.line1"
+            label="제목 첫 줄 (흰색)"
+            value={headline1}
+            onChange={setHeadline1}
+            placeholder="무슨 일인지"
+          />
+          <CountedField
+            id="news-reel-headline2"
+            data-testid="news-reel-headline2"
+            field="headline.line2"
+            label="제목 둘째 줄 (노란색)"
+            value={headline2}
+            onChange={setHeadline2}
+            placeholder="그래서 어떻게 됐는지"
+          />
+          <CountedField
+            id="news-reel-caption1"
+            data-testid="news-reel-caption1"
+            field="caption.line1"
+            label="자막 첫 줄"
+            value={caption1}
+            onChange={setCaption1}
+            placeholder="그림에 보이는 것을 말로"
+          />
+          <CountedField
+            id="news-reel-caption2"
+            data-testid="news-reel-caption2"
+            field="caption.line2"
+            label="자막 둘째 줄"
+            value={caption2}
+            onChange={setCaption2}
+            placeholder="없어도 됩니다"
+            hint="비워 두면 한 줄짜리 자막입니다 — 빈 줄이 들어가는 게 아닙니다."
+          />
+        </div>
+
+        {/* 🔴 **아직 보낼 길이 없습니다.** 계약은 들어왔지만 라우트·핸들러는 CLI 가 한 커밋으로 넣는 중입니다
+            (CLI 1029 §1). 회색 버튼을 만들어 두는 것보다 **없다고 적는 편**이 낫습니다 — 안 눌리는 버튼은
+            「곧 될 것」이 아니라 「내가 뭘 잘못했나」로 읽힙니다. */}
+        <p className="mt-4 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3 text-xs text-slate-400" data-testid="news-reel-no-route">
+          {reelRefused.length === 0
+            ? "네 칸이 다 찼습니다. 릴로 굽는 길은 아직 서버에 없습니다 — 만들어지는 대로 이 자리에 버튼이 생깁니다."
+            : "글자 수가 맞으면 여기서 릴을 만들게 됩니다. 굽는 길은 아직 서버에 없습니다."}
+        </p>
       </section>
 
       <section className={cardSection} aria-label="원문 대조">
