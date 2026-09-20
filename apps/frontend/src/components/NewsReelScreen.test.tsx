@@ -556,3 +556,45 @@ describe("NewsReelScreen 세로 길이", () => {
     expect(list.textContent).toContain("MBC");
   });
 });
+
+/**
+ * 🔴 캡틴D: *「각 기사마다 사진 같은 거 하나씩 옆에 표시해서」*
+ *
+ * 🟠 **여섯 중 셋이 그림을 아예 안 줍니다**(CLI Round 1009 §0: 뉴시스·경향·한겨레). 백열 줄에서 절반이
+ * `null` 이라, **없을 때 무엇을 안 그리는지**가 있을 때 무엇을 그리는지만큼 중요합니다.
+ */
+describe("NewsReelScreen 기사 사진", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("puts the feed's picture beside the row", async () => {
+    const withImage = { ...FEED_ITEM, imageUrl: "https://img.yna.co.kr/photo/ap/2026/09/17/a.jpg" };
+    stubRoutes({ "GET /news/feed": { items: [withImage], unavailable: [] } });
+    renderScreen();
+
+    const image = await screen.findByTestId(`news-feed-image-${withImage.url}`);
+    expect(image.getAttribute("src")).toBe(withImage.imageUrl);
+    /* 🟠 기사 그림은 제목이 이미 말하는 것을 다시 말합니다 — 스크린 리더가 읽을 게 없습니다. */
+    expect(image.getAttribute("alt"), "제목이 곧 설명입니다").toBe("");
+  });
+
+  it("draws nothing at all when the feed gave no picture", async () => {
+    /* 🔴 빈 자리에 테두리나 아이콘을 그리면 **「못 가져왔다」로 읽힙니다.** 그건 저쪽 편집 판단이지 이 화면이
+       실패한 게 아닙니다 — 절반이 그렇습니다. */
+    stubRoutes({ "GET /news/feed": { items: [{ ...FEED_ITEM, imageUrl: null }], unavailable: [] } });
+    renderScreen();
+
+    await screen.findByTestId(`news-feed-item-${FEED_ITEM.url}`);
+    expect(screen.queryByTestId(`news-feed-image-${FEED_ITEM.url}`)).toBeNull();
+    expect(screen.queryByText(/사진을 가져오지|이미지 없음/), "없는 걸 실패라고 말하지 않습니다").toBeNull();
+  });
+
+  it("still opens the address when a row with a picture is pressed", async () => {
+    // 🟠 그림을 붙이면서 배선이 끊기는 게 제일 흔한 사고입니다 — 이제 누르는 자리가 `<img>` 를 품고 있습니다.
+    const withImage = { ...FEED_ITEM, imageUrl: "https://img.yna.co.kr/photo/ap/2026/09/17/a.jpg" };
+    stubRoutes({ "GET /news/feed": { items: [withImage], unavailable: [] } });
+    renderScreen();
+
+    fireEvent.click(await screen.findByTestId(`news-feed-item-${withImage.url}`));
+    expect((screen.getByTestId("news-fetch-url") as HTMLInputElement).value).toBe(withImage.url);
+  });
+});

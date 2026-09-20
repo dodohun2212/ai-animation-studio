@@ -359,17 +359,45 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
                     <button
                       type="button"
                       data-testid={`news-feed-item-${item.url}`}
-                      className="w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-white/5"
+                      className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors hover:bg-white/5"
                       onClick={() => setUrl(item.url)}
                     >
-                      <span className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="text-[11px] text-slate-500">{item.publisher}</span>
-                        <span className="type-mono text-[11px] text-bone-faint">{feedItemTime(item.publishedAt)}</span>
-                        {pasteNeeded && (
-                          <span className="text-[11px] text-slate-400" data-testid={`news-feed-paste-${item.url}`}>· 본문은 붙여넣어야 합니다</span>
+                      {/*
+                        * 🔴 **자리는 늘 잡고, 없으면 비워 둡니다.**
+                        *
+                        * 여섯 중 셋이 그림을 아예 안 줍니다(CLI Round 1009 §0) — 백열 줄에서 **절반이 `null`**
+                        * 입니다. 🟠 자리를 안 잡으면 제목의 왼쪽 끝이 줄마다 흔들려서, 백열 줄을 훑는 일이
+                        * 어려워집니다. 🔴 그렇다고 빈 자리에 테두리나 아이콘을 그리면 **「못 가져왔다」로 읽힙니다** —
+                        * 그건 저쪽 편집 판단이지 이 화면이 실패한 게 아닙니다. **그래서 아무것도 안 그립니다.**
+                        *
+                        * 🟠 높이는 `h-10`(40px)입니다 — 지금 두 줄짜리 줄 높이와 같아서 **줄이 안 높아집니다.**
+                        * 캡틴D 부탁이 *「세로를 줄이고」* + *「사진을 옆에」* 였으니, 그림이 줄을 늘리면 앞을 되돌리는
+                        * 셈입니다.
+                        */}
+                      <span aria-hidden="true" className="h-10 w-14 flex-shrink-0 overflow-hidden rounded">
+                        {item.imageUrl !== null && (
+                          /* 🟠 `onError` 로 지웁니다. 안 그러면 404 인 주소가 **브라우저의 깨진 그림 아이콘**을
+                             남기는데, 그게 정확히 안 그리기로 한 「못 가져왔다」입니다. */
+                          <img
+                            data-testid={`news-feed-image-${item.url}`}
+                            src={item.imageUrl}
+                            alt=""
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                            onError={(event) => { event.currentTarget.style.display = "none"; }}
+                          />
                         )}
                       </span>
-                      <span className="mt-0.5 block text-sm leading-snug text-slate-200">{item.title}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="text-[11px] text-slate-500">{item.publisher}</span>
+                          <span className="type-mono text-[11px] text-bone-faint">{feedItemTime(item.publishedAt)}</span>
+                          {pasteNeeded && (
+                            <span className="text-[11px] text-slate-400" data-testid={`news-feed-paste-${item.url}`}>· 본문은 붙여넣어야 합니다</span>
+                          )}
+                        </span>
+                        <span className="mt-0.5 block truncate text-sm leading-snug text-slate-200">{item.title}</span>
+                      </span>
                     </button>
                   </li>
                 );
