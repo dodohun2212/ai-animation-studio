@@ -30,9 +30,18 @@ export const cardSectionWide =
 export const cardSectionRoomy =
   "space-y-4 rounded-lg border border-line bg-ground-raised p-6";
 
+/**
+ * 🔴 `disabled:hover:*` 세 줄에 대하여 — **꺼진 버튼은 마우스가 올라가도 밝아지면 안 됩니다.**
+ *
+ * hover 는 「이건 누를 수 있다」는 약속입니다. 꺼진 버튼이 그 약속을 하면 사람은 누르고, 아무 일도 안
+ * 일어나고, **화면이 고장 난 줄 압니다.** `disabled:opacity-50` 은 흐리게만 할 뿐 hover 를 막지 않습니다.
+ *
+ * 🟠 `MappingReviewScreen` 의 지역 사본에만 이 조각(`disabled:hover:bg-transparent`)이 있었습니다 — 거기
+ * 사람이 한 번 겪고 고친 것으로 보입니다. **한 화면이 겪은 것을 모든 화면이 물려받게** 여기로 올립니다.
+ */
 /** The ordinary button: everything that is not the one thing the screen wants you to press. */
 export const outlineButton =
-  "rounded border border-line-strong px-4 py-2 text-sm text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50";
+  "rounded border border-line-strong px-4 py-2 text-sm text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50 disabled:hover:border-line-strong disabled:hover:bg-transparent disabled:hover:text-bone-dim";
 
 /**
  * 줄 안에 들어가는 작은 ordinary 버튼 — 표의 한 칸, 카드 머리, 목록의 한 줄.
@@ -47,7 +56,7 @@ export const outlineButton =
  * 🟢 높이는 `py-1` 로 맞춥니다 — 다섯 파일이 이미 그 값이고, 줄이 촘촘한 표에서 넘치지 않는 쪽입니다.
  */
 export const smallOutlineButton =
-  "rounded border border-line-strong px-3 py-1 text-xs text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50";
+  "rounded border border-line-strong px-3 py-1 text-xs text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50 disabled:hover:border-line-strong disabled:hover:bg-transparent disabled:hover:text-bone-dim";
 
 /**
  * The one call to action per screen.

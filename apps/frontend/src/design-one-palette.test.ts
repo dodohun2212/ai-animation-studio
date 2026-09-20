@@ -114,15 +114,23 @@ describe("화면 색은 한 군데에서만 정해진다", () => {
    * 적기 시작하면 여기서 빨개집니다. 열한 개가 네 가지로 갈라진 건 **한 번에 그렇게 된 게 아니라** 한 사람씩
    * 자기 파일에 적어서 그렇게 됐습니다.
    */
-  it("작은 ordinary 버튼은 한 군데에서만 정의된다 — 열한 벌이 네 가지로 갈라져 있었다", async () => {
+  it("ordinary 버튼은 한 군데에서만 정의된다 — 열다섯 벌이 여섯 가지로 갈라져 있었다", async () => {
     const root = path.dirname(url.fileURLToPath(import.meta.url));
     const files = await sourceFiles(root);
+
+    /*
+     * 🟠 이름을 **표로** 둡니다. 다음에 또 하나가 갈라지기 시작하면 (`dangerOutlineButton`, `primaryButton` …)
+     * 여기 한 줄을 더하는 것으로 끝나고, 짝을 새로 쓸 필요가 없습니다.
+     */
+    const SHARED = ["outlineButton", "smallOutlineButton"] as const;
 
     const localCopies: string[] = [];
     for (const relativePath of files) {
       if (relativePath.endsWith("ui/surfaces.ts")) continue;
       const content = await fs.readFile(path.join(root, relativePath), "utf8");
-      if (/^const smallOutlineButton\s*=/m.test(content)) localCopies.push(relativePath);
+      for (const name of SHARED) {
+        if (new RegExp(`^const ${name}\\s*=`, "m").test(content)) localCopies.push(`${relativePath}: ${name}`);
+      }
     }
 
     expect(localCopies, "자기 파일에 다시 적지 말고 ui/surfaces.js 에서 가져오십시오").toEqual([]);

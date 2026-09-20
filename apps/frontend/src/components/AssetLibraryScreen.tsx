@@ -5,7 +5,7 @@ import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, primaryButton, scrollList, smallOutlineButton } from "./ui/surfaces.js";
+import { cardSection, outlineButton, primaryButton, scrollList, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
 /**
@@ -109,8 +109,6 @@ const CHARACTER_ROLE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = 
 
 const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
-const outlineButton =
-  "rounded-full border border-white/20 bg-white/[0.06] px-4 py-2 text-sm font-medium text-slate-100 shadow-sm hover:border-white/30 hover:bg-white/10 disabled:opacity-50";
 const dangerOutlineButton =
   "rounded-full border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-300 shadow-sm hover:border-rose-400/60 hover:bg-rose-500/15 disabled:opacity-50";
 const smallAddButton =
