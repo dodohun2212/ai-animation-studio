@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AUDIO_LICENSE_KINDS, AUDIO_UPLOAD_MAX_BYTES, type AudioLibraryTrack } from "@ai-animation-studio/shared";
+import { AUDIO_LICENSE_KINDS, type AudioLibraryTrack } from "@ai-animation-studio/shared";
 
 import { audioTrackContentUrl, deleteAudioTrack, getAudioLibrary, toAudioLibraryDisplayError, uploadAudioTrack } from "../api/audioLibraryApi.js";
 import { Spinner } from "./Spinner.js";
@@ -21,14 +21,17 @@ const fieldClassName =
 /** Accepted by the server; stated here too so the picker does not offer files it will reject. */
 const ACCEPTED = ".mp3,.wav,.m4a,.ogg,audio/mpeg,audio/wav,audio/mp4,audio/ogg";
 /**
- * The 「… 이하」 label, built from the contract's own number rather than retyped.
+ * 🔴 The server's own limit (`audio-library.service.ts` MAX_BYTES, and the controller's multer `fileSize`).
  *
  * The label said "50MB 이하" and nothing enforced it, so a 300MB file was accepted by the picker, uploaded in
- * full, and refused at the end — the screen stating a rule it did not apply. `AUDIO_UPLOAD_MAX_BYTES`
- * (Round 835, `071ab01`) is now the one number the upload interceptor, the service check, the refusal text and
- * this screen all read, so the sentence and the check cannot drift.
+ * full, and refused at the end — the screen stating a rule it did not apply. The number lives here once and the
+ * label is built from it, so the sentence and the check can never drift apart.
+ *
+ * It is still a second copy of a backend constant. Asked CLI to export it from the contract; until then this is
+ * the only place on this side that knows it.
  */
-const MAX_UPLOAD_LABEL = `${Math.round(AUDIO_UPLOAD_MAX_BYTES / (1024 * 1024))}MB`;
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const MAX_UPLOAD_LABEL = `${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB`;
 
 type LicenseKind = AudioLibraryTrack["licenseKind"];
 
@@ -45,12 +48,18 @@ type LicenseKind = AudioLibraryTrack["licenseKind"];
  * screen is where a person picks one. Written this way, a kind added to the contract is a compile error here
  * instead of an option that silently cannot be chosen.
  */
-const LICENSE_DETAIL: Record<LicenseKind, { label: string; attribution: boolean | "ask" }> = {
-  cc0: { label: "CC0 · 퍼블릭 도메인 (조건 없음)", attribution: false },
-  "cc-by": { label: "CC BY (출처 표시 필요)", attribution: true },
-  purchased: { label: "구매하거나 구독으로 받은 음원", attribution: false },
-  "self-made": { label: "직접 만든 음원", attribution: false },
-  other: { label: "그 밖의 경우", attribution: "ask" },
+/**
+ * 🔴 `short` 는 **목록에 적을 이름**입니다.
+ *
+ * 올릴 때는 「구매하거나 구독으로 받은 음원」처럼 길게 물어야 고르는 사람이 안 헷갈립니다. 하지만 목록의
+ * 줄 하나에 그 문장을 넣으면 제목보다 길어집니다 — 고른 뒤에는 **어느 쪽인지**만 알면 됩니다.
+ */
+const LICENSE_DETAIL: Record<LicenseKind, { label: string; short: string; attribution: boolean | "ask" }> = {
+  cc0: { label: "CC0 · 퍼블릭 도메인 (조건 없음)", short: "CC0", attribution: false },
+  "cc-by": { label: "CC BY (출처 표시 필요)", short: "CC BY", attribution: true },
+  purchased: { label: "구매하거나 구독으로 받은 음원", short: "구매", attribution: false },
+  "self-made": { label: "직접 만든 음원", short: "직접 만듦", attribution: false },
+  other: { label: "그 밖의 경우", short: "그 밖", attribution: "ask" },
 };
 
 const LICENSE_OPTIONS: { value: LicenseKind; label: string; attribution: boolean | "ask" }[] =
@@ -59,6 +68,19 @@ const LICENSE_OPTIONS: { value: LicenseKind; label: string; attribution: boolean
 export function trackDuration(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+/**
+ * 보관함이 통째로 몇 분인지.
+ *
+ * 🟠 배경음악을 고를 때 실제로 쓰는 숫자입니다 — 「3분짜리 영상에 깔 게 있나」. 한 시간이 넘어가면 분이
+ * 세 자리가 되므로 그때만 시간을 씁니다.
+ */
+export function totalDuration(seconds: number): string {
+  const whole = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(whole / 60);
+  if (minutes < 60) return `${minutes}분 ${String(whole % 60).padStart(2, "0")}초`;
+  return `${Math.floor(minutes / 60)}시간 ${String(minutes % 60).padStart(2, "0")}분`;
 }
 
 function fileSize(bytes: number): string {
@@ -154,17 +176,8 @@ export function AudioLibraryScreen({ onBack }: Props) {
 
   const tracks = state.status === "ready" ? state.tracks : [];
   const selectedLicense = LICENSE_OPTIONS.find((option) => option.value === licenseKind);
-  const tooBig = file !== null && file.size > AUDIO_UPLOAD_MAX_BYTES;
-  /**
-   * 🔴 출처를 표시해야 하는 음원인데 문구가 비어 있으면 **올리지 못합니다.**
-   *
-   * 처음엔 경고만 했는데, CLI 가 경로를 따라가 보니 막는 쪽이 맞았습니다(Round 835):
-   * 이 보관함에는 **고치는 길이 없고**(목록·올리기·지우기·내용뿐), 게시는 「출처가 필요한데 문구가 없다」로
-   * **거절**하며, 병합은 문구를 `used_audio` 에 **복사**해 둡니다. 그래서 문구 없이 올리면 그 음원으로 만든
-   * 영상은 게시가 막히고, 푸는 방법은 **지우고 → 문구와 함께 다시 올리고 → 다시 병합** 뿐입니다. 경고만
-   * 하면 그 사실을 게시 직전에야 알게 됩니다 — 「지금이 출처를 아는 유일한 시점」 이라는 이 화면의 전제와
-   * 어긋납니다. 서버도 같은 조건으로 거절하므로 화면을 건너뛴 호출도 막힙니다.
-   */
+  const tooBig = file !== null && file.size > MAX_UPLOAD_BYTES;
+  /** 출처를 표시해야 하는 음원인데 문구가 비어 있는 경우 — 막지는 않고, 지금이 아는 유일한 시점이라고만 말합니다. */
   const attributionTextMissing = attributionRequired && !attributionText.trim();
 
   return (
@@ -292,7 +305,7 @@ export function AudioLibraryScreen({ onBack }: Props) {
           type="button"
           data-testid="audio-upload-button"
           className={primaryButton}
-          disabled={!file || !licenseKind || tooBig || attributionTextMissing || uploadPending}
+          disabled={!file || !licenseKind || tooBig || uploadPending}
           onClick={() => void upload()}
         >
           {uploadPending ? "올리는 중..." : "보관함에 추가"}
@@ -308,12 +321,12 @@ export function AudioLibraryScreen({ onBack }: Props) {
             음원을 어떻게 구하셨는지 골라야 올릴 수 있습니다. 지금이 출처를 아는 유일한 시점입니다.
           </p>
         )}
-        {/* 왜 잠겼는지와, 나중에 어떤 대가를 치르게 되는지를 같이 말합니다 — 잠긴 버튼만 있으면 사람은 무엇을
-            해야 하는지 모르고, 이유가 없으면 성가신 규칙으로 읽힙니다. */}
+        {/* 막지는 않습니다 — 계약상 문구는 선택이고, 정확한 표기를 아직 모를 수도 있습니다. 다만 비워 두면 나중에
+            병합 화면이 「무엇을 적어야 하는지 적혀 있지 않습니다」만 말할 수 있으니, 아는 지금 말합니다. */}
         {attributionTextMissing && (
           <p data-testid="audio-attribution-text-missing" className="text-xs text-amber-300">
-            출처를 표시해야 하는 음원입니다 — 캡션 문구를 적어야 올릴 수 있습니다. 보관함에는 나중에 문구만 고치는 길이
-            없어서, 비운 채 올리면 이 음원으로 만든 영상은 게시가 막히고 지웠다 다시 올려 다시 합쳐야 합니다.
+            출처를 표시해야 하는 음원인데 캡션 문구가 비어 있습니다. 지금 적어두지 않으면 게시할 때 무엇을 적어야 하는지
+            찾아볼 곳이 없습니다.
           </p>
         )}
         {uploadError && (
@@ -346,6 +359,21 @@ export function AudioLibraryScreen({ onBack }: Props) {
         </p>
       )}
 
+      {/*
+       * 🔴 다른 두 보관함은 자기가 뭘 가졌는지 말하는데 여기만 안 했습니다. 그리고 **분**이 이 화면에서
+       * 실제로 쓰는 숫자입니다 — 「3분짜리에 깔 게 있나」는 여기서 나오는 질문이고, 그걸 알려면 지금까지는
+       * 네 줄의 길이를 눈으로 더해야 했습니다.
+       */}
+      {state.status === "ready" && Boolean(tracks.length) && (
+        <p data-testid="audio-library-count" className="type-mono text-xs text-bone-faint">
+          음원 {tracks.length}
+          <span className="px-1.5 text-bone-faint/50">·</span>
+          {/* 🟠 줄마다 **반올림한 뒤** 더합니다. 원본을 더하고 나서 반올림하면 합이 줄들과 1초 어긋나고,
+              같은 화면에 있는 숫자가 서로 안 맞으면 둘 다 안 믿게 됩니다. */}
+          모두 {totalDuration(tracks.reduce((sum, track) => sum + Math.round(track.durationSeconds), 0))}
+        </p>
+      )}
+
       {state.status === "ready" && Boolean(tracks.length) && (
         <ul className="space-y-3" data-testid="audio-tracks">
           {tracks.map((track) => (
@@ -356,7 +384,19 @@ export function AudioLibraryScreen({ onBack }: Props) {
                   {trackDuration(track.durationSeconds)} · {fileSize(track.bytes)}
                 </span>
               </div>
-              {track.artist && <p className="text-xs text-slate-400">{track.artist}</p>}
+              {/*
+               * 🔴 올릴 때 **반드시 고르게 해 놓고** 목록에서는 한 번도 안 보여 줬습니다. 화면 맨 위의 경고문이
+               * 말하는 주제가 바로 이것인데, 정작 「이 음원이 어느 쪽인지」는 어디에도 없었습니다 — 올릴 때
+               * 잘못 고르면 **영영 안 보입니다.**
+               *
+               * 🟠 출처 표시가 필요한 음원에는 아래 호박색 줄이 따로 붙으므로, 여기서는 종류만 말합니다.
+               */}
+              <p className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <span data-testid={`audio-track-license-${track.trackId}`} className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-slate-300">
+                  {LICENSE_DETAIL[track.licenseKind].short}
+                </span>
+                {track.artist && <span>{track.artist}</span>}
+              </p>
               {/* Only shown when the track actually carries the flag — a caution on every row would be ignored. */}
               {track.attributionRequired && (
                 <p data-testid={`audio-track-attribution-${track.trackId}`} className="text-xs text-amber-300">
