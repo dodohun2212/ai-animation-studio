@@ -2801,6 +2801,123 @@ export interface CreateNewsSummaryResponse {
  */
 
 /**
+ * One news reel card: whose article it is, the two-line headline, the line under it, and what the picture's
+ * licence asks for.
+ *
+ * 🔴 **A different thing from a photo card, not a branch of one** (Cowork Round 1018 §5 · CLI 1019). A quote
+ * card is one picture and one line of narration. This has a publisher band, a headline in two lines and two
+ * colours, a caption band at the bottom, and a picture whose licence can carry an obligation. Four things
+ * differ at once, and one shape trying to be both would drag `publisher?` and `headline?` through every quote
+ * card ever made.
+ *
+ * 🔴 **The picture the article arrived with is deliberately not here.** `NewsFeedItem.imageUrl` reaches the
+ * picking screen and stops: a press photograph is used whole rather than quoted, naming the source does not
+ * license it, and the person in it holds a separate right (캡틴D's decision, Cowork Round 1026 §2). What gets
+ * burned is one of our own topic pictures or a free-licence photograph. That is also the cheaper side — a
+ * settlement costs more than a picture does.
+ *
+ * 🔴 **`publisher` is the name as letters. Never the logo** — a logo is their trademark, and reproducing it is
+ * a second permission nobody gave us (캡틴D, Cowork Round 1020).
+ *
+ * 🟠 **Not here yet, on purpose**: which picture, `sourceUrl` and `publishedAt`. The screen already holds all
+ * three; whether they are *burned into the file* is a separate question from whether the screen knows them,
+ * and it has not been asked yet.
+ */
+export interface NewsReelCard {
+  publisher: string;
+  headline: NewsReelHeadline;
+  caption: NewsReelCaption;
+  /**
+   * Whether publishing this reel requires crediting the picture — the same pair, for the same reason, that
+   * `AudioLibraryTrack` already carries for music.
+   *
+   * 🔴 **Two fields rather than one nullable string.** With `imageCredit: string | null`, "this picture needs
+   * no credit" and "this picture needs a credit nobody has written yet" are the same value — and the first may
+   * be burned while the second must not be (CLI Round 1023 §0, agreed Cowork 1028 §1).
+   *
+   * 🟠 The three free sources this was sized for split exactly along it: Pexels and Unsplash ask for nothing,
+   * 공공누리 제1유형 requires the source, and Wikimedia CC BY requires author and licence in wording the licence
+   * itself sets. So "only use pictures that need no credit" is not a simplification, it is dropping 공공누리 —
+   * the one with the most Korean public-affairs photographs in it.
+   */
+  creditRequired: boolean;
+  /**
+   * The exact sentence the source asks for, when `creditRequired` is true.
+   *
+   * 🔴 **Never composed here.** CC BY wants author, licence name and a link; 공공누리 wants a different line
+   * again; stitching one together from parts we guessed produces a credit that satisfies neither. Whoever
+   * chooses the picture copies the wording the source states, and it travels by value with the card the way a
+   * track's attribution is copied at merge time rather than looked up live.
+   *
+   * 🔴 **`undefined` is the only way to be absent — `""` never is.** An empty string here is the nullable field
+   * this pair exists to avoid, wearing a different hat.
+   */
+  creditText?: string;
+}
+
+/**
+ * The headline, two lines, both required.
+ *
+ * 🔴 **Two fields, not one string with a line break in it.** The lines are drawn in two different colours
+ * (white, then yellow), so the split is not typography the renderer may decide — it is content, and a contract
+ * that left it to automatic wrapping would be handing an invisible decision to whatever wraps last.
+ *
+ * 🟠 **Both required.** A headline with the yellow line empty is not a shorter headline, it is a card missing
+ * half its design.
+ */
+export interface NewsReelHeadline {
+  line1: string;
+  line2: string;
+}
+
+/**
+ * The caption band under the headline: one line, optionally a second.
+ *
+ * 🔴 **Two lines maximum, and the third is not left open.** MBC's own reels do not go past two, and a box the
+ * model may fill, it will fill (Cowork Round 1026 §1). 🔴 **A narrow contract widens later; a wide one cannot
+ * narrow** — reels already made to three lines would break the day it was cut back to two.
+ *
+ * 🔴 **`null` is a one-line caption, and it is spelled out rather than left off.** `line2?:` would let a
+ * producer omit the second line by forgetting it, which reads identically to deciding there is not one — the
+ * same ambiguity `creditRequired`/`creditText` exists to avoid, one field along. And `""` is refused outright:
+ * the empty string is never a value in this contract, because it cannot be told apart from "not written yet".
+ */
+export interface NewsReelCaption {
+  line1: string;
+  line2: string | null;
+}
+
+/** Every box on the card that holds counted text, named the way a screen would label it. */
+export const NEWS_REEL_TEXT_FIELDS = ["headline.line1", "headline.line2", "caption.line1", "caption.line2"] as const;
+export type NewsReelTextField = typeof NEWS_REEL_TEXT_FIELDS[number];
+
+/**
+ * How much each box holds, and whether it may be left out.
+ *
+ * 🔴 **The limits are measured widths, not preferences.** Burned at 1080×1920 with a 6% side margin the usable
+ * width is 950px, and in the font that actually burns (`fonts/NotoSansKR-*.ttf`, through ffmpeg) one Hangul
+ * syllable takes `font size × 0.63` — the same ratio at five sizes, and bold does not widen it by more than
+ * 0.1px (CLI Round 1021 §1–2). 15 syllables is one line at 96px; 20 is one line at 72px. 🟠 Two earlier
+ * numbers for this were wrong and both were guesses — ×1.00 assumed, ×0.77 measured in the browser's preview
+ * font rather than the burning one.
+ *
+ * 🟠 15 leaves three syllables over MBC's longest measured headline line (12), on purpose.
+ *
+ * 🔴 **A table keyed by the union, so adding a box is a compile error here** rather than a box nothing counts.
+ * It is the only place these numbers are written: the screen reads them through `newsReelTextBox` instead of
+ * keeping its own copy (Cowork Round 1028 §3).
+ */
+export const NEWS_REEL_TEXT_BOXES: Readonly<Record<NewsReelTextField, { readonly limit: number; readonly required: boolean }>> = {
+  "headline.line1": { limit: 15, required: true },
+  "headline.line2": { limit: 15, required: true },
+  "caption.line1": { limit: 20, required: true },
+  "caption.line2": { limit: 20, required: false },
+};
+
+/** Why one box cannot be used as it stands. `too_long` carries how far over in `remaining`. */
+export type NewsReelTextRefusal = "too_long" | "missing" | "blank";
+
+/**
  * One track in the BGM library — a project-independent, user-supplied resource (distinct from both the Asset
  * Library's input-material role and the Video Library's results-archive role; see VideoLibraryProjectSummary's
  * doc comment for that distinction). "upload" is the only source, permanently — not a placeholder for a later
