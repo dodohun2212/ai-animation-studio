@@ -642,6 +642,14 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   /** Any of the four confirmed actions being in flight — the panel stays put and its buttons go quiet. */
   const confirmPending = deletePending || relinkPending || ownedFileDeletePending || folderDeletePending;
 
+  /**
+   * 오른쪽 칸이 **실제로 뭔가 그릴 때** 참입니다 — 고른 항목, 불러오는 중, 오류, 등록 양식, 폴더 만들기.
+   *
+   * 🟠 다섯을 세는 건 이 다섯이 전부 오른쪽에 그려지기 때문입니다. 하나라도 빠뜨리면 그 화면에서 두 칸이
+   * 안 생기고 내용이 목록 아래로 흘러내립니다 — 그래서 **빼는 조건이 아니라 더하는 조건**으로 적습니다.
+   */
+  const detailPaneShown = Boolean(selected) || detailLoading || Boolean(detailError) || importOpen || folderCreateOpen;
+
   return (
     <section className="mt-8 max-w-6xl space-y-5">
       <ScreenHeader
@@ -822,8 +830,23 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         )}
       </div>
 
-      <div className="gap-5 space-y-5 lg:grid lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] lg:items-start lg:space-y-0">
-      <div className="space-y-3">
+      {/*
+       * 🔴 두 가지를 한꺼번에 고칩니다.
+       *
+       * **(1) 오른쪽 절반이 비어 있었습니다.** 아무것도 안 고른 상태에서 화면의 절반이 *「왼쪽 목록에서 항목을
+       * 선택하면…」* 한 문장에 쓰이고 있었습니다. 고르기 전에 그 자리가 해 줄 일은 없습니다 — 그러면 **자리를
+       * 목록에 줍니다.** 두 칸은 오른쪽이 **실제로 뭔가 보여 줄 때만** 생깁니다.
+       *
+       * 🟠 대가는 처음 고를 때 한 번 폭이 바뀌는 것입니다. 그 한 번과, 고르기 전 내내 절반이 비어 있는 것을
+       * 맞바꿉니다.
+       *
+       * **(2) 스크롤이 두 겹이었습니다.** 목록이 `max-h-[560px]` 상자 안에서 따로 구르고 바깥 쪽도 굴렀습니다 —
+       * 바퀴를 어디에 올렸느냐로 무엇이 움직일지가 갈렸습니다. 좁은 화면에서는 이제 **한 겹**이고(아래 `lg:`
+       * 가 안 걸립니다), 넓은 화면에서는 목록이 **화면 높이만큼 제자리에 붙어** 구릅니다 — 페이지 한가운데
+       * 560px 상자가 떠 있는 것과 다릅니다.
+       */}
+      <div className={`gap-5 space-y-5 ${detailPaneShown ? "lg:grid lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] lg:items-start lg:space-y-0" : ""}`}>
+      <div className={`space-y-3 ${detailPaneShown ? "lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto" : ""}`}>
       {loading && !assets && <Spinner label="에셋을 불러오는 중..." />}
       {assets && assets.length === 0 && !loading && <p className="text-sm text-slate-400">등록된 에셋이 없습니다.</p>}
       {/*
@@ -843,7 +866,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </p>
       )}
       {assets && (
-        <ul aria-label="에셋 목록" className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
+        <ul aria-label="에셋 목록" className="space-y-2 pr-1">
           {ASSET_GROUPS.flatMap((group) => {
             const members = assets.filter((asset) => {
               if (asset.parentFolderId || !group.match(asset)) return false;
@@ -896,11 +919,6 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       </div>
 
       <div className="space-y-5">
-      {!selected && !detailLoading && !detailError && !importOpen && !folderCreateOpen && (
-        <p className="rounded-lg border border-dashed border-white/10 p-6 text-sm text-slate-500">
-          왼쪽 목록에서 항목을 선택하면 상세 정보가 여기에 표시됩니다. 새 항목은 위의 "새 에셋 등록" 또는 "새 폴더 만들기" 버튼으로 추가할 수 있습니다.
-        </p>
-      )}
       {importOpen && (
       <form onSubmit={submitImport} aria-label="에셋 가져오기" className={cardSection}>
         <SectionHeading>새 에셋 등록</SectionHeading>

@@ -666,7 +666,17 @@ function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: 
      * 얹혀 있어서, 화면에서 제일 먼저 보이는 게 메뉴 상자였습니다. 판때기를 걷고 선 하나만 남기면
      * 먼저 보이는 것이 **작업물**이 됩니다. 폭도 256px → 208px.
      */
-    <aside className="flex w-52 flex-shrink-0 flex-col overflow-y-auto border-r border-line px-3 py-7">
+    /*
+     * 🔴 `sticky top-0 h-screen` — 본문을 내려도 **메뉴는 제자리에 있습니다.**
+     *
+     * 전에는 메뉴가 본문과 함께 위로 밀려 올라갔습니다. 영상 보관함처럼 마흔 줄짜리 화면에서는 아래로
+     * 내려간 사람이 **다른 곳으로 가려면 먼저 맨 위로 되돌아와야** 했습니다 — 가려는 곳이 화면 밖에
+     * 있으니까요. 메뉴는 「어디로 갈까」를 묻는 자리이고, 그 질문은 **아래에서 더 자주** 나옵니다.
+     *
+     * 🟠 `h-screen` 을 같이 주는 이유: 높이가 화면만큼이어야 자기 안에서 구를 수 있습니다. 메뉴가 화면보다
+     * 길어지는 좁은 세로 화면에서 `overflow-y-auto` 가 그때 일합니다.
+     */
+    <aside className="sticky top-0 flex h-screen w-52 flex-shrink-0 flex-col overflow-y-auto border-r border-line px-3 py-7">
       <div className="px-2.5 pb-1">
         {/* 워드마크를 두 줄로 쪼갠 것 자체가 프리즘입니다 — 한 줄이 갈라져 둘이 됩니다. */}
         <p className="type-display text-[15px] leading-[1.05] text-bone">

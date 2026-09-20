@@ -1499,3 +1499,42 @@ describe("AssetLibraryScreen counts", () => {
     expect(list.textContent, "개수는 위에서 한 번만").not.toContain("이미지 2개");
   });
 });
+
+/**
+ * 레이아웃 덩어리 — 오른쪽 절반이 비어 있던 것, 그리고 스크롤이 두 겹이던 것.
+ *
+ * 🟠 눈에 보이는 폭과 스크롤은 짝이 못 봅니다(jsdom 에 레이아웃이 없습니다). 짝이 붙들 수 있는 건
+ * **결정** 하나입니다 — *「고르기 전에는 오른쪽에 아무것도 안 그린다」*. 그 문장이 사라지면 빈 절반이
+ * 돌아옵니다.
+ */
+describe("AssetLibraryScreen detail pane", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("says nothing on the right until there is something to say", async () => {
+    const response: ListAssetsResponse = { assets: [makeAssetFolder({ assetId: "F-1", displayName: "아리" })] };
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn().mockResolvedValue(jsonResponse(200, response))));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+    await screen.findByRole("list", { name: "에셋 목록" });
+
+    // 🔴 전에는 여기 *「왼쪽 목록에서 항목을 선택하면 상세 정보가 여기에 표시됩니다」* 가 있었습니다 —
+    // 화면 절반을 한 문장에 쓰면서, 고른 뒤에는 아무 쓸모가 없었습니다.
+    expect(screen.queryByText(/왼쪽 목록에서 항목을 선택하면/)).toBeNull();
+    expect(screen.queryByRole("region", { name: "에셋 상세" }), "고르기 전에는 상세 칸 자체가 없습니다").toBeNull();
+  });
+
+  it("opens the right side once something is chosen", async () => {
+    // 🟠 이 반쪽이 없으면 위의 짝은 「상세 칸을 아예 안 그린다」는 구현으로도 초록입니다.
+    const folder = makeAssetFolder({ assetId: "F-1", displayName: "아리" });
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": { assets: [folder] } satisfies ListAssetsResponse,
+      "GET /assets/F-1": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+    });
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByText("아리"));
+    expect(await screen.findByRole("region", { name: "에셋 상세" })).toBeTruthy();
+  });
+});
