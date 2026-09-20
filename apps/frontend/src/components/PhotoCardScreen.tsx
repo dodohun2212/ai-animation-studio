@@ -25,6 +25,11 @@ interface Props {
    *
    * 🔴 한 번만 채웁니다 — 넘어온 뒤 사람이 고친 글을 다시 덮으면, 고친 것이 말없이 사라집니다.
    */
+  /**
+   * 🔴 뉴스 릴에서 넘어왔나. 만드는 일은 같고 **부르는 이름이 다릅니다** — 캡틴D가 뉴스 릴을 만들다
+   * 「명언 카드」라고 적힌 화면에 떨어지면, 잘못 눌렀다고 읽습니다.
+   */
+  fromNewsReel?: boolean;
   initialQuote?: string;
   /**
    * 출처 한 줄(언론사 · 발행일 · 링크). 요약과 **같이** 와야 합니다.
@@ -59,7 +64,7 @@ const field =
  * the line. This screen is that front door and nothing more; it hands the finished card to the merge screen,
  * which is where music and its credit line already live and where they will keep living.
  */
-export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, initialCaptionNote }: Props) {
+export function PhotoCardScreen({ fromNewsReel = false, onBack, onCreated, onOpenCard, initialQuote, initialCaptionNote }: Props) {
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [listError, setListError] = useState<DisplayError | null>(null);
   /**
@@ -178,7 +183,13 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
         * 나갔습니다 — 카드 한 장 보려고 들어온 사람이 만들기 폼을 전부 지나가야 했기 때문입니다.
         * 돌아가기가 목록으로 가는 것도 그래서입니다(프로젝트 목록이 아니라).
         */}
-      <ScreenHeader title="새 명언 카드" backLabel="명언 카드로" onBack={onBack} />
+      {/* 🔴 같은 화면이 두 가지를 만듭니다. 이름을 안 바꾸면 뉴스 릴을 만들던 사람이 「명언 카드」에
+          떨어져 **잘못 눌렀다고 읽습니다** — 캡틴D가 실제로 그렇게 읽으셨습니다. */}
+      <ScreenHeader
+        title={fromNewsReel ? "뉴스 릴 카드 만들기" : "새 명언 카드"}
+        backLabel={fromNewsReel ? "뉴스 릴로" : "명언 카드로"}
+        onBack={onBack}
+      />
       <p className="text-sm text-slate-400">
         보관함의 그림에 문장을 얹어 짧은 영상으로 만듭니다. 그림을 여러 장 고르시면 고른 순서대로 이어 붙습니다. 그림은 이미 만들어 둔 것을 그대로 쓰기 때문에{" "}
         <span className="font-semibold text-slate-100">여기서는 돈이 나가지 않습니다.</span>

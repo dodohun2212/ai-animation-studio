@@ -64,7 +64,12 @@ type Screen =
   | { name: "audioLibrary" }
   | { name: "photoCard" }
   /** 명언 카드를 **만드는** 화면. 목록(`photoCard`)과 갈라져 있습니다 — 하나는 찾는 곳, 하나는 만드는 곳. */
-  | { name: "photoCardCreate" }
+  /**
+   * 🔴 `from` 은 **어디서 왔나**입니다 — 캡틴D: 「뉴스 릴 만드는대 왜 갑자기 명언 카드로 날라가는거야.
+   * 명언 릴이랑 뉴스 릴은 엄연히 다른 거잖아.」 맞는 말입니다. 만드는 **화면**은 하나로 둡니다(둘이 되면
+   * 자막·음악·출처가 두 곳에서 갈립니다) — 대신 그 화면이 **자기가 지금 무엇을 만드는 중인지** 말합니다.
+   */
+  | { name: "photoCardCreate"; from?: "newsReel" }
   | { name: "newsReel" }
   | { name: "instagramPost"; initialProjectId?: string; initialEpisodeNumber?: number }
   | { name: "archive" }
@@ -97,10 +102,10 @@ type Screen =
  * `justCreated` is deliberately absent. It marks the one moment just after creation and changes the finish
  * button's wording; restoring it from a URL would show a first-run affordance on a project made last week.
  */
-type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber";
-const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber"]);
+type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber" | "from";
+const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber", "from"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
-  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: [], newsReel: [],
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: ["from"], newsReel: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -287,13 +292,16 @@ type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" 
  * `photoCardCreate` 줄을 지워도 짝 여든다섯이 전부 초록이라는 게 드러났습니다. 주석은 맞는데 아무도
  * 안 보는 줄이었고, 그런 줄은 「정리」 한 번에 조용히 사라집니다.
  */
-export function navSectionFor(name: Screen["name"]): NavSection | null {
+export function navSectionFor(name: Screen["name"], from?: "newsReel"): NavSection | null {
   if (name === "assets") return "assets";
   if (name === "videoLibrary") return "videoLibrary";
   if (name === "audioLibrary") return "audioLibrary";
   // 만들기 화면에서도 사이드바의 「명언 카드」가 켜져 있어야 합니다 — 거기서 온 곳이 거기입니다.
-  if (name === "photoCard" || name === "photoCardCreate") return "photoCard";
+  if (name === "photoCard") return "photoCard";
   if (name === "newsReel") return "newsReel";
+  // 🔴 만들기 화면은 **어디서 왔느냐**로 갈립니다 — 뉴스 릴에서 왔으면 왼쪽도 뉴스 릴에 남습니다.
+  // 여기서 「명언 카드」로 옮겨 버리면 사람이 하던 일에서 **쫓겨난 것처럼** 보입니다.
+  if (name === "photoCardCreate") return from === "newsReel" ? "newsReel" : "photoCard";
   if (name === "instagramPost") return "instagramPost";
   if (name === "archive") return "archive";
   if (name === "workflowGuide") return "workflowGuide";
@@ -370,8 +378,8 @@ const NAV_GROUPS: { title: string; index: string; items: NavItem[] }[] = [
 ];
 
 /** Always visible so a section (이미지 보관함, API 설정, 장기 프로젝트) is never more than one click away, no matter how deep the current screen is. */
-function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: (screen: Screen) => void }) {
-  const section = navSectionFor(current);
+function NavBar({ current, from, onNavigate }: { current: Screen["name"]; from?: "newsReel"; onNavigate: (screen: Screen) => void }) {
+  const section = navSectionFor(current, from);
   return (
     <nav aria-label="주 메뉴" className="mt-8 flex flex-col gap-7">
       {NAV_GROUPS.map((group) => (
@@ -688,7 +696,7 @@ function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: 
           */}
         <span aria-hidden="true" className="mt-2 block h-0.5 w-10" style={{ background: "var(--spectrum)" }} />
       </div>
-      <NavBar current={screen.name} onNavigate={onNavigate} />
+      <NavBar current={screen.name} from={screen.name === "photoCardCreate" ? screen.from : undefined} onNavigate={onNavigate} />
       <LongWorkspaceNav screen={screen} onNavigate={onNavigate} />
     </aside>
   );
@@ -1005,7 +1013,8 @@ export function App() {
             )}
             {screen.name === "photoCardCreate" && (
               <PhotoCardScreen
-                onBack={() => setScreen({ name: "photoCard" })}
+                fromNewsReel={screen.from === "newsReel"}
+                onBack={() => setScreen(screen.from === "newsReel" ? { name: "newsReel" } : { name: "photoCard" })}
                 onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
                 onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
                 initialQuote={newsHandoff?.quote}
@@ -1020,8 +1029,8 @@ export function App() {
                 onBack={() => setScreen({ name: "list" })}
                 onUseSummary={(quote, sourceLine) => {
                   setNewsHandoff({ quote, sourceLine });
-                  // 🟠 목록이 아니라 **만들기**로 갑니다 — 넘겨 준 요약이 들어갈 칸이 거기 있습니다.
-                  setScreen({ name: "photoCardCreate" });
+                  // 🟠 목록이 아니라 **만들기**로, 그리고 **어디서 왔는지 달고** 갑니다.
+                  setScreen({ name: "photoCardCreate", from: "newsReel" });
                 }}
               />
             )}

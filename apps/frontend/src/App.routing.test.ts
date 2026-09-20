@@ -94,3 +94,14 @@ describe("sidebar highlight", () => {
     expect(navSectionFor("list")).toBe("short");
   });
 });
+  /**
+   * 🔴 캡틴D: 「뉴스 릴 만드는대 왜 갑자기 명언 카드로 날라가는거야. 명언 릴이랑 뉴스 릴은 엄연히 다른
+   * 거잖아.」 — 만드는 **화면**은 하나입니다(둘이 되면 자막·음악·출처가 두 곳에서 갈립니다). 갈리는 것은
+   * **어디서 왔느냐**이고, 왼쪽이 따라 움직이면 사람이 하던 일에서 **쫓겨난 것처럼** 보입니다.
+   */
+  it("keeps the sidebar where the person started, on the screen both reels share", () => {
+    expect(navSectionFor("photoCardCreate", "newsReel")).toBe("newsReel");
+    expect(navSectionFor("photoCardCreate")).toBe("photoCard");
+    // 이 반쪽이 없으면 「언제나 newsReel 을 돌려준다」도 통과합니다.
+    expect(navSectionFor("newsReel")).toBe("newsReel");
+  });
