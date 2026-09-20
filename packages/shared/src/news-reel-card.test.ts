@@ -71,7 +71,7 @@ describe("news reel text box", () => {
     expect(newsReelTextBox("caption.line2", " ").refusal).toBe("blank");
   });
 
-  /** 🔴 The screen reads the limit from the contract rather than keeping its own copy (Cowork Round 1028 §3). */
+  /** 🔴 The screen reads the limit from the contract rather than keeping its own copy (docs/06_DECISIONS.md D-053). */
   it("carries the contract's own limit for every box", () => {
     for (const field of NEWS_REEL_TEXT_FIELDS) {
       expect(newsReelTextBox(field, "가").limit).toBe(NEWS_REEL_TEXT_BOXES[field].limit);

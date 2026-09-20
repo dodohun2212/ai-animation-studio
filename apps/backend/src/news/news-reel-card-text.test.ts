@@ -14,7 +14,7 @@ const ARTICLE = {
 describe("news reel card prompt", () => {
   /**
    * 🔴 이 한 줄이 이 프롬프트가 생긴 이유다. 요약을 시키면 **통신사 문단**이 오고, 첫 실물에서는 15자짜리
-   * 줄에 **271자**가 왔다(CLI Round 1017).
+   * 줄에 **271자**가 왔다(docs/06_DECISIONS.md D-052).
    */
   it("does not ask for a summary", () => {
     const prompt = newsReelCardPrompt(ARTICLE);
@@ -34,7 +34,7 @@ describe("news reel card prompt", () => {
 
   /**
    * 🔴 두 규칙이 서로 당긴다: **말은 새로**, **사실은 기사 그대로.** 하나만 적으면 다른 하나가 사라진다 —
-   * 「기사에 있는 내용만」은 사실의 범위를 말하지 **표현**을 말하지 않는다(CLI Round 1019 §4).
+   * 「기사에 있는 내용만」은 사실의 범위를 말하지 **표현**을 말하지 않는다(docs/06_DECISIONS.md D-052).
    */
   it("asks for new wording and for the article's own figures, in the same breath", () => {
     const prompt = newsReelCardPrompt(ARTICLE);

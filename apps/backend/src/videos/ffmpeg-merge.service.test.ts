@@ -882,7 +882,7 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
  * A news reel scene brings its whole overlay with it — two bands and four lines — so the merge draws that
  * instead of the photo card's subtitle. The branch is worth a pair of its own because both paths write a file
  * called `scene1.ass` into the same place: a merge that took the wrong one would produce a video that looks
- * finished and is missing its bands (CLI Round 1043).
+ * finished and is missing its bands (docs/06_DECISIONS.md D-052).
  */
 describe("a scene carrying a news reel card", () => {
   const CARD = {

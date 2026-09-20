@@ -17,7 +17,7 @@ import { LocalVideoMergeService } from "./video-merge.service.js";
  * Everything else about this feature is now paired: the contract counts characters, the prompt asks for four
  * lines, the overlay draws bands, the route writes a project. None of that answers the only question 캡틴D
  * asks, which is whether a reel comes out. The first time this feature ran end to end the answer was
- * 「존나 별로야」 (Round 1017), and it was found by watching a video rather than by a green suite.
+ * 「존나 별로야」 (docs/06_DECISIONS.md D-052), and it was found by watching a video rather than by a green suite.
  *
  * So this walks the whole path with no provider, no key and no money: a picture into the Library, the create
  * route, the real merge with real ffmpeg, and then the finished file is measured. The pair that mattered most

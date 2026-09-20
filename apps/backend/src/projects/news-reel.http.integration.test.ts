@@ -67,7 +67,7 @@ describe("making a news reel over HTTP", () => {
     const body = await response.json() as { project?: { id?: string; newsReelCard?: NewsReelCard } };
     expect(body.project?.id).toBe("news_one");
     // 🔴 The screen navigates to the merge screen on this answer; without the card it would be sending
-    // somebody to burn an ordinary picture (CLI Round 1047).
+    // somebody to burn an ordinary picture (docs/06_DECISIONS.md D-052).
     expect(body.project?.newsReelCard).toEqual(CARD);
   });
 

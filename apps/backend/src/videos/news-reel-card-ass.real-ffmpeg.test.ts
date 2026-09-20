@@ -16,7 +16,7 @@ import { escapeForFfmpegFilterPath } from "./subtitle-file.js";
  * the wrong origin, a band on a layer that lands over the letters, a style whose colour never reaches the
  * frame — every one of those leaves the file looking exactly right. The only way to know is to render a frame
  * and read the pixels out of it, which is how the 0.63 width ratio was settled in the first place
- * (CLI Round 1021): the app cannot see its own output, so something has to look.
+ * (docs/06_DECISIONS.md D-053): the app cannot see its own output, so something has to look.
  *
  * One frame, one grey background, no provider and no money.
  */
