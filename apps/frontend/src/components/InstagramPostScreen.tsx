@@ -15,7 +15,7 @@ import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBri
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
-import { cardSection, outlineButton } from "./ui/surfaces.js";
+import { cardSection, confirmPanel, outlineButton } from "./ui/surfaces.js";
 
 
 /**
@@ -1044,7 +1044,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                     role="alertdialog"
                     aria-label="영상 돌리기 확인"
                     data-testid="post-rotate-confirm"
-                    className="w-full space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
+                    className={`w-full ${confirmPanel}`}
                   >
                     <p className="text-sm font-semibold text-amber-300">이 영상을 세로로 돌릴까요?</p>
                     <p className="text-xs text-slate-300">
@@ -1295,7 +1295,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                     role="alertdialog"
                     aria-label="게시 기록 지우기 확인"
                     data-testid="post-forget-confirm"
-                    className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
+                    className={confirmPanel}
                   >
                     <p className="text-sm font-semibold text-amber-300">인스타그램에서 그 게시물을 지우셨습니까?</p>
                     <p className="text-xs text-slate-300">
@@ -1363,7 +1363,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                     role="alertdialog"
                     aria-label="인스타그램 게시 확인"
                     data-testid="post-publish-confirm"
-                    className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
+                    className={confirmPanel}
                   >
                     {/* The account is named here, always — including when there is only one. A mistaken charge
                         can be argued about afterwards; a mistaken post cannot be unseen by whoever saw it. */}
@@ -1461,7 +1461,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                 role="alertdialog"
                 aria-label="직전 게시 결과 확인"
                 data-testid="post-unknown-attempt"
-                className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
+                className={confirmPanel}
               >
                 <p className="text-sm font-semibold text-amber-300">직전 게시가 끝까지 갔는지 알 수 없습니다.</p>
                 <p className="text-sm text-slate-300">

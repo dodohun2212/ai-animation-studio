@@ -39,6 +39,31 @@ export const cardSectionRoomy =
  * 🟠 `MappingReviewScreen` 의 지역 사본에만 이 조각(`disabled:hover:bg-transparent`)이 있었습니다 — 거기
  * 사람이 한 번 겪고 고친 것으로 보입니다. **한 화면이 겪은 것을 모든 화면이 물려받게** 여기로 올립니다.
  */
+/**
+ * 확인 상자 — 「아직 요청이 가지 않았습니다. 정말 하시겠습니까?」
+ *
+ * 🔴 2026-09-20: **서른두 벌이 열여덟 파일에 인라인**으로 적혀 있었습니다. 이름이 없어서 짝의 표에도
+ * 안 걸렸고, 손으로 세어야 했습니다.
+ *
+ * 🟠 크기가 셋이었는데 **둘만 남깁니다**: 화면 폭을 쓰는 상자(`confirmPanel`)와 줄 안에 들어가는 상자
+ * (`confirmPanelTight`). 🔴 셋째(`p-2.5`)는 **한 군데뿐이고 `p-3` 과 2px 차이**입니다 — 누가 정한 값이
+ * 아니라 그때 적힌 값으로 보여 `tight` 로 보냅니다.
+ *
+ * 🔴 **색은 이번에 안 바꿉니다.** 지금 이 둘은 옛 차가운 그라데이션(`from-slate-900/80 to-slate-900/55`)
+ * 그대로이고, `cardSection` 은 9/19 에 **따뜻한 한 겹**으로 옮겨 갔습니다(*「카드가 여섯 장 쌓이면 여섯 번의
+ * 밝기 변화가 화면을 줄무늬로 만든다」*). 🟢 **모으는 것과 바꾸는 것을 한 번에 하지 않습니다** — 모아 두면
+ * 그 변경은 **이 두 줄**이 됩니다. 서른두 군데를 한꺼번에 바꾸면서 그게 잘 보이는지 묻는 것과, 한 줄을
+ * 바꾸고 묻는 것은 다른 일입니다.
+ *
+ * 🟠 테두리의 호박색은 유지합니다 — 「지금 당신의 답을 기다린다」는 뜻이고, 그건 상자의 역할입니다.
+ */
+export const confirmPanel =
+  "space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4";
+
+/** 줄 안에 들어가는 확인 상자 — 장면 한 줄, 판본 한 줄처럼 이미 좁은 자리. */
+export const confirmPanelTight =
+  "space-y-2 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-3";
+
 /** The ordinary button: everything that is not the one thing the screen wants you to press. */
 export const outlineButton =
   "rounded border border-line-strong px-4 py-2 text-sm text-bone-dim transition-[color,background-color,border-color] hover:border-bone-faint hover:bg-ground-raised hover:text-bone disabled:opacity-50 disabled:hover:border-line-strong disabled:hover:bg-transparent disabled:hover:text-bone-dim";
