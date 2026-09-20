@@ -2729,6 +2729,19 @@ export interface NewsFeedItem {
   host: string;
   /** The feed's own timestamp, ISO 8601. `null` when it gave none or gave one we could not read. */
   publishedAt: string | null;
+  /**
+   * A picture the feed advertised, or `null`.
+   *
+   * 🔴 **`null` is "the feed gave none", not "we could not fetch it".** Measured 2026-09-20: 연합뉴스, SBS and
+   * 동아 carry one; 뉴시스, 경향 and 한겨레 carry none at all. Half the rows will be `null` on any given day,
+   * so a screen that draws a missing picture as a failure would be reporting its own bug about somebody
+   * else's editorial choice. Same shape and same reason as `publishedAt`.
+   *
+   * 🟠 The address is on the publisher's image host (`img.yna.co.kr`, `img.sbs.co.kr`), not the article host,
+   * and is only ever put in an `<img src>` — the browser fetches it, this server never does. It is https-only
+   * for the ordinary reason: an http image on an https page is blocked before it is drawn.
+   */
+  imageUrl: string | null;
 }
 
 /**
@@ -3753,8 +3766,11 @@ export function isNewsFeedResponse(value: unknown): value is NewsFeedResponse {
     const row = item as Record<string, unknown>;
     const text = (key: string) => typeof row[key] === "string" && !!(row[key] as string).trim();
     if (!text("title") || !text("url") || !text("publisher") || !text("host")) return false;
-    if (!("publishedAt" in row)) return false;
-    return row.publishedAt === null || typeof row.publishedAt === "string";
+    for (const key of ["publishedAt", "imageUrl"] as const) {
+      if (!(key in row)) return false;
+      if (row[key] !== null && typeof row[key] !== "string") return false;
+    }
+    return true;
   });
 }
 

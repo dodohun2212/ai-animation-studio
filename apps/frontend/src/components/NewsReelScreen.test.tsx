@@ -461,6 +461,9 @@ const FEED_ITEM = {
   publisher: "연합뉴스",
   host: "yna.co.kr",
   publishedAt: "2026-09-17T09:12:00.000Z",
+  // 🟠 The contract carries a picture address and half the rows have none — 뉴시스, 경향, 한겨레 advertise
+  // no picture at all — so `null` is what an ordinary row looks like, not a missing field.
+  imageUrl: null,
 };
 
 /**

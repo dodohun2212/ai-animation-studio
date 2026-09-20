@@ -87,6 +87,42 @@ const tagText = (block: string, tag: string): string | null => {
 };
 
 /**
+ * The picture a feed advertised, if it advertised one.
+ *
+ * 🔴 **Three of six carry one** (measured 2026-09-20): 연합뉴스 in `media:content`, SBS in `enclosure` and
+ * `media:thumbnail` both, 동아 in `media:content`. 뉴시스, 경향 and 한겨레 carry none at all — so `null` is an
+ * ordinary answer here, not a failure, and the screen is told to draw it as one.
+ *
+ * 🟠 **https only.** An http image on an https page is blocked by the browser before it is drawn, so keeping
+ * one would put a broken frame on screen instead of nothing. Anything that is not a URL at all is dropped the
+ * same way.
+ *
+ * 🔴 These addresses live on the publisher's image host — `img.yna.co.kr`, `img.sbs.co.kr` — which is **not**
+ * the article host, so they are deliberately not run through `assertAllowedNewsUrl`. That guard exists because
+ * this server is about to open a connection; here it never does. The address goes into an `<img src>` and the
+ * browser fetches it, exactly as it would any other picture on a page.
+ */
+function imageFrom(block: string): string | null {
+  const patterns = [
+    /<enclosure\b[^>]*\btype="image\/[^"]*"[^>]*>/iu,
+    /<media:thumbnail\b[^>]*>/iu,
+    /<media:content\b[^>]*\btype="image\/[^"]*"[^>]*>/iu,
+  ];
+  for (const pattern of patterns) {
+    const tag = pattern.exec(block)?.[0];
+    const raw = tag ? /\burl="([^"]+)"/iu.exec(tag)?.[1] : undefined;
+    if (!raw) continue;
+    try {
+      const url = new URL(decodeEntities(raw));
+      if (url.protocol === "https:") return url.toString();
+    } catch {
+      // A malformed address is no address. The row keeps its title and link.
+    }
+  }
+  return null;
+}
+
+/**
  * 🟠 RSS dates are RFC 822 and Atom's are ISO; `Date` reads both, and anything it cannot read becomes `null`
  * rather than a guess. A wrong timestamp on a news list is worse than none — it decides what looks recent.
  */
@@ -118,6 +154,7 @@ function itemsFrom(xml: string, publisher: NewsPublisher, limit: number): NewsFe
         publisher: publisher.name,
         host: publisher.host,
         publishedAt: isoDate(tagText(block, "pubDate") ?? tagText(block, "published") ?? tagText(block, "date")),
+        imageUrl: imageFrom(block),
       });
     } catch {
       // One unusable row is not a broken feed. The rest of the publisher's articles still stand.

@@ -87,6 +87,47 @@ describe("reading one publisher's feed", () => {
   });
 });
 
+describe("the picture a feed advertised", () => {
+  const withTag = async (tag: string) => {
+    const xml = rss(`<item><title>제목</title><link>https://www.yna.co.kr/view/A1</link>${tag}</item>`);
+    const [only] = await fetchFeed(NEWS_FEEDS[0]!, yna, { fetch: answering(xml) });
+    return only!.imageUrl;
+  };
+
+  /**
+   * 🟠 Three shapes because three publishers use three (measured 2026-09-20): SBS writes `enclosure` **and**
+   * `media:thumbnail`, 연합뉴스 and 동아 write `media:content`. A reader that knew only one would quietly show
+   * pictures for one publisher and none for the other two.
+   */
+  it("reads all three shapes real feeds use", async () => {
+    expect(await withTag('<enclosure url="https://img.sbs.co.kr/a.jpg" type="image/jpeg" length="1"/>'))
+      .toBe("https://img.sbs.co.kr/a.jpg");
+    expect(await withTag('<media:thumbnail url="https://img.sbs.co.kr/b.jpg"/>'))
+      .toBe("https://img.sbs.co.kr/b.jpg");
+    expect(await withTag('<media:content url="https://img.yna.co.kr/c.jpg" type="image/jpeg">'))
+      .toBe("https://img.yna.co.kr/c.jpg");
+  });
+
+  /**
+   * 🔴 Half the rows have no picture on any given day — 뉴시스, 경향 and 한겨레 advertise none at all. `null`
+   * has to be an ordinary answer, or the screen ends up reporting a bug about somebody's editorial choice.
+   */
+  it("says null when the feed advertised none", async () => {
+    expect(await withTag("")).toBeNull();
+  });
+
+  /** 🟠 An http image on an https page is blocked before it is drawn, so keeping it would draw a broken frame. */
+  it("drops an address the browser would refuse to draw", async () => {
+    expect(await withTag('<media:thumbnail url="http://img.sbs.co.kr/insecure.jpg"/>')).toBeNull();
+    expect(await withTag('<media:thumbnail url="그림"/>')).toBeNull();
+  });
+
+  /** An `enclosure` is also how feeds carry audio and video; only a picture belongs in an `<img>`. */
+  it("ignores an enclosure that is not a picture", async () => {
+    expect(await withTag('<enclosure url="https://img.sbs.co.kr/clip.mp4" type="video/mp4" length="1"/>')).toBeNull();
+  });
+});
+
 describe("gathering every feed", () => {
   const publishers: NewsPublisher[] = NEWS_FEEDS.map((feed, index) => ({
     host: feed.host,
