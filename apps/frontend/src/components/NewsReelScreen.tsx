@@ -74,6 +74,20 @@ type Feed =
  * 🔴 `publishedAt` 이 `null` 인 건 **오류가 아니라 피드가 안 줬다는 것**입니다. 「알 수 없음」이라고 쓰면
  * 화면이 못 한 일처럼 읽히고, 빈칸으로 두면 줄이 흔들립니다 — **없다는 걸 그대로** 적습니다.
  */
+/**
+ * 목록에서 한 줄을 남길지.
+ *
+ * 🟠 **제목과 언론사 둘 다** 봅니다 — 「연합」이라고 치면 언론사로 걸러지고, 「아시안게임」이면 제목으로 걸러집니다.
+ * 칸 하나로 둘을 다 하는 대신, 언론사 단추를 따로 두지 않았습니다.
+ *
+ * 🔴 **주소는 안 봅니다.** 주소에는 `yna.co.kr` 같은 말이 들어 있어서, 「co」 두 글자에 백열 줄이 전부 걸립니다.
+ */
+export function matchesFeedQuery(item: NewsFeedItem, query: string): boolean {
+  const wanted = query.trim().toLowerCase();
+  if (wanted === "") return true;
+  return item.title.toLowerCase().includes(wanted) || item.publisher.toLowerCase().includes(wanted);
+}
+
 export function feedItemTime(publishedAt: string | null): string {
   return publishedAt === null ? "시각 없음" : formatDateTime(publishedAt);
 }
@@ -172,6 +186,12 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   const [summarizing, setSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [tooLong, setTooLong] = useState(false);
+  /* 🔴 비어 있는 칸 다섯이 1440×900 에서 **392px** 을 먹습니다(실측). 칸을 없애는 게 아니라 **안 볼 때 접습니다** —
+     가져오면 저절로 열리고, 붙여넣어야 하는 언론사(MBC·YTN)에서만 사람이 엽니다. */
+  const [articleOpen, setArticleOpen] = useState(false);
+  /* 🔴 백열 줄이 여섯 줄짜리 창으로 들어옵니다(실측 110줄 · 보이는 창 327px · 한 줄 52px). 훑어서 찾는 게
+     아니라 **걸러서 찾는** 자리입니다. */
+  const [feedQuery, setFeedQuery] = useState("");
 
   useEffect(() => {
     let live = true;
@@ -210,6 +230,7 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         setPublishedAt(article.publishedAt);
         setSourceUrl(article.sourceUrl);
         setNotice({ kind: "fetched", publisher: article.publisher });
+        setArticleOpen(true);
       } else if (response.outcome === "body_not_found") {
         /* 🔴 실패가 아닙니다. 서버는 문을 두드렸고 페이지를 받았고 어느 부분이 기사인지 못 갈랐습니다 — 남은 한
            걸음이 사람의 것일 뿐입니다. 그래서 채울 수 있는 건 전부 채워 두고 본문 칸만 비웁니다. */
@@ -219,6 +240,7 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         setPublishedAt(response.publishedAt ?? "");
         setSourceUrl(response.sourceUrl);
         setNotice({ kind: "body_not_found" });
+        setArticleOpen(true);
       } else if (response.outcome === "unreachable") {
         setSourceUrl(response.sourceUrl);
         setNotice({ kind: "unreachable" });
@@ -271,7 +293,16 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   }
 
   const trimmedSummary = summary.trim();
+  /* 🟠 `useMemo` 인 이유는 백열 줄이라서입니다 — 글자 한 자 칠 때마다 백열 번 도는 건 괜찮지만, 이 화면은
+     타이핑 중에도 다시 그려지는 곳이 많습니다. */
+  const shownFeedItems = useMemo(
+    () => (feed.status === "ready" ? feed.items.filter((item) => matchesFeedQuery(item, feedQuery)) : []),
+    [feed, feedQuery],
+  );
+
   const trimmedArticle = articleText.trim();
+  /** 🟠 접힌 칸이 **비었는지 채워졌는지**를 접힌 채로 말해 줍니다 — 안 그러면 사람이 열어 봐야 압니다. */
+  const articleFilled = trimmedArticle !== "" || title.trim() !== "";
   const ready = trimmedSummary.length > 0 && trimmedArticle.length > 0;
 
   /* 글자를 칠 때마다 다시 봅니다 — 순수 함수라 서버도 돈도 안 듭니다. 「확인」 버튼을 따로 두면 사람이
@@ -341,6 +372,24 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
               <span className="type-mono text-[11px] text-bone-faint" data-testid="news-feed-count">{feed.items.length}</span>
             </div>
 
+            {/* 🟠 **전체 수는 그대로 두고** 걸러낸 수를 옆에 적습니다 — 「110 중 7」이라야 사람이 **덜 보고 있다는 것**을 압니다. */}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor="news-feed-filter">기사 걸러내기</label>
+              <input
+                id="news-feed-filter"
+                data-testid="news-feed-filter"
+                className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-600"
+                value={feedQuery}
+                onChange={(event) => setFeedQuery(event.target.value)}
+                placeholder="제목이나 언론사로 걸러내기"
+              />
+              {feedQuery.trim() !== "" && (
+                <span className="type-mono text-[11px] text-bone-faint" data-testid="news-feed-shown">
+                  {shownFeedItems.length} / {feed.items.length}
+                </span>
+              )}
+            </div>
+
             {/* 🔴 **목록이 조용히 짧으면 화면이 오늘을 잘못 말하는 것입니다.** 빠진 언론사를 이름으로
                 말하고, 그쪽은 주소를 손으로 넣으면 여전히 됩니다. */}
             {feed.unavailable.length > 0 && (
@@ -349,8 +398,16 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
               </p>
             )}
 
+            {/* 🔴 걸러서 **하나도 안 남는 것**은 목록이 비어 있는 것과 다릅니다 — 찾은 말을 되짚어 주지 않으면
+                사람은 오늘 기사가 없는 줄 압니다. */}
+            {shownFeedItems.length === 0 && (
+              <p className="mt-2 text-xs text-slate-500" data-testid="news-feed-none">
+                「{feedQuery.trim()}」가 든 기사가 오늘 목록에 없습니다. 지우면 {feed.items.length}개가 다시 보입니다.
+              </p>
+            )}
+
             <ul className="mt-2 max-h-72 space-y-1 overflow-y-auto pr-1" data-testid="news-feed">
-              {feed.items.map((item) => {
+              {shownFeedItems.map((item) => {
                 /* 🔴 **누르기 전에** 알아야 합니다 — 늘 붙여넣어야 하는 곳(SBS·MBC·YTN)은 주소가 채워져도
                    본문이 안 따라옵니다. 누른 다음에 말하면 그건 안내가 아니라 변명입니다. */
                 const pasteNeeded = publishers.some((one) => one.host === item.host && one.body === "paste");
@@ -522,7 +579,17 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         <p className="mt-1 text-xs text-slate-500">
           요약이 기사 안에서만 말하는지 대조하려면 <strong className="text-slate-300">본문이 있어야 합니다.</strong> 위에서 가져왔으면 채워져 있고, 아니면 붙여넣어 주세요.
         </p>
-        <div className="mt-4 space-y-3">
+        <details
+          className="mt-3"
+          open={articleOpen}
+          onToggle={(event) => setArticleOpen(event.currentTarget.open)}
+          data-testid="news-article-disclosure"
+        >
+          <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-300">
+            제목 · 본문 · 언론사 · 발행일 · 원문 링크
+            <span className="ml-1 text-slate-500">{articleFilled ? "— 채워져 있습니다" : "— 직접 붙여넣으려면 여세요"}</span>
+          </summary>
+          <div className="mt-4 space-y-3">
           <label className={label}>
             제목
             <input data-testid="news-title" className={`${field} mt-1`} value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -552,7 +619,8 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
               <input data-testid="news-url" className={`${field} mt-1`} value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} />
             </label>
           </div>
-        </div>
+          </div>
+        </details>
       </section>
 
       <section className={cardSection} aria-label="요약">

@@ -614,3 +614,174 @@ describe("NewsReelScreen 기사 사진", () => {
     expect((screen.getByTestId("news-fetch-url") as HTMLInputElement).value).toBe(withImage.url);
   });
 });
+
+/**
+ * 🔴 오늘 목록은 **110줄**이고 보이는 창은 **327px — 여섯 줄**이다(Cowork Round 1032 §2 실측). 열여덟 번을
+ * 굴려야 끝에 닿는다. 캡틴D가 *「주소 치기 귀찮다」*고 해서 만든 목록이 **찾기 귀찮은 목록**이 되어 있었다.
+ *
+ * 🔴 **화면을 거쳐서 친다.** `matchesFeedQuery` 만 불러 보면 그 함수가 옳다는 것만 남고 **화면이 그걸 쓰는지는
+ * 아무도 안 붙든다** — Cowork Round 990 이 그 짝을 실제로 만들었었다(*「짝이 계산을 대신하면 그 계산은 안
+ * 붙들린다」*). 그래서 아래는 전부 칸에 글자를 넣고 **줄이 줄어드는지**를 본다.
+ */
+describe("NewsReelScreen 기사 걸러내기", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const SPORTS = { ...FEED_ITEM, url: "https://www.yna.co.kr/view/AKR9", title: "아시안게임 축구 결승 오늘 밤" };
+  const MBC_ITEM = { ...FEED_ITEM, url: "https://imbc.com/news/1", title: "태풍 북상, 내일 새벽 상륙", publisher: "MBC", host: "imbc.com" };
+
+  async function renderFeed(items: unknown[] = [FEED_ITEM, SPORTS, MBC_ITEM]): Promise<void> {
+    stubRoutes({ "GET /news/feed": { items, unavailable: [] } });
+    renderScreen();
+    await screen.findByTestId("news-feed");
+  }
+
+  const type = (value: string): void => {
+    fireEvent.change(screen.getByTestId("news-feed-filter"), { target: { value } });
+  };
+
+  // 🟠 `queryAll` 입니다 — 한 줄도 안 남는 것이 이 짝들이 실제로 보려는 답 중 하나라, 없을 때 던지면 안 됩니다.
+  const rows = (): number => screen.queryAllByTestId(/^news-feed-item-/).length;
+
+  it("narrows the list by the title, and says how many of how many are left", async () => {
+    await renderFeed();
+    expect(rows()).toBe(3);
+
+    type("아시안게임");
+
+    expect(rows(), "제목이 걸리는 한 줄만 남습니다").toBe(1);
+    expect(screen.getByTestId(`news-feed-item-${SPORTS.url}`)).toBeTruthy();
+    /* 🔴 「1」만 적으면 **덜 보고 있다는 것**을 알 길이 없습니다. 전체를 같이 적어야 걸러진 목록입니다. */
+    expect(screen.getByTestId("news-feed-shown").textContent).toBe("1 / 3");
+  });
+
+  it("narrows by the publisher too, which is why there is no separate publisher button", async () => {
+    // 🟠 「연합」은 어느 제목에도 없습니다 — 언론사로만 걸립니다.
+    await renderFeed();
+
+    type("연합");
+
+    expect(rows()).toBe(2);
+    expect(screen.queryByTestId(`news-feed-item-${MBC_ITEM.url}`), "MBC 줄은 빠집니다").toBeNull();
+  });
+
+  /**
+   * 🔴 이 짝이 없으면 「주소도 본다」는 구현이 **전부 초록**입니다. 그리고 그 구현은 조용히 쓸모가 없습니다 —
+   * 주소마다 `co.kr` 이 들어 있어서 **「co」 두 글자에 백열 줄이 전부** 걸립니다. 걸러내기가 아니라
+   * 안 걸러내기가 됩니다.
+   */
+  it("never matches the address, however much of it the query looks like", async () => {
+    await renderFeed();
+
+    type("co");
+
+    expect(rows(), "주소의 co.kr 로는 한 줄도 안 걸립니다").toBe(0);
+    type("yna");
+    expect(rows(), "호스트 이름으로도 안 걸립니다").toBe(0);
+  });
+
+  /**
+   * 🔴 **걸러서 0 이 되는 것과 오늘 기사가 없는 것은 다릅니다.** 되짚어 주지 않으면 사람은 오늘 기사가 없는
+   * 줄 알고 창을 닫습니다 — 실제로는 자기가 친 다섯 글자 때문입니다.
+   */
+  it("says which word emptied the list, and how many come back when it is cleared", async () => {
+    await renderFeed();
+
+    type("zzzz");
+
+    const none = screen.getByTestId("news-feed-none");
+    expect(none.textContent, "친 말을 되짚습니다").toContain("zzzz");
+    expect(none.textContent, "지우면 몇 개가 돌아오는지 말합니다").toContain("3개");
+    expect(screen.queryAllByTestId(/^news-feed-item-/), "줄은 하나도 없습니다").toHaveLength(0);
+  });
+
+  it("puts every row back when the box is cleared, and stops saying how many are shown", async () => {
+    await renderFeed();
+    type("연합");
+    expect(rows()).toBe(2);
+
+    type("");
+
+    expect(rows()).toBe(3);
+    /* 🟠 안 거를 때 「3 / 3」이 남아 있으면 **늘 걸러진 것처럼** 보입니다. 걸러낼 때만 그립니다. */
+    expect(screen.queryByTestId("news-feed-shown"), "안 거르면 아예 안 그립니다").toBeNull();
+  });
+
+  it("leaves the total alone — it is today's count, not what is on screen", async () => {
+    /* 🔴 전체 수가 걸러낸 수를 따라가면 **오늘 몇 개가 들어왔는지 말하는 곳이 사라집니다.** 그러면
+       「지우면 3개가 다시 보입니다」도 자기 말을 못 지킵니다. */
+    await renderFeed();
+    expect(screen.getByTestId("news-feed-count").textContent).toBe("3");
+
+    type("연합");
+
+    expect(screen.getByTestId("news-feed-count").textContent, "오늘 들어온 수는 안 변합니다").toBe("3");
+  });
+});
+
+/**
+ * 🔴 1440×900 첫 화면에서 **비어 있는 「기사」 칸 다섯이 392px** 을 먹고 있었다(Cowork Round 1030 §3 실측,
+ * 전체 2012px). 위에서 가져와야 채워지는 칸이 **가져오기 전부터 화면 절반**을 차지한다. 접은 뒤 1636px.
+ *
+ * 🔴 **지우는 게 아니라 접는다.** 붙여넣어야 하는 언론사(MBC·YTN)에서는 사람이 직접 채우는 유일한 자리다.
+ */
+describe("NewsReelScreen 기사 칸 접기", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("starts folded, and says from the outside that there is nothing in it yet", async () => {
+    stubRoutes();
+    renderScreen();
+
+    const disclosure = await screen.findByTestId("news-article-disclosure");
+    expect((disclosure as HTMLDetailsElement).open, "접힌 채로 엽니다").toBe(false);
+    /* 🟠 접힌 줄이 **비었는지 채워졌는지**를 말해야 합니다 — 안 그러면 열어 봐야 압니다. */
+    expect(disclosure.textContent).toContain("직접 붙여넣으려면 여세요");
+  });
+
+  /**
+   * 🔴 **접혀 있어도 칸은 DOM 에 그대로 있어야 합니다.** 안 그리는 구현으로 바꾸면 이 화면의 기존 짝 서른몇이
+   * 칸을 못 찾고, 더 나쁜 것은 **붙여넣은 본문이 접을 때마다 사라지는** 것입니다.
+   */
+  it("keeps the fields themselves while folded, so nothing typed into them is lost", async () => {
+    stubRoutes();
+    renderScreen();
+    await screen.findByTestId("news-article-disclosure");
+
+    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
+
+    expect((screen.getByTestId("news-article") as HTMLTextAreaElement).value).toBe(ARTICLE);
+    expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open, "여전히 접힌 채입니다").toBe(false);
+  });
+
+  it("opens itself when a fetch fills the boxes, because now there is something to look at", async () => {
+    stubRoutes({
+      "POST /news/article": { outcome: "article", article: { title: "국회, 검찰청 폐지 후속 법률 51건 통과", body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-17T09:12:00.000Z", sourceUrl: "https://www.yna.co.kr/view/AKR1" } },
+    });
+    renderScreen();
+    await screen.findByTestId("news-article-disclosure");
+
+    await typeUrlAndFetch("https://www.yna.co.kr/view/AKR1");
+
+    await waitFor(() => {
+      expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open, "채워졌으니 펼칩니다").toBe(true);
+    });
+    expect(screen.getByTestId("news-article-disclosure").textContent).toContain("채워져 있습니다");
+  });
+
+  /**
+   * 🔴 본문만 못 찾은 것은 **실패가 아니라 남은 한 걸음이 사람 것**이라는 뜻이고, 그 한 걸음이 바로 이 칸
+   * 안에 있습니다. 접어 둔 채로 두면 **할 일을 감춘 채 하라고 하는 것**입니다.
+   */
+  it("opens itself when the body could not be found, because that is where the person's step is", async () => {
+    stubRoutes({
+      "POST /news/article": { outcome: "body_not_found", title: "태풍 북상", publisher: "MBC", publishedAt: "2026-09-17T09:12:00.000Z", sourceUrl: "https://imbc.com/news/1" },
+    });
+    renderScreen();
+    await screen.findByTestId("news-article-disclosure");
+
+    await typeUrlAndFetch("https://imbc.com/news/1");
+
+    await waitFor(() => {
+      expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open).toBe(true);
+    });
+  });
+});
