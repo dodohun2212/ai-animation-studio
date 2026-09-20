@@ -12,20 +12,26 @@ import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard
  */
 
 /**
- * 🟢 The free-tier model, named once — **confirmed by the first real request, 2026-09-20.**
+ * 🟢 The model, named once — **confirmed by an actual call, 2026-09-20.**
  *
- * 캡틴D chose the free tier (Cowork Round 936 §1). This line used to say `gemini-2.0-flash`, written before any
- * key existed and marked as unconfirmed: *「a wrong name is a 404 with nothing charged, which is the cheap way
- * to be wrong」*. It was wrong, and it cost nothing — 캡틴D pressed 요약 and got 「요청을 받지 못했다」.
+ * 🔴 **Two wrong names in one day, and the second one taught the lesson.** The first was `gemini-2.0-flash`,
+ * written before any key existed. Replacing it, `GET /v1beta/models` was used to pick `gemini-2.5-flash` — it
+ * was in the list of 50 that the key returns. It still 404s:
  *
- * Checked without spending anything: `GET /v1beta/models` with the key on disk answers 200 and lists 50
- * models. `gemini-2.0-flash` is not among them; `gemini-2.5-flash` is.
+ * ```
+ * This model models/gemini-2.5-flash is no longer available to new users.
+ * Please update your code to use models/gemini-3.6-flash …
+ * ```
  *
- * 🟠 **Pinned, not `gemini-flash-latest`.** The alias moves, and a summariser whose output changes on a day
- * nobody deployed is a summariser nobody can check — `checkNewsSummary` compares against the article, so a
- * silent model change becomes a silent change in what passes that check.
+ * 🔴 **Being listed is not being callable.** `models.list` answers with what exists, not with what this
+ * account may call, so the list cannot confirm a model — only a request can. This name was set by sending one
+ * (`1+1은?` → `1 + 1 = 2`), which is the only check worth trusting here.
+ *
+ * 🟠 **Pinned, not `gemini-flash-latest`.** That alias also answers, and that is the problem: it moves, and a
+ * summariser whose output changes on a day nobody deployed cannot be checked. Every answer goes through
+ * `checkNewsSummary` against the article, so a silent model change is a silent change in what passes it.
  */
-export const GEMINI_SUMMARY_MODEL = "gemini-2.5-flash";
+export const GEMINI_SUMMARY_MODEL = "gemini-3.6-flash";
 
 const ENDPOINT = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
