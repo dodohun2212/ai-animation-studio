@@ -142,3 +142,46 @@ describe("the summary adapter's answer", () => {
     await expect(summariseArticle(ARTICLE, "key", { fetch: call })).rejects.toBeInstanceOf(NewsSummaryProviderError);
   });
 });
+
+/**
+ * 캡틴D's first working day: 요약 pressed, 「요약을 받지 못했다」, pressed again, same. Probed from outside —
+ * the model answers 503 「experiencing high demand」 in bursts and 200 a minute later. One attempt turns a
+ * busy minute into a dead end at random.
+ */
+describe("a provider that is merely busy", () => {
+  const busyThenFine = () => {
+    let calls = 0;
+    return vi.fn(async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("", { status: 503 })
+        : new Response(JSON.stringify(ok("물가는 3.2% 둔화됐다.")), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+  };
+
+  it("tries once more when the provider says it is busy", async () => {
+    const call = busyThenFine();
+    expect(await summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 })).toBe("물가는 3.2% 둔화됐다.");
+    expect((call as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(2);
+  });
+
+  /**
+   * 🔴 429 is the free tier's own refusal and retrying it is what a rate limit exists to stop. 4xx is a
+   * request that will fail identically next time. Only 5xx is worth a second attempt.
+   */
+  it("does not try again on a refusal that will not change", async () => {
+    for (const status of [400, 401, 429]) {
+      const call = vi.fn(async () => new Response("", { status })) as unknown as typeof globalThis.fetch;
+      await expect(summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 })).rejects.toBeInstanceOf(NewsSummaryProviderError);
+      expect((call as unknown as { mock: { calls: unknown[] } }).mock.calls, `${status}`).toHaveLength(1);
+    }
+  });
+
+  /** 🟠 One retry, not a loop — a provider that is down stays down, and the person is told rather than waited on. */
+  it("gives up after the second attempt, keeping the status", async () => {
+    const call = vi.fn(async () => new Response("", { status: 503 })) as unknown as typeof globalThis.fetch;
+    const error = await summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 }).catch((caught: unknown) => caught);
+    expect((error as NewsSummaryProviderError).status).toBe(503);
+    expect((call as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(2);
+  });
+});

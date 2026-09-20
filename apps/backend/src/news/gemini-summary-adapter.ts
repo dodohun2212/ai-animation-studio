@@ -39,6 +39,26 @@ const ENDPOINT = (model: string) =>
 /** How long one summary request may take. A person is waiting on this with a screen open. */
 export const GEMINI_SUMMARY_TIMEOUT_MS = 30_000;
 
+/**
+ * 🔴 **One retry, and only for 5xx.**
+ *
+ * 캡틴D, first working day: 요약 pressed, 「요약을 받지 못했다」, pressed again, same. Probed from outside the
+ * app — `gemini-3.6-flash` answers 503 「This model is currently experiencing high demand. Spikes in demand are
+ * usually temporary」 and then answers 200 three times in a row a minute later. It is not down; it is busy in
+ * bursts, and a single attempt turns somebody's article into a dead end at random.
+ *
+ * 🟠 The OpenAI path has retried server errors since it was written (`OPENAI_RETRYABLE_CATEGORIES` holds
+ * `server`). This adapter never did — the asymmetry was invisible until a provider actually got busy.
+ *
+ * 🔴 **Only 5xx.** A 429 is the free tier's own refusal and retrying it is what a rate limit exists to stop; a
+ * 4xx is a request that will fail identically next time. Both are handed back as they were.
+ *
+ * 🔴 **One retry, not three.** Every attempt is a real request, and `NewsCallQuota` books one entry per person
+ * action rather than per attempt — so the day's bound of 30 becomes at most 60 requests, not 90 or 120. That
+ * factor is written down here because it is the cost of this retry existing.
+ */
+export const GEMINI_SUMMARY_RETRY_DELAY_MS = 1_500;
+
 export class NewsSummaryProviderError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
@@ -50,6 +70,8 @@ export interface GeminiSummaryDeps {
   fetch?: typeof globalThis.fetch;
   model?: string;
   timeoutMs?: number;
+  /** Replaceable so a pair can exercise the retry without waiting a second and a half for it. */
+  retryDelayMs?: number;
 }
 
 /**
@@ -107,20 +129,27 @@ export async function summariseArticle(
   // D-016: a test process must never reach a real provider with whatever key happens to sit on disk.
   assertRealNetworkCallAllowed("Gemini", call);
 
-  let response: Response;
-  try {
-    response = await call(ENDPOINT(deps.model ?? GEMINI_SUMMARY_MODEL), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt(article) }] }],
-        // Low temperature is not a safety measure either; it just makes the model stick closer to the text.
-        generationConfig: { temperature: 0.2 },
-      }),
-      signal: AbortSignal.timeout(deps.timeoutMs ?? GEMINI_SUMMARY_TIMEOUT_MS),
-    });
-  } catch {
-    throw new NewsSummaryProviderError("The summary provider could not be reached.");
+  const send = async (): Promise<Response> => {
+    try {
+      return await call(ENDPOINT(deps.model ?? GEMINI_SUMMARY_MODEL), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt(article) }] }],
+          // Low temperature is not a safety measure either; it just makes the model stick closer to the text.
+          generationConfig: { temperature: 0.2 },
+        }),
+        signal: AbortSignal.timeout(deps.timeoutMs ?? GEMINI_SUMMARY_TIMEOUT_MS),
+      });
+    } catch {
+      throw new NewsSummaryProviderError("The summary provider could not be reached.");
+    }
+  };
+
+  let response = await send();
+  if (response.status >= 500) {
+    await new Promise((resume) => setTimeout(resume, deps.retryDelayMs ?? GEMINI_SUMMARY_RETRY_DELAY_MS));
+    response = await send();
   }
 
   if (!response.ok) {
