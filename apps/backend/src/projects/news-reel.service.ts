@@ -29,7 +29,7 @@ import { LocalProjectRepository } from "./projects.repository.js";
  * A different service from PhotoCardService rather than a flag on it. A photo card holds one quote that
  * becomes the scene narration and is drawn by the photo card layout; a news reel holds four boxes in two
  * colours inside two bands, and none of it is narration. Folding them would put an optional quote and an
- * optional card on one request and leave the merge asking which one it got (Cowork Round 1018 and CLI 1019).
+ * optional card on one request and leave the merge asking which one it got (docs/06_DECISIONS.md D-052).
  *
  * No provider is called here and nothing on this path can call one. The pictures are copied from the Library
  * and recorded in generated_images, which is the part that actually costs nothing: image generation reuses a

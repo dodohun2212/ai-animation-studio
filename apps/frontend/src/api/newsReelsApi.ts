@@ -10,7 +10,7 @@ import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from ".
  * directly: the boxes on screen already count characters, so reaching this means something the screen let
  * through, and the sentence has to send them back to the boxes rather than suggest pressing again.
  *
- * Written by CLI alongside the route it calls (Round 1043). The button that calls it is Cowork's.
+ * Written by CLI alongside the route it calls; the button that calls it is Cowork's.
  */
 export class NewsReelsApiError extends Error {
   readonly code: string;
@@ -61,7 +61,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
  *
  * And the card, because a reel that came back without it is not a reel: it is an ordinary project that will
  * merge into a plain picture with no bands and no headline on it. That is not hypothetical — the merge had
- * exactly that defect until the card was threaded through to it (CLI Round 1045), and it looked like success
+ * exactly that defect until the card was threaded through to it (docs/06_DECISIONS.md D-055), and it looked like success
  * the whole way.
  */
 function isCreateNewsReelResponse(value: unknown): value is CreateNewsReelResponse {

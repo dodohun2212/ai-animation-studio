@@ -172,7 +172,7 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
     /* 🔴 Exactly one of the three, and a news reel is the third. It has no subtitle slider of its own and no
        scene subtitle to place, because its text lives in its own bands — so it gets neither layout, and what
        it gets instead is the card. That is the one fact a screen needs from here: pictures rather than clips,
-       plus the headline to show (CLI Round 1047). */
+       plus the headline to show (docs/06_DECISIONS.md D-052). */
     ...(photoCardFor(stored)
       ? { photoCard: true, subtitleLayout: storedSubtitleLayout(stored) }
       : newsReelCard !== undefined

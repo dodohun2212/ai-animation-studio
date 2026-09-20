@@ -13,7 +13,7 @@ import { FONT_FAMILY, escapeDialogueText, timestamp } from "./subtitle-file.js";
  * when it turned out `merge()` needed no change.
  *
  * 🔴 **The two headline lines are two cues in two colours, because that is what they are.** White carries the
- * situation, yellow carries how it ended (Cowork Round 1018 §4, read off the reels 캡틴D pointed at). A single
+ * situation, yellow carries how it ended (read off the reels 캡틴D pointed at — docs/06_DECISIONS.md D-055). A single
  * cue with a line break in it could not be two colours, which is the same reason the contract holds them as
  * two fields rather than one string.
  */

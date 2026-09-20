@@ -721,7 +721,7 @@ export interface ProjectSummary {
    *
    * 🟠 What a screen has to do differently for one, all of it because there are no clips: do not send
    * `frameFit` or `audio.clipVolume` (both refused), do not gate the button on approved scenes (there are
-   * none), and do not offer the scene subtitle (the card draws its own text). CLI Round 1047.
+   * none), and do not offer the scene subtitle (the card draws its own text). See docs/06_DECISIONS.md D-052.
    */
   newsReelCard?: NewsReelCard;
   /**

@@ -2804,7 +2804,7 @@ export interface CreateNewsSummaryResponse {
  * One news reel card: whose article it is, the two-line headline, the line under it, and what the picture's
  * licence asks for.
  *
- * 🔴 **A different thing from a photo card, not a branch of one** (Cowork Round 1018 §5 · CLI 1019). A quote
+ * 🔴 **A different thing from a photo card, not a branch of one** (docs/06_DECISIONS.md D-052). A quote
  * card is one picture and one line of narration. This has a publisher band, a headline in two lines and two
  * colours, a caption band at the bottom, and a picture whose licence can carry an obligation. Four things
  * differ at once, and one shape trying to be both would drag `publisher?` and `headline?` through every quote
@@ -2812,12 +2812,12 @@ export interface CreateNewsSummaryResponse {
  *
  * 🔴 **The picture the article arrived with is deliberately not here.** `NewsFeedItem.imageUrl` reaches the
  * picking screen and stops: a press photograph is used whole rather than quoted, naming the source does not
- * license it, and the person in it holds a separate right (캡틴D's decision, Cowork Round 1026 §2). What gets
+ * license it, and the person in it holds a separate right (캡틴D's decision, docs/06_DECISIONS.md D-056). What gets
  * burned is one of our own topic pictures or a free-licence photograph. That is also the cheaper side — a
  * settlement costs more than a picture does.
  *
  * 🔴 **`publisher` is the name as letters. Never the logo** — a logo is their trademark, and reproducing it is
- * a second permission nobody gave us (캡틴D, Cowork Round 1020).
+ * a second permission nobody gave us (캡틴D, docs/06_DECISIONS.md D-056).
  *
  * 🟠 **Not here yet, on purpose**: which picture, `sourceUrl` and `publishedAt`. The screen already holds all
  * three; whether they are *burned into the file* is a separate question from whether the screen knows them,
@@ -2833,7 +2833,7 @@ export interface NewsReelCard {
    *
    * 🔴 **Two fields rather than one nullable string.** With `imageCredit: string | null`, "this picture needs
    * no credit" and "this picture needs a credit nobody has written yet" are the same value — and the first may
-   * be burned while the second must not be (CLI Round 1023 §0, agreed Cowork 1028 §1).
+   * be burned while the second must not be (docs/06_DECISIONS.md D-054).
    *
    * 🟠 The three free sources this was sized for split exactly along it: Pexels and Unsplash ask for nothing,
    * 공공누리 제1유형 requires the source, and Wikimedia CC BY requires author and licence in wording the licence
@@ -2874,7 +2874,7 @@ export interface NewsReelHeadline {
  * The caption band under the headline: one line, optionally a second.
  *
  * 🔴 **Two lines maximum, and the third is not left open.** MBC's own reels do not go past two, and a box the
- * model may fill, it will fill (Cowork Round 1026 §1). 🔴 **A narrow contract widens later; a wide one cannot
+ * model may fill, it will fill (docs/06_DECISIONS.md D-054). 🔴 **A narrow contract widens later; a wide one cannot
  * narrow** — reels already made to three lines would break the day it was cut back to two.
  *
  * 🔴 **`null` is a one-line caption, and it is spelled out rather than left off.** `line2?:` would let a
@@ -2897,7 +2897,7 @@ export type NewsReelTextField = typeof NEWS_REEL_TEXT_FIELDS[number];
  * 🔴 **The limits are measured widths, not preferences.** Burned at 1080×1920 with a 6% side margin the usable
  * width is 950px, and in the font that actually burns (`fonts/NotoSansKR-*.ttf`, through ffmpeg) one Hangul
  * syllable takes `font size × 0.63` — the same ratio at five sizes, and bold does not widen it by more than
- * 0.1px (CLI Round 1021 §1–2). 15 syllables is one line at 96px; 20 is one line at 72px. 🟠 Two earlier
+ * 0.1px (docs/06_DECISIONS.md D-053). 15 syllables is one line at 96px; 20 is one line at 72px. 🟠 Two earlier
  * numbers for this were wrong and both were guesses — ×1.00 assumed, ×0.77 measured in the browser's preview
  * font rather than the burning one.
  *
@@ -2905,7 +2905,7 @@ export type NewsReelTextField = typeof NEWS_REEL_TEXT_FIELDS[number];
  *
  * 🔴 **A table keyed by the union, so adding a box is a compile error here** rather than a box nothing counts.
  * It is the only place these numbers are written: the screen reads them through `newsReelTextBox` instead of
- * keeping its own copy (Cowork Round 1028 §3).
+ * keeping its own copy (docs/06_DECISIONS.md D-053).
  */
 export const NEWS_REEL_TEXT_BOXES: Readonly<Record<NewsReelTextField, { readonly limit: number; readonly required: boolean }>> = {
   "headline.line1": { limit: 15, required: true },
@@ -2922,7 +2922,7 @@ export type NewsReelTextRefusal = "too_long" | "missing" | "blank";
  *
  * 🔴 **A different call from the summary, not a second use of it.** A summary is one paragraph about the
  * article; a card is four lines that each do a different job, and the first real reel proved that cutting the
- * one into the other produces neither (271 characters into a line that holds 15, CLI Round 1017). The prompt
+ * one into the other produces neither (271 characters into a line that holds 15 — docs/06_DECISIONS.md D-052). The prompt
  * behind this asks for the four separately and says what each is for.
  *
  * 🟠 Same article shape, same daily count, same five refusals as the summary route — those name a cause and a
@@ -2966,7 +2966,7 @@ export interface CreateNewsReelCardTextResponse {
  * Everything a news reel is: the pictures it holds, the card that goes over them, and how long each is held.
  *
  * 🔴 **Pictures come from the Asset Library, the same way a photo card's do.** Both things 캡틴D chose to burn
- * — our own topic pictures and free-licence photographs (Cowork Round 1026 §2) — are files this app already
+ * — our own topic pictures and free-licence photographs (docs/06_DECISIONS.md D-056) — are files this app already
  * keeps there, so nothing new has to be invented to hold them. 🟠 What is *not* settled by this shape is which
  * pictures exist: the topic list and which free-photo sites to draw from are still 캡틴D's to choose, and
  * neither touches this request. If that choice ever stops being "a file in the library", this is one field.

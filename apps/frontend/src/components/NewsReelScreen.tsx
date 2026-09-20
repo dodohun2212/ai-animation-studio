@@ -313,7 +313,7 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   /* 🔴 **칸 이름도 여기 안 적습니다.** 넷을 배열에 손으로 늘어놓으면 `contract-value-sets` 가 잡습니다 —
      베낀 목록은 **계약이 늘어난 날 조용히 안 늘어나서**, 다섯째 칸이 생기면 이 화면이 아무 말 없이 넷만
      그립니다. 값은 칸 이름을 키로 한 표에 두고 순서는 계약에서 받습니다: 다섯째가 생기면 그날
-     **이 표에서 컴파일 에러**가 납니다(CLI Round 1037 §0). */
+     **이 표에서 컴파일 에러**가 납니다(docs/06_DECISIONS.md D-052). */
   const reelValues: Record<NewsReelTextField, string> = {
     "headline.line1": headline1,
     "headline.line2": headline2,

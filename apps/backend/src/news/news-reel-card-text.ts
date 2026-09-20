@@ -15,10 +15,10 @@ import {
  *
  * 🔴 **Why this exists at all: the first real reel came out wrong, and the prompt was half of why.** The
  * summary prompt says 「요약해 주세요」, so the model wrote a wire-service paragraph — 271 characters in one
- * run, into a line that holds 15 (CLI Round 1017). Asking one question and cutting the answer into three
+ * run, into a line that holds 15 (docs/06_DECISIONS.md D-052). Asking one question and cutting the answer into three
  * pieces cannot produce three things that do different jobs.
  *
- * 🔴 **Three values, three jobs** (Cowork Round 1018 §4, read off MBC's own reels):
+ * 🔴 **Three values, three jobs** (read off MBC's own reels — docs/06_DECISIONS.md D-052):
  *
  * ```
  * 제목 1줄   상황 · 맥락      「이 대통령 회견 하루 만에」
@@ -30,7 +30,7 @@ import {
  * copying the article's sentences is what produced the wire-service voice — while the **figures, dates and
  * quotations must be the article's, word for word**, because those are what gets checked and what a reader
  * is being told is true. 「기사에 있는 내용만 쓰라」 alone does not say this: it bounds the *facts* and says
- * nothing about the *wording*, and the two are different things (CLI Round 1019 §4).
+ * nothing about the *wording*, and the two are different things (docs/06_DECISIONS.md D-052).
  */
 
 /** The label each box answers under. Keyed by the contract's own field names, so a new box fails to compile here. */

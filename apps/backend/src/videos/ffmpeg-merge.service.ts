@@ -133,7 +133,7 @@ export interface MergeSceneInput {
    * 🔴 **Present means this scene's overlay is the card's own**, drawn by `newsReelCardAss`: a publisher band,
    * a headline in two colours and a caption band, all of it from one `.ass` file. The photo card's text,
    * layout and sampled colours are not consulted at all — they answer a different question (where does a
-   * quote sit on a picture), and a news reel's four boxes have their own places (CLI Round 1039).
+   * quote sit on a picture), and a news reel's four boxes have their own places (docs/06_DECISIONS.md D-055).
    *
    * 🟠 Carried rather than inferred from the project, for the reason `revealSubtitle` is: the merge is handed
    * scenes, and what kind of card this is belongs to whoever assembled them.
@@ -318,7 +318,7 @@ export class FfmpegMergeEngine {
        * card, not in the scene. The condition used to be `subtitleText` alone, and a pair caught what that
        * meant: a reel whose four lines are all in the card burned **nothing at all** and came out a plain
        * picture. The service that makes one sets `subtitles_enabled: false` and leaves narration empty, so
-       * that is the ordinary case, not an edge (CLI Round 1043).
+       * that is the ordinary case, not an edge (docs/06_DECISIONS.md D-052).
        */
       if (scene.subtitleText || scene.newsReelCard) {
         const assPath = path.join(normalizedDirectory, `scene${index + 1}.ass`);

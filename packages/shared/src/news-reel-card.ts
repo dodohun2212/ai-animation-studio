@@ -5,7 +5,7 @@ import { NEWS_REEL_TEXT_BOXES, NEWS_REEL_TEXT_FIELDS } from "./api.js";
  * How many characters a news reel card's boxes hold — counted in one place, for both sides.
  *
  * 🔴 **One counter, in `shared`, because two cannot be trusted to agree.** Exactly the move `checkNewsSummary`
- * made, and asked for here by name (Cowork Round 1028 §3): the screen shows what is left in a box while
+ * made, and asked for here by name (docs/06_DECISIONS.md D-053): the screen shows what is left in a box while
  * somebody types, and the server refuses a card that does not fit. Those two answers must be the same answer.
  * A limit written down twice drifts, and the half that drifts is the half that stops blocking.
  *
@@ -107,7 +107,7 @@ export function checkNewsReelCardText(card: NewsReelCard): NewsReelCardTextCheck
  *
  * Drawn through ffmpeg into 1080×1920 with the bundled `NotoSansKR-*.ttf` and the ink counted in pixels, the
  * ratio came out **0.63 at five different sizes** (52 · 64 · 72 · 80 · 96), and bold changed it by 0.1px
- * (CLI Round 1021). A line with spaces in it measures *narrower* than this, so 0.63 is the worst case and the
+ * (docs/06_DECISIONS.md D-053). A line with spaces in it measures *narrower* than this, so 0.63 is the worst case and the
  * right number to size a box against.
  *
  * 🟠 Two earlier values were guesses and both were wrong: 1.00 (assumed, never drawn) and 0.77 (measured, but
@@ -164,7 +164,7 @@ export interface NewsReelCardGeometry {
  * limit moves, and it would go wrong *after* a reel had been made.
  *
  * 🟠 **The vertical placement is a choice, and is written here as one.** The band heights and the gap between
- * the two headline lines were picked to look like the reels 캡틴D pointed at (Cowork Round 1018), not measured
+ * the two headline lines were picked to look like the reels 캡틴D pointed at (docs/06_DECISIONS.md D-052), not measured
  * off a frame — what *is* pinned is that nothing overlaps, nothing leaves the frame, and nothing crosses
  * {@link BOTTOM_SAFE_RATIO}. Cowork measures the real vertical positions once the screen draws them.
  */
