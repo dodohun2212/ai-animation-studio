@@ -101,6 +101,16 @@ export function AudioLibraryScreen({ onBack }: Props) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
+  /**
+   * 🔴 올리기 양식은 **접혀 있습니다.**
+   *
+   * 서버에서 보니 첫 화면이 통째로 「새로 올리기」였습니다 — 안내 두 문단과 입력란 다섯, 그리고 가진 음원
+   * 넷은 스크롤 아래. 🟠 이 화면에 오는 이유는 대개 **「내가 뭘 갖고 있나」**입니다. 올리는 건 가끔이고요.
+   *
+   * 🟢 같은 앱의 이미지 보관함이 이미 이렇게 되어 있습니다(`import-toggle`) — 규칙이 한 앱 안에서
+   * 갈라져 있던 것을 맞춥니다.
+   */
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [licenseKind, setLicenseKind] = useState<LicenseKind | "">("");
   const [attributionRequired, setAttributionRequired] = useState(false);
@@ -189,17 +199,31 @@ export function AudioLibraryScreen({ onBack }: Props) {
         onBack={onBack}
         description="여기 올린 음원은 최종 영상을 합칠 때 배경음악으로 넣을 수 있습니다. 나레이션이 있으면 그 위에 낮은 볼륨으로 깔립니다."
       />
-      {/* Said once, up front, because the consequence lands after publishing — not while using this screen. */}
-      <p data-testid="audio-license-notice" className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
-        올리시는 음원의 사용 권한은 직접 확인해 주세요. 완성된 영상 파일 안에 음악이 들어가므로,
-        인스타그램이나 유튜브에 올릴 때의 책임은 올린 사람에게 있습니다. 출처 표시가 필요한 음원이라면 캡션에 적어야 합니다.
-      </p>
+      <button
+        type="button"
+        data-testid="audio-upload-toggle"
+        aria-expanded={uploadOpen}
+        className={outlineButton}
+        onClick={() => setUploadOpen((current) => !current)}
+      >
+        {uploadOpen ? "올리기 닫기" : "음원 올리기"}
+      </button>
 
+      {uploadOpen && (
       <div className={cardSection}>
         <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
           <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
           음원 올리기
         </h2>
+        {/*
+         * 🟠 전에는 이 문단이 **화면 맨 위**에 있었습니다. 올리는 사람에게 필요한 말인데, 목록 보러 온
+         * 사람이 매번 지나가야 했습니다. 🟢 양식 안으로 옮기면 **올리기로 마음먹은 사람에게** 나옵니다 —
+         * 말할 자리를 옮긴 것이지 없앤 게 아닙니다.
+         */}
+        <p data-testid="audio-license-notice" className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
+          올리시는 음원의 사용 권한은 직접 확인해 주세요. 완성된 영상 파일 안에 음악이 들어가므로,
+          인스타그램이나 유튜브에 올릴 때의 책임은 올린 사람에게 있습니다. 출처 표시가 필요한 음원이라면 캡션에 적어야 합니다.
+        </p>
         <label className="block text-sm text-slate-300" htmlFor="audio-file">
           파일 (MP3, WAV, M4A, OGG · {MAX_UPLOAD_LABEL} 이하)
           <input
@@ -340,6 +364,7 @@ export function AudioLibraryScreen({ onBack }: Props) {
           </p>
         )}
       </div>
+      )}
 
       {state.status === "loading" && <Spinner label="음원을 불러오는 중..." />}
       {state.status === "error" && (

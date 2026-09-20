@@ -25,9 +25,19 @@ function sizedFile(bytes: number, name = "long.mp3"): File {
   return file;
 }
 
-function renderScreen(fetchMock: ReturnType<typeof vi.fn>) {
+/**
+ * 올리기 양식은 이제 **접혀서** 시작합니다(Round 990). 이 파일의 짝 대부분은 양식을 곧바로 만지므로
+ * 여기서 **진짜로 단추를 눌러** 엽니다 — `uploadOpen` 을 prop 으로 넣어 여는 것과 다릅니다. 그러면
+ * **여는 길 자체**를 짝 전부가 매번 지나갑니다.
+ *
+ * 🟠 「닫혀 있는 게 맞다」를 주장하는 짝은 `{ openUpload: false }` 로 **이 도우미 밖에서** 봅니다 —
+ * 여는 도우미를 통과시키면 자기 주장의 반대를 먼저 하게 됩니다(Round 970 §2).
+ */
+function renderScreen(fetchMock: ReturnType<typeof vi.fn>, { openUpload = true }: { openUpload?: boolean } = {}) {
   vi.stubGlobal("fetch", fetchMock);
-  return render(<AudioLibraryScreen onBack={() => {}} />);
+  const rendered = render(<AudioLibraryScreen onBack={() => {}} />);
+  if (openUpload) fireEvent.click(screen.getByTestId("audio-upload-toggle"));
+  return rendered;
 }
 
 describe("AudioLibraryScreen", () => {
@@ -312,14 +322,56 @@ describe("AudioLibraryScreen list", () => {
     expect(count.textContent, "95 + 145 = 240초").toContain("4분 00초");
   });
 
-  it("adds up what the rows say, not what the server sent", () => {
-    // 🔴 줄은 저마다 반올림해 그립니다. 원본을 더하고 나서 반올림하면 합이 줄들과 1초 어긋나고, 같은 화면의
-    // 두 숫자가 안 맞으면 둘 다 안 믿게 됩니다. 이 짝은 **더하는 순서**를 붙듭니다.
-    expect(totalDuration(Math.round(59.6) + Math.round(59.6)), "59.6은 줄에서 1:00으로 그려집니다").toBe("2분 00초");
+  it("adds up what the rows say, not what the server sent", async () => {
+    /*
+     * 🔴 이 짝을 한 번 헛되게 썼습니다(CLI Round 990). 처음엔 `totalDuration(Math.round(59.6) + Math.round(59.6))`
+     * 이라고 적었는데, **반올림을 짝이 스스로 해서** 넘겼습니다 — 그러면 증명되는 건 `totalDuration(120)` 뿐이고,
+     * **순서를 정하는 화면의 그 줄은 지나가지도 않습니다.** 되돌려도 열아홉이 전부 초록이었습니다.
+     *
+     * 🟢 그래서 **소수를 화면에 넣고**, 줄과 합을 **같이** 봅니다. 줄은 저마다 반올림해 `1:00` 을 그리므로
+     * 합은 `2분 00초` 여야 합니다. 원본을 더하고 나서 반올림하면 119.2 → `1분 59초` 가 되어 **줄과 어긋납니다.**
+     * 같은 화면의 두 숫자가 안 맞으면 둘 다 안 믿게 됩니다 — 이제 그게 단언입니다.
+     */
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, {
+      tracks: [track({ durationSeconds: 59.6 }), track({ trackId: "t2", durationSeconds: 59.6 })],
+    })));
+
+    const first = await screen.findByTestId("audio-track-t1");
+    expect(first.textContent, "줄은 반올림해서 그립니다").toContain("1:00");
+    expect(screen.getByTestId("audio-track-t2").textContent).toContain("1:00");
+    expect(screen.getByTestId("audio-library-count").textContent, "1:00 + 1:00 은 2분입니다").toContain("2분 00초");
   });
 
   it("switches to hours before the minutes reach three digits", () => {
     expect(totalDuration(59 * 60 + 30)).toBe("59분 30초");
     expect(totalDuration(60 * 60 + 5 * 60)).toBe("1시간 05분");
+  });
+});
+
+/**
+ * 음원 보관함 2/2 — 첫 화면이 통째로 「새로 올리기」였습니다.
+ */
+describe("AudioLibraryScreen upload form", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("starts folded, so the screen opens on what you already have", async () => {
+    // 🔴 전에는 안내 두 문단과 입력란 다섯이 첫 화면을 다 쓰고, 가진 음원은 스크롤 아래였습니다.
+    // 🟠 이 짝의 주장은 「닫혀 있다」이므로 여는 도우미를 안 지나갑니다.
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [track()] })), { openUpload: false });
+
+    await screen.findByTestId("audio-track-t1");
+    expect(screen.queryByTestId("audio-file-input"), "양식은 접혀 있습니다").toBeNull();
+    expect(screen.queryByTestId("audio-license-notice"), "경고문도 양식 안으로 들어갔습니다").toBeNull();
+    expect(screen.getByTestId("audio-upload-toggle").getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("opens the form and the notice together, because the notice is for the person uploading", async () => {
+    // 🟠 이 반쪽이 없으면 위의 짝은 「양식을 아예 안 그린다」는 구현으로도 초록입니다 — 그러면 올릴 수가 없습니다.
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, { tracks: [] })));
+
+    expect(screen.getByTestId("audio-file-input")).toBeTruthy();
+    expect(screen.getByTestId("audio-license-notice").textContent, "말할 자리를 옮긴 것이지 없앤 게 아닙니다").toContain("사용 권한은 직접 확인");
   });
 });
