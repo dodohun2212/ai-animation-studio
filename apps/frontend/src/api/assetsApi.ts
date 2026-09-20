@@ -195,6 +195,16 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
   return body;
 }
 
+/**
+ * 한 에셋의 그림 바이트 주소 — 목록에서 **폴더의 겉표지**를 그리는 데 씁니다.
+ *
+ * 폴더 자신은 그림이 없어서 `contentUrl` 이 `null` 입니다. 대신 `thumbnailAssetId` 로 **안에 든 한 장**을
+ * 가리키고 있고, 그 한 장의 주소가 이것입니다. 목록이 폴더마다 📁 만 그리던 자리를 이걸로 채웁니다.
+ */
+export function assetContentUrl(assetId: string): string {
+  return API_ROUTES.assetContent(assetId);
+}
+
 export function listAssets(query: ListAssetsQuery = {}): Promise<ListAssetsResponse> {
   const params = new URLSearchParams();
   if (query.query?.trim()) params.set("query", query.query.trim());

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ASSET_TYPES, type Asset, type AssetFileAuditEntry, type AssetType, type BackfillGeneratedImageAssetsResponse, type CreateAssetMetadata, type GetAssetResponse, type RunLegacyReferenceMigrationResponse, type UpdateAssetMetadataRequest } from "@ai-animation-studio/shared";
-import { addAssetVersion, backfillGeneratedImageAssets, createAsset, createAssetFolder, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, setAssetParentFolder, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
+import { addAssetVersion, assetContentUrl, backfillGeneratedImageAssets, createAsset, createAssetFolder, deleteAsset, deleteAssetFolder, deleteAssetOwnedFile, getAsset, listAssetFileAudit, listAssets, relinkAsset, runLegacyReferenceMigration, setAssetParentFolder, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "../api/assetsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
 import { GeneratedImagesSection } from "./GeneratedImagesSection.js";
@@ -38,11 +38,66 @@ const splitList = (value: string) => value.split(",").map((item) => item.trim())
  */
 const MANUAL_SOURCE_PROJECT_ID = "_asset_library_manual";
 
+/**
+ * 🔴 폴더 하나였던 자리를 둘로 가릅니다 — **서른 개 중 열다섯이 사람이 안 만든 폴더**입니다.
+ *
+ * 서버에서 세어 봤습니다: 위 칸에 폴더 19개가 한 덩어리로 있었고, 그 중 **15개가 프로젝트가 스스로 만든
+ * 폴더**(`12/Episode01 generated images` 같은 것)였고, 사람이 손으로 만든 건 **4개**(꽃말 배경 · 명언_이미지 ·
+ * 아리 · 이배드)뿐이었습니다. 사람이 정리해 둔 네 개가 기계가 만든 열다섯 개 사이에 파묻혀 있었습니다.
+ *
+ * 묻는 질문이 다릅니다 — 「내가 넣어 둔 게 어디 있나」와 「저 회차가 뭘 만들었나」는 다른 볼일입니다.
+ */
 const ASSET_GROUPS: { key: string; label: string; match: (asset: Asset) => boolean }[] = [
-  { key: "folders", label: "폴더", match: (asset) => asset.isFolder },
+  { key: "myFolders", label: "내 폴더", match: (asset) => asset.isFolder && asset.sourceProjectId === MANUAL_SOURCE_PROJECT_ID },
+  { key: "projectFolders", label: "프로젝트가 만든 폴더", match: (asset) => asset.isFolder && asset.sourceProjectId !== MANUAL_SOURCE_PROJECT_ID },
   { key: "loose", label: "폴더에 안 넣은 이미지", match: (asset) => !asset.isFolder && asset.sourceProjectId === MANUAL_SOURCE_PROJECT_ID },
   { key: "generated", label: "프로젝트가 만든 이미지", match: (asset) => !asset.isFolder && asset.sourceProjectId !== MANUAL_SOURCE_PROJECT_ID },
 ];
+
+/**
+ * 목록에 적을 이름.
+ *
+ * 🔴 프로젝트가 만든 폴더 15개의 이름이 **전부 ` generated images` 로 끝납니다** — 같은 세 낱말이 열다섯 번
+ * 나오고, 구별해 주는 건 그 앞부분뿐입니다. 무리 이름이 이미 「프로젝트가 만든 폴더」라고 말하므로 여기서
+ * 한 번 더 말할 이유가 없습니다.
+ *
+ * 🟠 프로젝트가 만든 것에만 떼어 냅니다. 사람이 손으로 그렇게 이름 지은 폴더는 그 이름이 **그 사람의 선택**이라
+ * 건드리지 않습니다.
+ */
+export function assetListName(asset: Pick<Asset, "displayName" | "isFolder" | "sourceProjectId">): string {
+  if (!asset.isFolder || asset.sourceProjectId === MANUAL_SOURCE_PROJECT_ID) return asset.displayName;
+  const trimmed = asset.displayName.replace(/\s+generated images$/u, "").trim();
+  return trimmed || asset.displayName;
+}
+
+/**
+ * 목록 줄에 그릴 그림 주소. 없으면 `null` 이고, 그때만 📁 · 🖼 가 나옵니다.
+ *
+ * 🟠 폴더는 자기 그림이 없으므로 `thumbnailAssetId` 가 가리키는 **안의 한 장**을 씁니다. 그게 비어 있는
+ * 폴더(빈 폴더거나 아직 안 정해진 폴더)는 예전 그대로 📁 입니다 — 없는 걸 만들어 내지는 않습니다.
+ */
+export function coverUrl(asset: Pick<Asset, "imageAvailable" | "contentUrl" | "isFolder" | "thumbnailAssetId">): string | null {
+  if (asset.imageAvailable && asset.contentUrl) return asset.contentUrl;
+  if (asset.isFolder && asset.thumbnailAssetId) return assetContentUrl(asset.thumbnailAssetId);
+  return null;
+}
+
+/**
+ * 줄 밑에 적을 한 마디.
+ *
+ * 🔴 전에는 프로젝트가 만든 폴더 15줄이 **전부 「프로젝트 폴더」**였습니다 — 무리 머리글이 「프로젝트가 만든
+ * 폴더」라고 방금 말한 것을, 열다섯 줄이 한 번씩 더 말했습니다. 줄마다 똑같은 말은 **구별해 주는 게 없습니다.**
+ *
+ * 🟢 대신 **줄마다 다른 것**을 적습니다 — 그 폴더에 몇 장이 들었는지. 고를 때 실제로 쓰는 숫자입니다.
+ * 🟠 내 폴더는 **종류**(배경 · 캐릭터…)가 머리글에 없으므로 그대로 두고, 장수를 뒤에 붙입니다.
+ */
+export function rowSubtitle(asset: Pick<Asset, "isFolder" | "assetType" | "sourceProjectId" | "childAssetIds">): string {
+  const typeLabel = TYPES.find((item) => item.value === asset.assetType)?.label ?? asset.assetType;
+  if (!asset.isFolder) return asset.sourceProjectId !== MANUAL_SOURCE_PROJECT_ID ? "프로젝트" : typeLabel;
+  const inside = `이미지 ${asset.childAssetIds.length}장`;
+  // 무리 머리글이 이미 「프로젝트가 만든 폴더」라고 말했습니다. 여기서 또 말하지 않습니다.
+  return asset.sourceProjectId !== MANUAL_SOURCE_PROJECT_ID ? inside : `${typeLabel} · ${inside}`;
+}
 
 const IMPORT_VALIDATION_MESSAGE = "이미지 파일과 이름을 모두 입력해 주세요.";
 // Mirrors the backend's CHARACTER_ROLES (apps/backend/src/assets/assets.repository.ts) in a stable, labeled order.
@@ -771,6 +826,22 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       <div className="space-y-3">
       {loading && !assets && <Spinner label="에셋을 불러오는 중..." />}
       {assets && assets.length === 0 && !loading && <p className="text-sm text-slate-400">등록된 에셋이 없습니다.</p>}
+      {/*
+       * 🔴 숫자가 세 군데에 흩어져 있었습니다 — 위의 「만든 이미지 98장」, 무리 머리글의 폴더 개수, 그리고
+       * 목록 **맨 아래**의 「폴더 안에 들어 있는 이미지 104개는 여기 없습니다」. 98 과 104 가 무슨 사이인지
+       * 화면이 아무 데서도 말하지 않았고, 104 는 마흔 줄을 지나야 나왔습니다.
+       *
+       * 🟢 보관함이 **가진 것**은 한 줄로 위에서 말합니다. 아래 무리 머리글 둘(내 폴더 · 프로젝트가 만든 폴더)이
+       * 폴더 수로 더해지므로, 합이 맞는 걸 눈으로 볼 수 있습니다. 「만든 이미지」는 **다른 모음**이라 거기 그대로
+       * 둡니다 — 프로젝트에 있는 파일을 여기서 보기만 하는 것이고, 보관함이 가진 게 아닙니다.
+       */}
+      {assets && assets.length > 0 && (
+        <p data-testid="asset-library-count" className="type-mono text-xs text-bone-faint">
+          폴더 {assets.filter((asset) => asset.isFolder && !asset.parentFolderId).length}
+          <span className="px-1.5 text-bone-faint/50">·</span>
+          그 안의 이미지 {assets.filter((asset) => asset.parentFolderId).length}
+        </p>
+      )}
       {assets && (
         <ul aria-label="에셋 목록" className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
           {ASSET_GROUPS.flatMap((group) => {
@@ -795,30 +866,29 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   selected?.asset.assetId === asset.assetId ? "border-violet-400/50 bg-slate-900" : "border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55"
                 }`}
               >
-                {asset.imageAvailable && asset.contentUrl ? (
-                  <img src={asset.contentUrl} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
+                {/* 🔴 그림 보관함인데 위 칸 열아홉 줄 중 **열다섯 줄이 📁** 였습니다 — 폴더는 자기 그림이
+                    없어서요. 그런데 폴더는 `thumbnailAssetId` 로 **안에 든 한 장**을 이미 가리키고 있습니다.
+                    이름만 보고 고르던 자리를 그 한 장으로 채웁니다. */}
+                {coverUrl(asset) ? (
+                  <img src={coverUrl(asset) ?? ""} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
                 ) : (
                   <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-slate-950/40 text-sm text-slate-500">
                     {asset.isFolder ? "📁" : "🖼"}
                   </span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-sm text-slate-100">{asset.displayName}</strong>
-                  <span className="text-xs text-slate-400">
-                    {asset.sourceProjectId !== MANUAL_SOURCE_PROJECT_ID
-                      ? "프로젝트"
-                      : TYPES.find((item) => item.value === asset.assetType)?.label ?? asset.assetType}
-                    {asset.isFolder ? " 폴더" : ""}
-                  </span>
+                  <strong className="block truncate text-sm text-slate-100">{assetListName(asset)}</strong>
+                  <span className="text-xs text-slate-400">{rowSubtitle(asset)}</span>
                 </span>
               </button>
             </li>
               )),
             ];
           })}
+          {/* 🟠 개수는 위로 올라갔습니다. 여기 남는 건 **개수가 아니라 이유** — 왜 그것들이 이 목록에 없는지. */}
           {assets.some((asset) => asset.parentFolderId) && (
             <li role="presentation" className="px-1 pt-2 text-xs text-slate-500">
-              폴더 안에 들어 있는 이미지 {assets.filter((asset) => asset.parentFolderId).length}개는 여기 없습니다 — 폴더를 열면 보입니다.
+              폴더 안의 이미지는 이 목록에 없습니다 — 폴더를 열면 보입니다.
             </li>
           )}
         </ul>

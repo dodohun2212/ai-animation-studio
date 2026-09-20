@@ -2,8 +2,8 @@ import type { Asset, GetAssetResponse, ListAssetsResponse } from "@ai-animation-
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { jsonResponse, makeAsset , answerOutOfBand } from "../api/testUtils.js";
-import { AssetLibraryScreen } from "./AssetLibraryScreen.js";
+import { jsonResponse, makeAsset, makeAssetFolder, answerOutOfBand } from "../api/testUtils.js";
+import { AssetLibraryScreen, assetListName, coverUrl, rowSubtitle } from "./AssetLibraryScreen.js";
 
 function searchForm(): HTMLFormElement {
   return screen.getByRole("button", { name: "검색" }).closest("form") as HTMLFormElement;
@@ -1385,3 +1385,117 @@ function _unusedTypeCheck(asset: Asset, response: GetAssetResponse): void {
   void response;
 }
 void _unusedTypeCheck;
+
+/**
+ * 서버에서 세고 들어간 세 가지. 숫자는 캡틴D의 실제 보관함에서 읽은 것입니다 —
+ * 폴더 19개 중 **15개가 프로젝트가 만든 것**, 사람이 만든 건 4개, 그리고 그 15개 이름이 **전부**
+ * ` generated images` 로 끝났고, 목록 19줄 중 **15줄이 📁** 였습니다.
+ */
+describe("AssetLibraryScreen list rows", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("drops the words every project folder's name repeats", () => {
+    const projectFolder = makeAssetFolder({
+      assetId: "F-1", displayName: "12/Episode01 generated images", sourceProjectId: "12",
+    });
+    expect(assetListName(projectFolder)).toBe("12/Episode01");
+  });
+
+  it("leaves a name a person chose alone, even that one", () => {
+    // 🔴 무리 이름이 대신 말해 주는 건 **프로젝트가 만든** 폴더뿐입니다. 사람이 손으로 그렇게 지었다면
+    // 그건 그 사람의 선택이고, 화면이 고쳐 줄 자리가 아닙니다.
+    const mine = makeAssetFolder({ assetId: "F-2", displayName: "my generated images" });
+    expect(assetListName(mine)).toBe("my generated images");
+  });
+
+  it("puts a folder's own picture on its row", () => {
+    // 폴더는 자기 그림이 없고 `thumbnailAssetId` 로 안에 든 한 장을 가리킵니다.
+    const folder = makeAssetFolder({ assetId: "F-3", thumbnailAssetId: "CHILD-1" });
+    expect(coverUrl(folder)).toBe("/assets/CHILD-1/content");
+  });
+
+  it("invents nothing for a folder that has no picture yet", () => {
+    // 🟠 이 반쪽이 없으면 위의 짝은 「폴더면 늘 주소를 만든다」는 구현으로도 초록입니다 — 그러면 빈 폴더가
+    // 깨진 그림으로 나옵니다.
+    const empty = makeAssetFolder({ assetId: "F-4", thumbnailAssetId: "" });
+    expect(coverUrl(empty)).toBeNull();
+  });
+
+  it("sorts my own folders away from the ones projects made", async () => {
+    const response: ListAssetsResponse = {
+      assets: [
+        // 🔴 `makeAsset({ isFolder: true })` 는 폴더가 **아닙니다** — 진짜 digest 와 `imageAvailable: true` 를
+        // 그대로 안고 와서 응답 검증기가 malformed 로 거절하고, 화면에는 목록 대신 오류 배너가 뜹니다.
+        // `testUtils.ts` 의 `makeAssetFolder` 주석이 이 증상까지 이름으로 적어 두고 있었습니다 (CLI Round 981).
+        makeAssetFolder({ assetId: "F-P", displayName: "꽃말_개나리 generated images", sourceProjectId: "꽃말_개나리" }),
+        makeAssetFolder({ assetId: "F-M", displayName: "아리" }),
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, response));
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    // 🔴 `getAllByRole("listitem")` 은 무리 머리글을 **안 돌려줍니다** — 그 줄은 `role="presentation"` 이라
+    // 접근성 트리에서 빠져 있고, 그게 맞습니다. 머리글은 에셋이 아니고, 스크린 리더가 「항목 넷」이라고
+    // 읽으면 안 됩니다. 이 짝이 주장하는 건 **「섞이지 않는다」 = 순서**라서 DOM 순서 그대로 읽습니다
+    // (CLI Round 983).
+    const rows = Array.from(list.children).map((item) => item.textContent ?? "");
+    expect(rows[0], "사람이 정리해 둔 것이 먼저입니다").toContain("내 폴더 · 1");
+    expect(rows[1]).toContain("아리");
+    expect(rows[2]).toContain("프로젝트가 만든 폴더 · 1");
+    expect(rows[3]).toContain("꽃말_개나리");
+  });
+});
+
+/**
+ * 2/2 — 되풀이되던 줄 설명과 흩어져 있던 숫자.
+ *
+ * 🟠 여기서는 **화면까지 가는 짝을 하나만** 둡니다. 나머지는 순수 함수를 직접 부릅니다 — 981·983 에서
+ * 제가 못 돌리는 구간에서 두 번 넘어졌고, 그 구간을 좁히는 쪽이 낫습니다.
+ */
+describe("AssetLibraryScreen counts", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("says how many are inside instead of repeating the group's own name", () => {
+    // 🔴 전에는 프로젝트가 만든 폴더 15줄이 전부 「프로젝트 폴더」였습니다 — 머리글이 방금 한 말입니다.
+    const folder = makeAssetFolder({ assetId: "F-1", sourceProjectId: "12", childAssetIds: ["A", "B", "C"] });
+    expect(rowSubtitle(folder)).toBe("이미지 3장");
+  });
+
+  it("keeps the kind on my own folder, because no heading says it there", () => {
+    const mine = makeAssetFolder({ assetId: "F-2", assetType: "background", childAssetIds: ["A"] });
+    expect(rowSubtitle(mine)).toBe("배경 · 이미지 1장");
+  });
+
+  it("leaves a row that is not a folder as it was", () => {
+    // 🟠 이 반쪽이 없으면 위의 둘은 「모든 줄에 장수를 적는다」는 구현으로도 초록입니다 — 그러면 이미지
+    // 한 장짜리 줄이 「이미지 0장」이라고 말합니다.
+    expect(rowSubtitle(makeAsset({ assetId: "A-1", assetType: "character" }))).toBe("캐릭터");
+  });
+
+  it("puts what the library holds in one line, and leaves the reason at the bottom", async () => {
+    const response: ListAssetsResponse = {
+      assets: [
+        makeAssetFolder({ assetId: "F-1", displayName: "아리", childAssetIds: ["A-1", "A-2"] }),
+        makeAsset({ assetId: "A-1", displayName: "정면", parentFolderId: "F-1" }),
+        makeAsset({ assetId: "A-2", displayName: "옆모습", parentFolderId: "F-1" }),
+      ],
+    };
+    vi.stubGlobal("fetch", withGeneratedImages(vi.fn().mockResolvedValue(jsonResponse(200, response))));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const count = await screen.findByTestId("asset-library-count");
+    expect(count.textContent, "폴더 수와 그 안의 장수가 한 줄에").toContain("폴더 1");
+    expect(count.textContent).toContain("그 안의 이미지 2");
+
+    const list = screen.getByRole("list", { name: "에셋 목록" });
+    // 🔴 아래 문장은 **이유**만 말합니다. 숫자를 두 곳에 적으면 한쪽만 고쳐지는 날이 옵니다.
+    expect(list.textContent).toContain("폴더를 열면 보입니다");
+    expect(list.textContent, "개수는 위에서 한 번만").not.toContain("이미지 2개");
+  });
+});
