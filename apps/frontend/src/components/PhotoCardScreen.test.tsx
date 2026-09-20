@@ -342,61 +342,45 @@ describe("PhotoCardScreen", () => {
   });
 
   /**
-   * 🔴 This screen is now the only door to a card that already exists.
+   * 🟠 만들어 둔 카드 목록은 **이 화면에서 나갔습니다**(`PhotoCardListScreen`). 여기 있던 짝 셋도 같이
+   * 옮겼습니다 — 카드 한 장 보려고 들어온 사람이 만들기 폼을 전부 지나가야 했던 게 가른 이유입니다.
    *
-   * ProjectList stopped listing photo cards on the same day these tests were written — a card under
-   * 단기 프로젝트 sat under a heading the person never chose for it, above a progress bar counting steps its
-   * pipeline skips. Filtering there without listing here would not tidy the cards away; it would make finished
-   * work unreachable. That is why these three exist, and why the pair ships together.
+   * 🔴 남은 건 이것 하나입니다. 이 화면은 여전히 `/projects` 를 읽는데, 이제 그걸로 하는 일은
+   * **이름이 겹치는지 미리 보는 것뿐**입니다. 그래서 실패했을 때 할 말도 하나뿐입니다 — 그리고
+   * **만들기를 막으면 안 됩니다.** 막는 건 서버고, 읽기 한 번 실패한 것이 만들기를 막으면 그건 이 화면이
+   * 할 수 있는 일보다 큰 말입니다.
    */
-  it("lists the cards that already exist, and opens the one that is pressed", async () => {
-    const onOpenCard = vi.fn();
-    // The listing is given raw rather than as bare ids: the helper's id shortcut builds ordinary projects, and
-    // `photoCard` is the whole thing under test here.
-    stubWithExistingNames(
-      { projects: [
-        makeProject({ id: "명언_불광불급", photoCard: true }),
-        makeProject({ id: "sample_project" }),
-      ] },
-      jsonResponse(200, { assets: [picture] }),
-    );
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={onOpenCard} />);
-
-    // 🔴 Only the cards. An ordinary short project belongs in 단기 프로젝트 and would be a second listing of it.
-    expect(await screen.findByTestId("photo-card-open-명언_불광불급")).toBeTruthy();
-    expect(screen.queryByTestId("photo-card-open-sample_project")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("photo-card-open-명언_불광불급"));
-    expect(onOpenCard).toHaveBeenCalledWith("명언_불광불급");
-  });
-
-  // Nothing to list is not a failure and gets no empty state: the screen someone opened is the one for making
-  // a card, and an "아직 없습니다" box above the form only pushes the form down on the very first visit.
-  it("shows no card list at all when none exist yet", async () => {
-    stub(jsonResponse(200, { assets: [picture] }));
-    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
-
-    await screen.findByTestId("photo-card-asset-ASSET-1");
-    expect(screen.queryByTestId("photo-card-existing")).toBeNull();
-  });
-
-  /**
-   * 🔴 The same request's failure used to be swallowed on purpose — it only fed the duplicate-name warning,
-   * and the server refuses duplicates anyway. It is not the same request any more: it is the one that decides
-   * whether existing cards are reachable, so a silent failure would look exactly like "you have no cards".
-   */
-  it("says so when the existing-card list cannot be read, and still lets a new card be made", async () => {
+  it("이름 목록을 못 읽어도 만들기는 그대로 열려 있다", async () => {
     stubWithExistingNames(
       withStatus(500, { code: "PROJECT_STORAGE_ERROR", message: "raw backend detail" }),
       jsonResponse(200, { assets: [picture] }),
     );
     render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
 
-    const alert = await screen.findByTestId("photo-card-existing-error");
-    expect(alert.textContent).toContain("목록을 불러오지 못했습니다");
-    expect(alert.textContent).not.toContain("raw backend detail");
-    expect(screen.queryByTestId("photo-card-existing")).toBeNull();
-    // The form is untouched by it — making a new card never needed that listing.
-    expect(screen.getByTestId("photo-card-submit")).toBeTruthy();
+    const notice = await screen.findByTestId("photo-card-names-unchecked");
+    expect(notice.textContent).toContain("미리 확인하지 못했습니다");
+    expect(notice.textContent).not.toContain("raw backend detail");
+
+    fireEvent.click(await screen.findByTestId("photo-card-asset-ASSET-1"));
+    fireEvent.change(screen.getByTestId("photo-card-quote"), { target: { value: "문장" } });
+    fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "quote_01" } });
+    expect((screen.getByTestId("photo-card-submit") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  /**
+   * 🟠 이름이 겹친다고 말하는 것만으로는 **막다른 길**입니다. 그 카드는 이미 있고, 사람이 하려던 일은
+   * 대개 그걸 여는 것입니다 — 그래서 그 자리에서 열 수 있어야 합니다.
+   */
+  it("겹친 이름을 말할 때, 그 카드로 가는 길을 같이 준다", async () => {
+    const onOpenCard = vi.fn();
+    stubWithExistingNames(["명언_불광불급"], jsonResponse(200, { assets: [picture] }));
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={onOpenCard} />);
+    await screen.findByTestId("photo-card-asset-ASSET-1");
+
+    fireEvent.change(screen.getByTestId("photo-card-id"), { target: { value: "명언_불광불급" } });
+
+    expect((await screen.findByTestId("photo-card-id-taken")).textContent).toContain("이미 있습니다");
+    fireEvent.click(screen.getByTestId("photo-card-open-taken"));
+    expect(onOpenCard).toHaveBeenCalledWith("명언_불광불급");
   });
 });

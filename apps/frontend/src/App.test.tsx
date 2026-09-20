@@ -349,7 +349,8 @@ describe("App", () => {
     fetchMock.mockClear();
 
     fireEvent.click(screen.getByRole("button", { name: "명언 카드" }));
-    await screen.findByTestId("photo-card-empty");
+    // 🟠 명언 카드는 이제 **목록이 먼저**입니다 — 만들기 화면의 id 를 기다리면 여기서 멈춥니다.
+    await screen.findByTestId("photo-card-count");
     fireEvent.click(screen.getByRole("button", { name: "보관한 프로젝트" }));
     await screen.findByRole("heading", { name: "보관한 프로젝트" });
     fireEvent.click(screen.getByRole("button", { name: "작업 워크플로우" }));
@@ -476,7 +477,8 @@ describe("App", () => {
       if (url === `/projects/${project.id}`) return jsonResponse(200, { project });
       /* 뉴스 릴 화면은 열리자마자 이걸 부릅니다. 404 로 두면 이 짝이 **목록을 못 불러온 경로**를 지나면서도
          초록이라, 넘김이 성공한 것인지 우회한 것인지 구분이 안 됩니다. */
-      if (url === "/news/setup") return jsonResponse(200, { publishers: [{ host: "sedaily.com", name: "서울경제" }], dailyCalls: { used: 0, limit: 10 } });
+      // `body` 가 빠지면 가드가 응답 전체를 거절합니다 — 화면은 목록 없이도 돌아서, 빠진 걸 아무도 못 봅니다.
+      if (url === "/news/setup") return jsonResponse(200, { publishers: [{ host: "sedaily.com", name: "서울경제", body: "unknown" }], dailyCalls: { used: 0, limit: 10 } });
       return jsonResponse(404, { code: "PROJECT_NOT_FOUND", message: "" });
     });
     vi.stubGlobal("fetch", fetchMock);

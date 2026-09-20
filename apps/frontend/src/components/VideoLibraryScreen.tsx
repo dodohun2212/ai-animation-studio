@@ -8,8 +8,11 @@ import {
   toVideoLibraryDisplayError,
   videoVersionContentUrl,
 } from "../api/videoLibraryApi.js";
-import { listLongEpisodeVideoVersions, longEpisodeFinalVideoContentUrl, longEpisodeVideoVersionContentUrl, restoreLongEpisodeVideoVersion } from "../api/longProjectsApi.js";
+import { listLongEpisodeVideoVersions, longEpisodeFinalVideoContentUrl, longEpisodeImageContentUrl, longEpisodeVideoVersionContentUrl, restoreLongEpisodeVideoVersion } from "../api/longProjectsApi.js";
+import { formatDateTime } from "../utils/formatDateTime.js";
 import { imageBoxAspectClass } from "../utils/sceneFields.js";
+import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
+import { CoverThumb } from "./ui/CoverThumb.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip } from "./ui/StatusChip.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
@@ -57,9 +60,13 @@ function fileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * 🔴 앱 공통 형식(`formatDateTime`)을 씁니다 — 전에는 이 화면만 `toLocaleString("ko-KR")` 이라
+ * 「2026. 9. 18. 오전 12:13:09」 였습니다. 한 줄이면 취향이지만, 이 화면엔 그 줄이 **마흔 개** 있고
+ * 그중 초를 궁금해하는 줄은 하나도 없습니다. 다른 화면과 다른 것도 값이 아닙니다.
+ */
 function dateTime(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("ko-KR");
+  return formatDateTime(value);
 }
 
 /**
@@ -296,6 +303,17 @@ export function VideoLibraryScreen({ onBack }: Props) {
   const [state, setState] = useState<LibraryState>({ status: "loading" });
   const [query, setQuery] = useState("");
   /**
+   * 어느 묶음을 보고 있나 — 단편 / 명언 카드 / 회차.
+   *
+   * 🔴 전에는 **세 묶음이 한 화면에 전부** 펼쳐져 있었습니다. 이 저장소에서는 그게 마흔 줄이 넘고, 찾으려는
+   * 것이 단편 하나여도 명언 카드 열일곱 줄을 지나가야 했습니다. 접는 게 아니라 **거르는** 이유는, 접힌 것은
+   * 여전히 화면에 자리를 차지하면서 「열어 볼까」를 계속 묻기 때문입니다.
+   *
+   * 🟠 검색은 그대로 **세 묶음 전부**에 걸립니다 — 거름망은 「무엇을 보고 있나」고 검색은 「무엇을 찾나」라,
+   * 찾는 것이 다른 묶음에 있으면 개수로 보입니다.
+   */
+  const [group, setGroup] = useState<"all" | "scene" | "card" | "episode">("all");
+  /**
    * Which card's version panel is open, and which kind of thing it belongs to.
    *
    * Was a project id alone, from when only short projects had a version list. An Episode's clips are archived
@@ -426,6 +444,32 @@ export function VideoLibraryScreen({ onBack }: Props) {
             />
           </label>
 
+          {/* 색인 줄 — 단기 프로젝트 목록과 같은 모양입니다. 🔴 개수를 같이 적는 건 **합이 맞는 걸 눈으로
+              확인할 수 있게** 하려는 것입니다: 「전체가 45인데 여기 10줄뿐인가」가 이 화면에서 나올 질문입니다. */}
+          <div className="flex items-center gap-5 border-b border-line pb-2.5">
+            {([
+              ["all", "전체", filteredScenes.length + filteredCards.length + filteredEpisodes.length],
+              ["scene", "단편", filteredScenes.length],
+              ["card", "명언 카드", filteredCards.length],
+              ["episode", "회차", filteredEpisodes.length],
+            ] as const).map(([key, label, count]) => {
+              const active = group === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  data-testid={`library-group-${key}`}
+                  aria-pressed={active}
+                  className={`flex items-baseline gap-1.5 text-[12px] transition-colors ${active ? "font-medium text-bone" : "text-bone-faint hover:text-bone-dim"}`}
+                  onClick={() => setGroup(key)}
+                >
+                  {label}
+                  <span className={`type-mono text-[10.5px] ${active ? "text-bone-dim" : "text-bone-faint/70"}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Both counts, because this list holds both. It used to read `projects` alone, so someone whose
               work is entirely long-project Episodes was told they had no videos — directly above their videos. */}
           {!projects.length && !episodes.length && (
@@ -450,24 +494,43 @@ export function VideoLibraryScreen({ onBack }: Props) {
                   className={`${cardSection} ${riseInCard}`}
                   style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      className="text-left text-sm font-semibold text-slate-100"
-                      aria-expanded={open}
-                      /* 명언 카드는 1번 장면이 늘 비어 있으므로 최종 영상 자리를 엽니다 — 카드를 여는 첫
-                         화면이 「아직 저장된 영상이 없습니다」 이면 안 됩니다. */
-                      onClick={() => (open ? setOpenTarget(null) : openSlotVersions(target, firstSlotFor(project)))}
-                    >
-                      {project.topic || project.projectId}
-                    </button>
-                    <span className="flex flex-wrap items-center gap-2">
-                      <StatusChip tone={project.finalVideoAvailable ? "success" : "neutral"}>
-                        {project.finalVideoAvailable ? "최종 영상 있음" : "최종 영상 없음"}
-                      </StatusChip>
-                      <span className="text-xs text-slate-400 tabular-nums" data-testid={`library-cost-${project.projectId}`}>
-                        누적 ${project.totalActualCostUsd.toFixed(2)}
-                      </span>
+                  <div className="flex items-start gap-3">
+                    {/*
+                      * 🟠 이 화면의 주제가 **영상**인데 그림이 한 장도 없었습니다. 줄이 마흔 개인 목록에서
+                      * 제목만으로 찾으려면 마흔 줄을 **읽어야** 합니다 — 작은 프레임 하나면 훑어서 찾습니다.
+                      */}
+                    <CoverThumb src={sceneImageContentUrl(project.projectId, 1)} className="aspect-[9/16] w-10" />
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        className="block w-full text-left text-sm font-semibold text-slate-100"
+                        aria-expanded={open}
+                        /* 명언 카드는 1번 장면이 늘 비어 있으므로 최종 영상 자리를 엽니다 — 카드를 여는 첫
+                           화면이 「아직 저장된 영상이 없습니다」 이면 안 됩니다. */
+                        onClick={() => (open ? setOpenTarget(null) : openSlotVersions(target, firstSlotFor(project)))}
+                      >
+                        {project.topic || project.projectId}
+                      </button>
+                    </div>
+                    <span className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
+                      {/*
+                        * 🔴 **「있음」은 안 그립니다.** 마흔 줄 중 서른다섯이 「최종 영상 있음」이면 그 칩은
+                        * 아무것도 구분해 주지 못하고, 정작 **없는 다섯**이 그 틈에 묻힙니다. 있는 게 정상이고
+                        * 없는 게 예외라, 예외만 말합니다.
+                        */}
+                      {!project.finalVideoAvailable && (
+                        <StatusChip tone="neutral">최종 영상 없음</StatusChip>
+                      )}
+                      {/*
+                        * 🔴 **0달러는 안 그립니다.** 명언 카드는 제공자를 부르지 않아서 전부 `$0.00` 인데,
+                        * 그 줄이 열일곱 개면 「누적」이라는 낱말이 열일곱 번 나오고 **아무 데도 돈이 안 든
+                        * 것처럼** 읽힙니다. 금액이 보이면 돈이 든 것 — 그게 이 자리가 할 수 있는 말입니다.
+                        */}
+                      {project.totalActualCostUsd > 0 && (
+                        <span className="type-mono text-xs text-slate-400" data-testid={`library-cost-${project.projectId}`}>
+                          누적 ${project.totalActualCostUsd.toFixed(2)}
+                        </span>
+                      )}
                     </span>
                   </div>
                   {/* A photo card has no scene videos by design — one picture under a slow zoom, merged
@@ -523,9 +586,11 @@ export function VideoLibraryScreen({ onBack }: Props) {
                 {/* 단편 프로젝트와 명언 카드를 나눈 것 — 둘 다 있을 때, 서로 다른 두 종류가 최근 수정 순서 하나로만
                     뒤섞여 있으면 원하는 걸 찾으려고 전부 훑어야 합니다. 사이드바가 이미 이 둘을 다른 메뉴로
                     나눠 놓았으니, 여기서도 같은 구분을 씁니다. 검색은 그대로 둘 다에 적용됩니다. */}
-                {Boolean(filteredScenes.length) && (
+                {(group === "all" || group === "scene") && Boolean(filteredScenes.length) && (
                   <div className="space-y-3" data-testid="library-scene-projects">
-                    {Boolean(filteredCards.length) && (
+                    {/* 🟠 「전체」를 보고 있을 때만 제목을 답니다 — 한 묶음만 골라 놓고 그 묶음 이름을 또
+                        적으면, 방금 누른 칸이 하는 말을 화면이 한 번 더 합니다. */}
+                    {group === "all" && Boolean(filteredCards.length) && (
                       <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
                         <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
                         단편 프로젝트
@@ -537,9 +602,9 @@ export function VideoLibraryScreen({ onBack }: Props) {
                   </div>
                 )}
 
-                {Boolean(filteredCards.length) && (
+                {(group === "all" || group === "card") && Boolean(filteredCards.length) && (
                   <div className="space-y-3" data-testid="library-photo-cards">
-                    {Boolean(filteredScenes.length) && (
+                    {group === "all" && Boolean(filteredScenes.length) && (
                       <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
                         <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
                         명언 카드
@@ -556,27 +621,31 @@ export function VideoLibraryScreen({ onBack }: Props) {
 
           {/* Episodes, in their own list. Absent entirely when there are none, so a person who only makes short
               projects never sees a heading for a thing they do not have. */}
-          {Boolean(filteredEpisodes.length) && (
+          {(group === "all" || group === "episode") && Boolean(filteredEpisodes.length) && (
             <div className="space-y-3" data-testid="library-episodes">
               <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
                 <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
                 장기 프로젝트 회차
               </h2>
-              {episodeGroups.map((group) => (
-                <div key={group.project.projectId} className="space-y-3">
-                  <div data-testid={`library-long-project-${group.project.projectId}`} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 pb-1.5 pt-2">
-                    <span className="text-sm font-semibold text-slate-100">{group.project.title}</span>
+              {episodeGroups.map((story) => (
+                <div key={story.project.projectId} className="space-y-3">
+                  <div data-testid={`library-long-project-${story.project.projectId}`} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-white/10 pb-1.5 pt-2">
+                    <span className="text-sm font-semibold text-slate-100">{story.project.title}</span>
                     {/* Two numbers rather than one total, because they answer different questions and come from
                         different ledgers: what the story cost outside its episodes (scripts, images, narration —
                         all billed to the parent id) and what its episodes cost in video. Added up here only
                         after both have been said. */}
-                    <span className="text-xs tabular-nums text-slate-400" data-testid={`library-long-project-cost-${group.project.projectId}`}>
-                      공통 ${group.project.ownCostUsd.toFixed(2)} · 회차 ${group.project.episodesCostUsd.toFixed(2)}
-                      <span className="ml-1.5 text-slate-300">합계 ${(group.project.ownCostUsd + group.project.episodesCostUsd).toFixed(2)}</span>
-                    </span>
+                    {/* 🔴 아직 아무것도 안 만든 이야기는 「공통 $0.00 · 회차 $0.00 합계 $0.00」이 됩니다 — 세 번
+                        말해서 0을 알려 주는 줄입니다. 한 푼이라도 썼을 때만 그립니다. */}
+                    {story.project.ownCostUsd + story.project.episodesCostUsd > 0 && (
+                      <span className="text-xs tabular-nums text-slate-400" data-testid={`library-long-project-cost-${story.project.projectId}`}>
+                        공통 ${story.project.ownCostUsd.toFixed(2)} · 회차 ${story.project.episodesCostUsd.toFixed(2)}
+                        <span className="ml-1.5 text-slate-300">합계 ${(story.project.ownCostUsd + story.project.episodesCostUsd).toFixed(2)}</span>
+                      </span>
+                    )}
                   </div>
               <ul className="space-y-3">
-                {group.rows.map((one, index) => {
+                {story.rows.map((one, index) => {
                   const episodeTarget: VersionTarget = { kind: "episode", projectId: one.projectId, episodeNumber: one.episodeNumber };
                   const episodeOpen = sameTarget(openTarget, episodeTarget);
                   return (
@@ -589,14 +658,19 @@ export function VideoLibraryScreen({ onBack }: Props) {
                     {/* 상태·비용·「지난 영상」 버튼을 한 줄에 — 예전에는 이 버튼이 영상 아래 혼자 떨어져 있어서
                         같은 카드의 동작이 위아래로 흩어져 있었다. */}
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-slate-100">{one.projectTitle} · {one.episodeNumber}화 {one.title}</span>
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        {/* 영상 보관함에서 한 회차를 알아보는 가장 빠른 길은 제목이 아니라 그림입니다 — 1번 장면. */}
+                        <CoverThumb src={longEpisodeImageContentUrl(one.projectId, one.episodeNumber, 1 as SceneNumber, one.updatedAt)} className="aspect-[9/16] w-10" />
+                        <span className="text-sm font-semibold text-slate-100">{one.projectTitle} · {one.episodeNumber}화 {one.title}</span>
+                      </span>
                       <span className="flex flex-wrap items-center gap-2">
-                        <StatusChip tone={one.finalVideoAvailable ? "success" : "neutral"}>
-                          {one.finalVideoAvailable ? "최종 영상 있음" : "최종 영상 없음"}
-                        </StatusChip>
-                        <span className="text-xs text-slate-400 tabular-nums" data-testid={`library-episode-cost-${one.projectId}-${one.episodeNumber}`}>
-                          누적 ${one.totalActualCostUsd.toFixed(2)}
-                        </span>
+                        {/* 단편 줄과 같은 규칙입니다 — 「있음」은 안 그리고 「없음」만 그립니다. */}
+                        {!one.finalVideoAvailable && <StatusChip tone="neutral">최종 영상 없음</StatusChip>}
+                        {one.totalActualCostUsd > 0 && (
+                          <span className="text-xs text-slate-400 tabular-nums" data-testid={`library-episode-cost-${one.projectId}-${one.episodeNumber}`}>
+                            누적 ${one.totalActualCostUsd.toFixed(2)}
+                          </span>
+                        )}
                         <button
                           type="button"
                           data-testid={`library-episode-versions-${one.projectId}-${one.episodeNumber}`}

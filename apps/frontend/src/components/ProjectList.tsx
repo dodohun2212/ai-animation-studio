@@ -83,14 +83,35 @@ const SHAPE_TEXT: Record<FrameShape, string> = {
 };
 
 /**
- * 도록의 색인 줄 — 전체 / 진행 중 / 완료 / 멈춤.
+ * 거름망이 묻는 질문 — **「어디까지 왔나」**.
  *
- * 🔴 이 네 칸은 **서버를 한 번도 부르지 않습니다.** 이미 받아 둔 목록을 걸러 보는 것뿐이라 호출도 돈도
+ * 🔴 **프레임의 네 모양과 일부러 다릅니다.** 프레임은 「지금 무슨 상태냐」를 말하고, 거기서는 **기계가 돌고
+ * 있는 것**(developing)과 **캡틴D 차례라 멈춰 있는 것**(waiting)이 다른 그림입니다 — 수면선이 있고 없고요.
+ * 그런데 **거름망에서는 그 둘이 같은 칸**입니다. 둘 다 **끝나지도 멈추지도 않은, 아직 가는 중**이니까요.
+ *
+ * 🔴 처음엔 `FrameShape` 를 그대로 칸으로 썼고, 그게 틀렸습니다(캡틴D 지적, 2026-09-20). 그러면 `waiting`
+ * 인 프로젝트가 **어느 칸에도 안 들어가서**, 전체 10 · 완료 8 인데 나머지 둘이 **어디에도 안 보였습니다.**
+ * 화면이 「영상 검토 중」을 진행 중이 아니라고 말한 셈인데, 그건 사람 말이 아니라 **기계 말**이었습니다.
+ *
+ * 🟠 그래서 모양은 넷, 칸은 셋입니다. 같은 것을 두 번 쓰지 않고 **파생**시킵니다 — 아래 `filterGroup` 이
+ * `frameShape` 를 지나가므로, 상태의 문법이 바뀌면 칸도 같이 바뀝니다.
+ */
+type ListFilter = "going" | "done" | "stopped";
+
+export function filterGroup(state: WorkflowState): ListFilter {
+  const shape = frameShape(state);
+  if (shape === "done") return "done";
+  if (shape === "stopped") return "stopped";
+  return "going";
+}
+
+/**
+ * 🔴 이 칸들은 **서버를 한 번도 부르지 않습니다.** 이미 받아 둔 목록을 걸러 보는 것뿐이라 호출도 돈도
  * 0입니다. 「진행 중만 보기」가 새 요청이 되는 순간 목록 화면이 돈 쓰는 화면이 됩니다.
  */
-const FILTERS: { key: "all" | FrameShape; label: string }[] = [
+const FILTERS: { key: "all" | ListFilter; label: string }[] = [
   { key: "all", label: "전체" },
-  { key: "developing", label: "진행 중" },
+  { key: "going", label: "진행 중" },
   { key: "done", label: "완료" },
   { key: "stopped", label: "멈춤" },
 ];
@@ -106,6 +127,9 @@ function PlusIcon() {
 /**
  * 한 프로젝트의 프레임 한 칸.
  *
+ * 🟠 명언 카드 목록도 이것을 씁니다(`PhotoCardListScreen`). 카드도 결국 같은 프로젝트라, 사본을 하나 더
+ * 만들면 「완료는 이렇게 보인다」가 두 곳에서 갈립니다.
+ *
  * 🔴 여기에는 **진행 막대가 없습니다.** 전에는 모든 줄에 막대가 붙었고, 끝난 프로젝트에도 100% 로 꽉 찬
  * 보라색 막대가 그려졌습니다 — 화면에서 제일 진한 색이 정보를 하나도 싣지 않은 자리에 쓰이고, 목록 전체가
  * 그 줄무늬로 덮였습니다. 진행 중인 것의 「어디까지 왔나」는 이제 **수면선의 높이**가 말합니다: 같은 숫자를
@@ -115,7 +139,18 @@ function PlusIcon() {
  * 있습니다: 「세 번째 거」라고 말할 수 있게 하는 것. 프로젝트의 속성이 아니라 지금 이 시트에서의 자리라,
  * 거르거나 순서가 바뀌면 같이 바뀝니다.
  */
-function ProjectFrame({ project, index, onOpen }: { project: ProjectSummary; index: number; onOpen: () => void }) {
+interface ProjectFrameProps {
+  project: ProjectSummary;
+  index: number;
+  onOpen: () => void;
+  /**
+   * 🟠 **부르는 화면이 자기 이름으로 부를 수 있게** 하는 것뿐입니다. 두 목록이 같은 프레임을 쓰는데 짝이
+   * 둘 다 `project-frame` 을 찾으면, 명언 카드 짝이 단기 프로젝트 프레임을 집을 수 있습니다.
+   */
+  testId?: string;
+}
+
+export function ProjectFrame({ project, index, onOpen, testId = "project-frame" }: ProjectFrameProps) {
   const shape = frameShape(project.workflowState);
   const percent = progressPercent(project.workflowState);
   // 아직 현상되지 않은 부분의 높이. 수면선은 정확히 그 경계에 놓인다.
@@ -123,7 +158,7 @@ function ProjectFrame({ project, index, onOpen }: { project: ProjectSummary; ind
   return (
     <button
       type="button"
-      data-testid="project-frame"
+      data-testid={testId}
       data-shape={shape}
       className={`group flex w-full flex-col gap-3 text-left focus-visible:outline-none ${riseIn}`}
       style={{ animationDelay: `${Math.min(index, 11) * 40}ms` }}
@@ -196,7 +231,7 @@ function ProjectFrame({ project, index, onOpen }: { project: ProjectSummary; ind
 
 export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: ProjectListProps) {
   const [state, setState] = useState<ListState>({ projects: null, error: null, loading: true });
-  const [filter, setFilter] = useState<"all" | FrameShape>("all");
+  const [filter, setFilter] = useState<"all" | ListFilter>("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -236,9 +271,21 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
     [state.projects],
   );
   const shown = useMemo(
-    () => (filter === "all" ? projects : projects.filter((project) => frameShape(project.workflowState) === filter)),
+    () => (filter === "all" ? projects : projects.filter((project) => filterGroup(project.workflowState) === filter)),
     [projects, filter],
   );
+  /**
+   * 칸마다의 개수.
+   *
+   * 🔴 숫자를 붙이는 이유는 꾸미려는 게 아니라 **합이 맞는 걸 눈으로 확인할 수 있게** 하려는 것입니다.
+   * 「전체 10인데 완료가 8이면 나머지 둘은 어디 있나」가 이 화면에서 실제로 나온 질문이고, 그때 화면은
+   * 아무 답도 안 하고 있었습니다. 셋을 더해 전체가 나오면 그 질문이 다시 안 나옵니다.
+   */
+  const counts = useMemo(() => {
+    const tally: Record<"all" | ListFilter, number> = { all: projects.length, going: 0, done: 0, stopped: 0 };
+    for (const project of projects) tally[filterGroup(project.workflowState)] += 1;
+    return tally;
+  }, [projects]);
   const waitingCount = waitingForVideoCount(projects);
 
   return (
@@ -276,10 +323,14 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
               type="button"
               data-testid={`project-filter-${option.key}`}
               aria-pressed={active}
-              className={`text-[12px] transition-colors ${active ? "font-medium text-bone" : "text-bone-faint hover:text-bone-dim"}`}
+              className={`flex items-baseline gap-1.5 text-[12px] transition-colors ${active ? "font-medium text-bone" : "text-bone-faint hover:text-bone-dim"}`}
               onClick={() => setFilter(option.key)}
             >
               {option.label}
+              {/* 🟠 개수는 칸 이름보다 한 단계 흐리게 — 읽는 순서가 「이름 먼저, 숫자는 확인용」입니다. */}
+              <span className={`type-mono text-[10.5px] ${active ? "text-bone-dim" : "text-bone-faint/70"}`}>
+                {counts[option.key]}
+              </span>
             </button>
           );
         })}

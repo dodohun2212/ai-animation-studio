@@ -1,14 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Asset, AspectRatio, PhotoCardDurationSeconds, ProjectSummary } from "@ai-animation-studio/shared";
+import type { Asset, AspectRatio, PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
 import { PHOTO_CARD_MAX_PICTURES, PHOTO_CARD_DURATIONS, PHOTO_CARD_QUOTE_MAX_LENGTH } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createPhotoCard, toPhotoCardDisplayError } from "../api/photoCardsApi.js";
 import { listProjects, toDisplayError } from "../api/projectsApi.js";
-import { formatDateTime } from "../utils/formatDateTime.js";
-import { workflowStateLabel, workflowStateTone } from "../utils/workflowStateLabels.js";
 import { Spinner } from "./Spinner.js";
-import { StatusChip } from "./ui/StatusChip.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSectionRoomy as cardSection } from "./ui/surfaces.js";
 
@@ -98,14 +95,13 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
    */
   const [takenNames, setTakenNames] = useState<ReadonlySet<string> | null>(null);
   /**
-   * The cards that already exist, listed on this screen because they are no longer listed anywhere else.
+   * 🟠 이름 읽기가 실패했다는 사실.
    *
-   * 🔴 This is why the same request's failure is now shown instead of swallowed. While cards sat in 단기
-   * 프로젝트 a failed listing cost only the duplicate-name warning; now it is the difference between finished
-   * work being reachable and being invisible, so it has to say so.
+   * 전에는 이 화면이 **만들어 둔 카드 목록**도 같이 그렸고, 그래서 이 실패가 「끝난 일이 안 보인다」를
+   * 뜻했습니다. 목록이 `PhotoCardListScreen` 으로 나간 지금, 여기서 이게 뜻하는 건 하나뿐입니다 —
+   * **이름이 겹치는지 미리 못 본다.** 막는 건 여전히 서버라, 버튼은 열어 두고 말만 합니다.
    */
-  const [cards, setCards] = useState<ProjectSummary[] | null>(null);
-  const [cardsError, setCardsError] = useState<DisplayError | null>(null);
+  const [namesError, setNamesError] = useState<DisplayError | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,9 +118,8 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
       .then((response) => {
         if (cancelled) return;
         setTakenNames(new Set(response.projects.map((project) => project.id)));
-        setCards(response.projects.filter((project) => project.photoCard === true));
       })
-      .catch((caught: unknown) => { if (!cancelled) setCardsError(toDisplayError(caught)); });
+      .catch((caught: unknown) => { if (!cancelled) setNamesError(toDisplayError(caught)); });
     return () => { cancelled = true; };
   }, []);
 
@@ -180,44 +175,26 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
 
   return (
     <section className="space-y-5">
-      <ScreenHeader title="명언 카드" backLabel="프로젝트 목록으로" onBack={onBack} />
+      {/*
+        * 🔴 이 화면은 이제 **만드는 일 하나만** 합니다. 만들어 둔 카드 목록은 `PhotoCardListScreen` 으로
+        * 나갔습니다 — 카드 한 장 보려고 들어온 사람이 만들기 폼을 전부 지나가야 했기 때문입니다.
+        * 돌아가기가 목록으로 가는 것도 그래서입니다(프로젝트 목록이 아니라).
+        */}
+      <ScreenHeader title="새 명언 카드" backLabel="명언 카드로" onBack={onBack} />
       <p className="text-sm text-slate-400">
         보관함의 그림에 문장을 얹어 짧은 영상으로 만듭니다. 그림을 여러 장 고르시면 고른 순서대로 이어 붙습니다. 그림은 이미 만들어 둔 것을 그대로 쓰기 때문에{" "}
         <span className="font-semibold text-slate-100">여기서는 돈이 나가지 않습니다.</span>
       </p>
 
-      {cardsError && (
-        <p role="alert" data-testid="photo-card-existing-error" data-error-code={cardsError.code} className="text-sm text-rose-400">
-          {cardsError.message} — 이미 만들어 둔 카드 목록을 불러오지 못했습니다. 새로 만드는 것은 그대로 됩니다.
+      {/*
+        * 🟠 「이름이 겹치는지 못 봤다」만 말합니다 — 만들기를 막지 않습니다. 겹치면 서버가 거절하고, 그
+        * 거절은 이 화면이 없어도 제 몫을 합니다. 여기서 막으면 **읽기 한 번 실패한 것이 만들기를 막는** 게
+        * 되고, 그건 이 화면이 할 수 있는 일보다 큰 말입니다.
+        */}
+      {namesError && (
+        <p role="alert" data-testid="photo-card-names-unchecked" data-error-code={namesError.code} className="text-sm text-amber-300">
+          이름이 이미 쓰이고 있는지 미리 확인하지 못했습니다. 만드는 것은 그대로 되고, 겹치면 저장할 때 서버가 알려 줍니다.
         </p>
-      )}
-      {cards !== null && cards.length > 0 && (
-        <section aria-label="만들어 둔 카드" className={cardSection} data-testid="photo-card-existing">
-          <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-            <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-            만들어 둔 카드
-          </h2>
-          <ul className="space-y-3">
-            {cards.map((card) => (
-              <li key={card.id}>
-                <button
-                  type="button"
-                  data-testid={`photo-card-open-${card.id}`}
-                  className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-left transition-colors duration-150 hover:border-violet-400/40 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30"
-                  onClick={() => onOpenCard(card.id)}
-                >
-                  <span className="min-w-0 flex-1">
-                    {/* The quote is what a person recognises a card by; the id is the handle underneath it. */}
-                    <span className="block truncate text-sm font-semibold text-slate-100">{card.topic || card.id}</span>
-                    <span className="block truncate text-xs text-slate-400">{card.id}</span>
-                  </span>
-                  <StatusChip tone={workflowStateTone(card.workflowState)}>{workflowStateLabel(card.workflowState)}</StatusChip>
-                  <span className="text-xs tabular-nums text-slate-400" title={card.updatedAt}>{formatDateTime(card.updatedAt)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
       )}
 
       <form className="space-y-5" onSubmit={(event) => void submit(event)}>
@@ -379,7 +356,11 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard, initialQuote, i
           )}
           {nameTaken && (
             <p data-testid="photo-card-id-taken" className="text-xs text-rose-400">
-              이 이름은 이미 있습니다. 그 카드는 아래 "만들어 둔 카드"에서 열면 됩니다. 다시 만들 필요가 없습니다.
+              이 이름은 이미 있습니다. 다시 만들 필요 없이{" "}
+              <button type="button" data-testid="photo-card-open-taken" className="underline underline-offset-2 hover:text-rose-300" onClick={() => onOpenCard(trimmedId)}>
+                그 카드를 열면
+              </button>{" "}
+              됩니다.
             </p>
           )}
         </section>

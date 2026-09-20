@@ -11,6 +11,7 @@ import { ProviderSettingsScreen } from "./components/ProviderSettingsScreen.js";
 import { AssetLibraryScreen } from "./components/AssetLibraryScreen.js";
 import { VideoLibraryScreen } from "./components/VideoLibraryScreen.js";
 import { PhotoCardScreen } from "./components/PhotoCardScreen.js";
+import { PhotoCardListScreen } from "./components/PhotoCardListScreen.js";
 import { NewsReelScreen } from "./components/NewsReelScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
@@ -62,6 +63,8 @@ type Screen =
   | { name: "videoLibrary" }
   | { name: "audioLibrary" }
   | { name: "photoCard" }
+  /** 명언 카드를 **만드는** 화면. 목록(`photoCard`)과 갈라져 있습니다 — 하나는 찾는 곳, 하나는 만드는 곳. */
+  | { name: "photoCardCreate" }
   | { name: "newsReel" }
   | { name: "instagramPost"; initialProjectId?: string; initialEpisodeNumber?: number }
   | { name: "archive" }
@@ -97,7 +100,7 @@ type Screen =
 type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber";
 const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
-  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], newsReel: [],
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: [], newsReel: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -281,7 +284,8 @@ function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "assets") return "assets";
   if (name === "videoLibrary") return "videoLibrary";
   if (name === "audioLibrary") return "audioLibrary";
-  if (name === "photoCard") return "photoCard";
+  // 만들기 화면에서도 사이드바의 「명언 카드」가 켜져 있어야 합니다 — 거기서 온 곳이 거기입니다.
+  if (name === "photoCard" || name === "photoCardCreate") return "photoCard";
   if (name === "newsReel") return "newsReel";
   if (name === "instagramPost") return "instagramPost";
   if (name === "archive") return "archive";
@@ -976,8 +980,15 @@ export function App() {
             {/* Straight to the merge screen on success: music and its credit line live there, and a card that
                 stopped at "만들어졌습니다" would leave the person to find the next step themselves. */}
             {screen.name === "photoCard" && (
-              <PhotoCardScreen
+              <PhotoCardListScreen
                 onBack={() => setScreen({ name: "list" })}
+                onCreateNew={() => setScreen({ name: "photoCardCreate" })}
+                onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
+              />
+            )}
+            {screen.name === "photoCardCreate" && (
+              <PhotoCardScreen
+                onBack={() => setScreen({ name: "photoCard" })}
                 onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
                 onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
                 initialQuote={newsHandoff?.quote}
@@ -992,7 +1003,8 @@ export function App() {
                 onBack={() => setScreen({ name: "list" })}
                 onUseSummary={(quote, sourceLine) => {
                   setNewsHandoff({ quote, sourceLine });
-                  setScreen({ name: "photoCard" });
+                  // 🟠 목록이 아니라 **만들기**로 갑니다 — 넘겨 준 요약이 들어갈 칸이 거기 있습니다.
+                  setScreen({ name: "photoCardCreate" });
                 }}
               />
             )}

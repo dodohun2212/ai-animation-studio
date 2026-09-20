@@ -477,4 +477,89 @@ describe("VideoLibraryScreen", () => {
     fireEvent.change(screen.getByPlaceholderText("주제로 검색"), { target: { value: "없는이름" } });
     expect(screen.queryByTestId("library-long-project-12")).not.toBeInTheDocument();
   });
+
+  /**
+   * 색인 줄 — 세 종류가 한 화면에 세로로 이어 붙어 있어서, 마흔다섯 줄을 지나야 회차가 나왔습니다.
+   *
+   * 개수를 칩에 같이 적는 이유는 합이 맞는지 눈으로 볼 수 있게 하기 위해서입니다. 단기 프로젝트 목록에서
+   * 「전체 10, 완료 8인데 나머지 2는 어디」가 실제로 나온 질문이었고, 여기서도 같은 질문이 나옵니다.
+   */
+  it("indexes the three kinds with counts that add up to 전체", async () => {
+    const card = libraryProject({ projectId: "card_1", topic: "명언", sceneCount: 1, videosReadyCount: 0, photoCard: true });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [libraryProject(), card],
+      episodes: [libraryEpisode()],
+      longProjects: [libraryLongProject()],
+    }));
+    renderScreen(fetchMock);
+
+    const all = await screen.findByTestId("library-group-all");
+    expect(all.textContent, "1 단편 + 1 카드 + 1 회차").toContain("3");
+    expect(screen.getByTestId("library-group-scene").textContent).toContain("1");
+    expect(screen.getByTestId("library-group-card").textContent).toContain("1");
+    expect(screen.getByTestId("library-group-episode").textContent).toContain("1");
+  });
+
+  /** 색인을 누르면 그 종류만 남습니다 — 나머지는 걸러지는 게 아니라 **안 그려집니다**. */
+  it("draws only the chosen kind, and drops the group headings with it", async () => {
+    const card = libraryProject({ projectId: "card_1", topic: "명언", sceneCount: 1, videosReadyCount: 0, photoCard: true });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [libraryProject(), card],
+      episodes: [libraryEpisode()],
+      longProjects: [libraryLongProject()],
+    }));
+    renderScreen(fetchMock);
+    await screen.findByTestId("library-group-card");
+
+    fireEvent.click(screen.getByTestId("library-group-card"));
+
+    expect(screen.getByTestId("library-group-card").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("library-project-card_1")).toBeInTheDocument();
+    expect(screen.queryByTestId("library-project-1"), "단편은 이 색인에 없습니다").not.toBeInTheDocument();
+    expect(screen.queryByTestId("library-episodes"), "회차도 마찬가지입니다").not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "명언 카드" }), "한 종류만 있으면 그게 무슨 종류인지는 색인이 이미 말했습니다").not.toBeInTheDocument();
+  });
+
+  /**
+   * 🔴 「최종 영상 있음」은 안 그립니다.
+   *
+   * 마흔다섯 줄 중 마흔 줄에 붙는 칩은 아무것도 구별해 주지 않습니다. 구별해 주는 건 **없는** 다섯 줄이고,
+   * 그 다섯 줄만 칩을 답니다. 단편과 회차가 같은 규칙을 씁니다.
+   */
+  it("marks only the rows that have no final video", async () => {
+    const missing = libraryProject({ projectId: "2", topic: "아직 안 합친 것", finalVideoAvailable: false });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [libraryProject(), missing],
+      episodes: [libraryEpisode(), libraryEpisode({ episodeNumber: 2, title: "두 번째 밤", finalVideoAvailable: false })],
+      longProjects: [libraryLongProject()],
+    }));
+    renderScreen(fetchMock);
+
+    const done = await screen.findByTestId("library-project-1");
+    expect(done.textContent, "있는 쪽은 아무 말도 안 합니다").not.toContain("최종 영상 있음");
+    expect(screen.getByTestId("library-project-2").textContent).toContain("최종 영상 없음");
+    expect(screen.getByTestId("library-episode-12-1").textContent).not.toContain("최종 영상 있음");
+    expect(screen.getByTestId("library-episode-12-2").textContent).toContain("최종 영상 없음");
+  });
+
+  /**
+   * 🔴 0달러는 안 그립니다 — 돈이 **안 든** 줄에 「누적 $0.00」을 적는 건 열일곱 번 반복되는 0입니다.
+   *
+   * 한 푼이라도 썼으면 그대로 적습니다. 위의 다른 시험들이 $1.50을 세고 있으므로 그쪽은 이 변경에 안 걸립니다.
+   */
+  it("says nothing about money on a row that cost nothing", async () => {
+    const free = libraryProject({ projectId: "2", topic: "공짜", totalActualCostUsd: 0 });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {
+      projects: [libraryProject(), free],
+      episodes: [libraryEpisode({ episodeNumber: 2, title: "두 번째 밤", totalActualCostUsd: 0 })],
+      longProjects: [libraryLongProject({ ownCostUsd: 0, episodesCostUsd: 0 })],
+    }));
+    renderScreen(fetchMock);
+
+    await screen.findByTestId("library-project-2");
+    expect(screen.getByTestId("library-cost-1").textContent, "쓴 돈은 그대로 적습니다").toContain("$1.50");
+    expect(screen.queryByTestId("library-cost-2")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("library-episode-cost-12-2")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("library-long-project-cost-12"), "공통 $0.00 · 회차 $0.00 합계 $0.00 — 0을 세 번").not.toBeInTheDocument();
+  });
 });

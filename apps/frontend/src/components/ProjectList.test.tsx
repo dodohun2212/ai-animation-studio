@@ -254,10 +254,65 @@ describe("ProjectList", () => {
 
       fireEvent.click(screen.getByTestId("project-filter-done"));
       expect(screen.getAllByTestId("project-frame")).toHaveLength(1);
-      fireEvent.click(screen.getByTestId("project-filter-developing"));
+      fireEvent.click(screen.getByTestId("project-filter-going"));
       expect(screen.getAllByTestId("project-frame")).toHaveLength(1);
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * 🔴 **칸 셋을 더하면 전체가 나와야 합니다.** 이 짝이 있는 이유가 실제 사고입니다 — 캡틴D께서
+     * *「전체가 10이고 완료가 8인데 나머지 2는 어디 있는거야?」*라고 물으셨고, 그때 그 둘(`영상 검토 중` ·
+     * `영상 승인됨`)은 **어느 칸에도 안 들어가 있었습니다.** 제가 거름망 칸을 프레임의 네 모양에서 그대로
+     * 가져다 썼는데, 프레임에는 「대기」라는 모양이 있고 거름망에는 그 칸이 없었기 때문입니다.
+     *
+     * 🟠 그래서 단언이 「진행 중을 누르면 2개 나온다」로 끝나지 않습니다. **합이 전체와 같은지**까지 봅니다 —
+     * 칸 하나를 더 만들든 조건을 바꾸든, **아무 데도 못 가는 프로젝트가 생기면** 이 짝이 웁니다.
+     */
+    it("칸 셋을 더하면 전체가 된다 — 어느 칸에도 못 가는 프로젝트가 없다", async () => {
+      renderWith([
+        makeProject({ id: "done1", workflowState: WorkflowState.Completed }),
+        makeProject({ id: "done2", workflowState: WorkflowState.Completed }),
+        // 🔴 기계가 돌고 있는 것과, 끝나서 캡틴D 차례인 것 — 프레임은 둘을 다르게 그리지만 **거름망은 한 칸**입니다.
+        makeProject({ id: "running", workflowState: WorkflowState.GeneratingVideos }),
+        makeProject({ id: "myturn", workflowState: WorkflowState.ReviewingVideos }),
+        makeProject({ id: "approved", workflowState: WorkflowState.VideosApproved }),
+        makeProject({ id: "dead", workflowState: WorkflowState.Failed }),
+      ]);
+      await screen.findAllByTestId("project-frame");
+
+      const count = (key: string) => {
+        fireEvent.click(screen.getByTestId(`project-filter-${key}`));
+        return screen.queryAllByTestId("project-frame").length;
+      };
+
+      const going = count("going");
+      const done = count("done");
+      const stopped = count("stopped");
+      const all = count("all");
+
+      expect(all).toBe(6);
+      expect(going).toBe(3);
+      expect(done).toBe(2);
+      expect(stopped).toBe(1);
+      expect(going + done + stopped).toBe(all);
+    });
+
+    /**
+     * 🟠 위 짝은 개수만 봅니다 — 화면이 그 숫자를 **말하는지**는 다른 이야기입니다. 캡틴D의 질문은
+     * 「2는 어디 있나」였고, 답은 목록을 세어 보는 게 아니라 **칸에 적힌 숫자**여야 합니다.
+     */
+    it("칸마다 개수를 적는다", async () => {
+      renderWith([
+        makeProject({ id: "a", workflowState: WorkflowState.Completed }),
+        makeProject({ id: "b", workflowState: WorkflowState.ReviewingVideos }),
+      ]);
+      await screen.findAllByTestId("project-frame");
+
+      expect(screen.getByTestId("project-filter-all").textContent).toContain("2");
+      expect(screen.getByTestId("project-filter-done").textContent).toContain("1");
+      expect(screen.getByTestId("project-filter-going").textContent).toContain("1");
+      expect(screen.getByTestId("project-filter-stopped").textContent).toContain("0");
     });
 
     /**
