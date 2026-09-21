@@ -182,6 +182,14 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
   const [setup, setSetup] = useState<Setup>({ status: "loading" });
   const [feed, setFeed] = useState<Feed>({ status: "loading" });
   const [url, setUrl] = useState("");
+  /**
+   * 🔴 **아래 「기사」 칸의 글이 어느 주소에서 온 것인지.**
+   *
+   * 목록에서 줄을 누르면 **주소 칸만** 채워집니다(붙여넣은 본문이 날아가지 않게) — 그런데 아래 칸은
+   * 앞 기사 그대로라, 캡틴D는 **새 기사를 고른 줄 알고** 그 글로 릴을 만듭니다. 화면이 「앞 기사입니다」라고
+   * 말해야 그 일이 안 생깁니다.
+   */
+  const [fetchedUrl, setFetchedUrl] = useState("");
   const [fetching, setFetching] = useState(false);
   const [notice, setNotice] = useState<FetchNotice | null>(null);
 
@@ -258,6 +266,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
         setPublishedAt(article.publishedAt);
         setSourceUrl(article.sourceUrl);
         setNotice({ kind: "fetched", publisher: article.publisher });
+        setFetchedUrl(typed);
         setArticleOpen(true);
       } else if (response.outcome === "body_not_found") {
         /* 🔴 실패가 아닙니다. 서버는 문을 두드렸고 페이지를 받았고 어느 부분이 기사인지 못 갈랐습니다 — 남은 한
@@ -268,6 +277,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
         setPublishedAt(response.publishedAt ?? "");
         setSourceUrl(response.sourceUrl);
         setNotice({ kind: "body_not_found" });
+        setFetchedUrl(typed);
         setArticleOpen(true);
       } else if (response.outcome === "unreachable") {
         setSourceUrl(response.sourceUrl);
@@ -391,6 +401,8 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
   const trimmedArticle = articleText.trim();
   /** 🟠 접힌 칸이 **비었는지 채워졌는지**를 접힌 채로 말해 줍니다 — 안 그러면 사람이 열어 봐야 압니다. */
   const articleFilled = trimmedArticle !== "" || title.trim() !== "";
+  /* 🔴 주소는 바뀌었는데 아래 글은 안 바뀐 상태. **둘이 다른 기사**라는 것을 화면이 말해야 합니다. */
+  const articleStale = articleFilled && url.trim().length > 0 && url.trim() !== fetchedUrl;
 
   /**
    * 🔴 **구워지는 글은 네 줄입니다 — 그래서 대조도 네 줄 위에서 돕니다.**
@@ -590,7 +602,16 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
 
         {fetching && <div className="mt-3"><Spinner label="기사를 가져오는 중..." /></div>}
 
-        {notice?.kind === "fetched" && (
+        {/* 🔴 **주소는 새 기사, 아래 글은 앞 기사.** 목록에서 줄을 누르면 주소만 채워지는데(붙여넣은 본문을
+            지우지 않으려고), 그러면 화면이 **두 기사를 동시에** 들고 있게 됩니다 — 말해 주지 않으면 앞
+            기사의 글로 릴을 만들게 됩니다. */}
+        {articleStale && (
+          <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300" data-testid="news-fetch-stale">
+            주소가 바뀌었습니다. <strong>아래 기사는 아직 앞 기사입니다</strong> — 「기사 가져오기」를 눌러야 새 기사로 바뀝니다.
+          </p>
+        )}
+
+        {!articleStale && notice?.kind === "fetched" && (
           <p className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300" data-testid="news-fetch-ok">
             {notice.publisher} 기사를 가져왔습니다. 아래에서 본문을 확인하신 뒤 요약을 적어 주세요.
           </p>

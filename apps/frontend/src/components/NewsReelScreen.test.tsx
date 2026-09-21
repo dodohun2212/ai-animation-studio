@@ -876,6 +876,7 @@ describe("NewsReelScreen 릴 문구", () => {
     /* 🔴 `""` 는 계약이 값으로 안 칩니다(CLI 1029 §3). 공백만 친 칸도 **없는 것**이라야 `null` 로 넘어갑니다. */
     expect(screen.getByTestId("news-reel-caption2-count").textContent).toContain("0/");
   });
+
 });
 
 /**
@@ -1019,5 +1020,65 @@ describe("NewsReelScreen 릴로 넘기기", () => {
     expect(screen.getByTestId("news-reel-use-why").textContent).toContain("글자 수");
     fireEvent.click(screen.getByTestId("news-reel-use"));
     expect(onUseCard).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 🔴 목록에서 줄을 누르면 **주소만** 채워집니다 — 붙여넣은 본문을 지우지 않으려고 그렇게 두었는데,
+ * 그러면 화면이 **두 기사를 동시에** 들고 있게 됩니다. 캡틴D: *「다른 기사로 터치가 안 된다」* — 눌리긴
+ * 눌렸고, 아래 칸이 안 바뀌어 안 눌린 것처럼 보였습니다.
+ */
+describe("NewsReelScreen 주소와 본문이 어긋날 때", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const FEED = {
+    items: [
+      { url: "https://www.yna.co.kr/view/1", host: "yna.co.kr", publisher: "연합뉴스", title: "첫 기사", publishedAt: "2026-09-22T00:00:00.000Z", imageUrl: null },
+      { url: "https://www.yna.co.kr/view/2", host: "yna.co.kr", publisher: "연합뉴스", title: "두 번째 기사", publishedAt: "2026-09-22T01:00:00.000Z", imageUrl: null },
+    ],
+    unavailable: [],
+  };
+
+  it("says the article below is still the previous one when another row is pressed", async () => {
+    stubRoutes({
+      "GET /news/feed": FEED,
+      "POST /news/article": { outcome: "article", article: { title: "첫 기사", body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: FEED.items[0]!.url } },
+    });
+    renderScreen();
+
+    fireEvent.click(await screen.findByTestId(`news-feed-item-${FEED.items[0]!.url}`));
+    fireEvent.click(screen.getByTestId("news-fetch"));
+    await screen.findByTestId("news-fetch-ok");
+
+    /* 두 번째 줄을 누르면 주소만 바뀝니다 — 아래 글은 아직 첫 기사입니다. */
+    fireEvent.click(screen.getByTestId(`news-feed-item-${FEED.items[1]!.url}`));
+
+    expect(screen.getByTestId("news-fetch-stale").textContent).toContain("앞 기사");
+    /* 🔴 「가져왔습니다」 초록 줄이 남아 있으면, 그 줄이 **지금 아래 글을 보증하는 것처럼** 읽힙니다. */
+    expect(screen.queryByTestId("news-fetch-ok")).toBeNull();
+  });
+
+  it("says nothing while the address and the article below are the same one", async () => {
+    stubRoutes({
+      "GET /news/feed": FEED,
+      "POST /news/article": { outcome: "article", article: { title: "첫 기사", body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: FEED.items[0]!.url } },
+    });
+    renderScreen();
+
+    fireEvent.click(await screen.findByTestId(`news-feed-item-${FEED.items[0]!.url}`));
+    fireEvent.click(screen.getByTestId("news-fetch"));
+    await screen.findByTestId("news-fetch-ok");
+
+    expect(screen.queryByTestId("news-fetch-stale")).toBeNull();
+  });
+
+  it("does not cry stale before anything has been fetched at all", async () => {
+    stubRoutes({ "GET /news/feed": FEED });
+    renderScreen();
+
+    fireEvent.click(await screen.findByTestId(`news-feed-item-${FEED.items[0]!.url}`));
+
+    /* 아래 칸이 비어 있으면 어긋날 것이 없습니다. */
+    expect(screen.queryByTestId("news-fetch-stale")).toBeNull();
   });
 });
