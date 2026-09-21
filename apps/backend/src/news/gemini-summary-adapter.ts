@@ -34,6 +34,21 @@ import { newsReelCardPrompt } from "./news-reel-card-text.js";
  */
 export const GEMINI_SUMMARY_MODEL = "gemini-3.6-flash";
 
+/**
+ * Where a request goes when {@link GEMINI_SUMMARY_MODEL} is too busy to take it, or is gone.
+ *
+ * 🔴 2026-09-22, 01:07–01:26: timeout, timeout, then `503 「This model is currently experiencing high demand」`
+ * twice in a row (the one retry included). 캡틴D could not make a reel for twenty minutes while nothing on our
+ * side was wrong.
+ *
+ * 🟠 **Why this name and not a better one:** it is the only other name **confirmed by an actual call**
+ * (2026-09-20, see above) — a listed name proved nothing twice. The objection above to pinning the alias still
+ * holds for the *usual* path, which is why it stays second: it is used only when the pinned model has refused,
+ * and every answer from it goes through the same `checkNewsSummary` as the pinned model's. 🟠 It may point at the
+ * same model and be just as busy — then nothing is lost but a request Google did not process.
+ */
+export const GEMINI_SUMMARY_FALLBACK_MODEL = "gemini-flash-latest";
+
 const ENDPOINT = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -49,24 +64,24 @@ const ENDPOINT = (model: string) =>
 export const GEMINI_SUMMARY_TIMEOUT_MS = 90_000;
 
 /**
- * 🔴 **One retry, and only for 5xx.**
+ * 🔴 **Retries are for 5xx only, and there are three of them now, spaced out.**
  *
  * 캡틴D, first working day: 요약 pressed, 「요약을 받지 못했다」, pressed again, same. Probed from outside the
  * app — `gemini-3.6-flash` answers 503 「This model is currently experiencing high demand. Spikes in demand are
  * usually temporary」 and then answers 200 three times in a row a minute later. It is not down; it is busy in
- * bursts, and a single attempt turns somebody's article into a dead end at random.
+ * bursts. One retry 1.5 seconds later was not enough (2026-09-22: both attempts 503), so the waits grow —
+ * 2 s, 5 s, 10 s — and then the fallback model gets the same.
  *
- * 🟠 The OpenAI path has retried server errors since it was written (`OPENAI_RETRYABLE_CATEGORIES` holds
- * `server`). This adapter never did — the asymmetry was invisible until a provider actually got busy.
+ * 🟢 **A 503 costs nothing.** Google did not process the request; that is what the status says. So retrying one
+ * spends no money, and `NewsCallQuota` books one entry per person action, not per attempt — the day's cap still
+ * bounds presses.
  *
- * 🔴 **Only 5xx.** A 429 is the free tier's own refusal and retrying it is what a rate limit exists to stop; a
- * 4xx is a request that will fail identically next time. Both are handed back as they were.
- *
- * 🔴 **One retry, not three.** Every attempt is a real request, and `NewsCallQuota` books one entry per person
- * action rather than per attempt — so the day's bound of 30 becomes at most 60 requests, not 90 or 120. That
- * factor is written down here because it is the cost of this retry existing.
+ * 🔴 **Not 429, not a timeout, not other 4xx.** A 429 is the free tier's own refusal and retrying it is what a
+ * rate limit exists to stop. A timeout may have been processed — and billed — and the person has already waited
+ * for it. Other 4xx fail identically next time. The one 4xx that moves to the fallback is 404: that is a model
+ * name retired under us, which has happened twice.
  */
-export const GEMINI_SUMMARY_RETRY_DELAY_MS = 1_500;
+export const GEMINI_SUMMARY_RETRY_DELAYS_MS: readonly number[] = [2_000, 5_000, 10_000];
 
 export class NewsSummaryProviderError extends Error {
   /**
@@ -94,7 +109,7 @@ export interface GeminiSummaryDeps {
   fetch?: typeof globalThis.fetch;
   model?: string;
   timeoutMs?: number;
-  /** Replaceable so a pair can exercise the retry without waiting a second and a half for it. */
+  /** Replaceable so a pair can exercise the retries without waiting for them. Replaces every wait. */
   retryDelayMs?: number;
 }
 
@@ -168,15 +183,15 @@ export async function writeNewsReelCardText(
   return askGemini(newsReelCardPrompt(article), apiKey, deps);
 }
 
-/** One request to the provider, with the retry and the timeout the whole feature shares. */
+/** One request to the provider, with the retries, the fallback and the timeout the whole feature shares. */
 async function askGemini(promptText: string, apiKey: string, deps: GeminiSummaryDeps): Promise<string> {
   const call = deps.fetch ?? globalThis.fetch;
   // D-016: a test process must never reach a real provider with whatever key happens to sit on disk.
   assertRealNetworkCallAllowed("Gemini", call);
 
-  const send = async (): Promise<Response> => {
+  const send = async (model: string): Promise<Response> => {
     try {
-      return await call(ENDPOINT(deps.model ?? GEMINI_SUMMARY_MODEL), {
+      return await call(ENDPOINT(model), {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
@@ -188,25 +203,32 @@ async function askGemini(promptText: string, apiKey: string, deps: GeminiSummary
       });
     } catch (error) {
       const timedOut = error instanceof Error && error.name === "TimeoutError";
-      throw new NewsSummaryProviderError("The summary provider could not be reached.", undefined, timedOut ? "timeout" : "unreachable");
+      throw new NewsSummaryProviderError("The summary provider could not be reached.", undefined, `${model} ${timedOut ? "timeout" : "unreachable"}`);
     }
   };
+  const wait = (ms: number) => new Promise((resume) => setTimeout(resume, deps.retryDelayMs ?? ms));
 
-  let response = await send();
-  if (response.status >= 500) {
-    await new Promise((resume) => setTimeout(resume, deps.retryDelayMs ?? GEMINI_SUMMARY_RETRY_DELAY_MS));
-    response = await send();
-  }
+  const models = deps.model ? [deps.model] : [GEMINI_SUMMARY_MODEL, GEMINI_SUMMARY_FALLBACK_MODEL];
+  let refused: NewsSummaryProviderError | undefined;
+  for (const model of models) {
+    let response = await send(model);
+    for (const delay of GEMINI_SUMMARY_RETRY_DELAYS_MS) {
+      if (response.status < 500) break;
+      await wait(delay);
+      response = await send(model);
+    }
+    if (response.ok) return textOf(await response.json().catch(() => null));
 
-  if (!response.ok) {
     // 🟠 The status travels because 429 is the one the person can act on — it is the free tier's own refusal,
     // arriving after ours would have. Anything else is ours to look at, not theirs.
     const said = await providerMessageOf(response);
-    throw new NewsSummaryProviderError(
+    refused = new NewsSummaryProviderError(
       `The summary provider refused the request (${response.status}).`,
       response.status,
-      said ? `http ${response.status}: ${said}` : `http ${response.status}`,
+      said ? `${model} http ${response.status}: ${said}` : `${model} http ${response.status}`,
     );
+    // Only "busy" and "that model is gone" are worth another model; anything else would fail there too.
+    if (response.status < 500 && response.status !== 404) break;
   }
-  return textOf(await response.json().catch(() => null));
+  throw refused!;
 }

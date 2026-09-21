@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { NEWS_SUMMARY_MAX_CHARS, type NewsArticleInput } from "@ai-animation-studio/shared";
 
-import { GEMINI_SUMMARY_MODEL, NewsSummaryProviderError, summariseArticle } from "./gemini-summary-adapter.js";
+import { GEMINI_SUMMARY_FALLBACK_MODEL, GEMINI_SUMMARY_MODEL, GEMINI_SUMMARY_RETRY_DELAYS_MS, NewsSummaryProviderError, summariseArticle } from "./gemini-summary-adapter.js";
 
 /**
  * The one paid-capable call in the news reel, tested on its own.
@@ -122,7 +122,7 @@ describe("the summary adapter's answer", () => {
     expect(tooMany).toBeInstanceOf(NewsSummaryProviderError);
     expect((tooMany as NewsSummaryProviderError).status).toBe(429);
 
-    const ours = await summariseArticle(ARTICLE, "key", { fetch: answering({}, 500) }).catch((error: unknown) => error);
+    const ours = await summariseArticle(ARTICLE, "key", { fetch: answering({}, 500), retryDelayMs: 0 }).catch((error: unknown) => error);
     expect((ours as NewsSummaryProviderError).status).toBe(500);
   });
 
@@ -177,12 +177,52 @@ describe("a provider that is merely busy", () => {
     }
   });
 
-  /** 🟠 One retry, not a loop — a provider that is down stays down, and the person is told rather than waited on. */
-  it("gives up after the second attempt, keeping the status", async () => {
+  /** 🟠 Bounded, not a loop — a provider that stays busy is given up on, and the person is told rather than waited on. */
+  it("gives up after the retries on both models, keeping the status", async () => {
     const call = vi.fn(async () => new Response("", { status: 503 })) as unknown as typeof globalThis.fetch;
     const error = await summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 }).catch((caught: unknown) => caught);
     expect((error as NewsSummaryProviderError).status).toBe(503);
-    expect((call as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(2);
+    const perModel = 1 + GEMINI_SUMMARY_RETRY_DELAYS_MS.length;
+    expect((call as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(perModel * 2);
+  });
+
+  /**
+   * 🔴 2026-09-22: timeout, timeout, then 503 on both attempts — twenty minutes with no reel and nothing wrong on
+   * our side. The fallback is the one other name an actual call has confirmed.
+   */
+  it("asks the fallback model when the pinned one stays busy, and returns its answer", async () => {
+    const urls: string[] = [];
+    const call = vi.fn(async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return String(url).includes(`/${GEMINI_SUMMARY_MODEL}:`)
+        ? new Response("", { status: 503 })
+        : new Response(JSON.stringify(ok("물가는 3.2% 둔화됐다.")), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+
+    expect(await summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 })).toBe("물가는 3.2% 둔화됐다.");
+    expect(urls.at(-1)).toContain(`/${GEMINI_SUMMARY_FALLBACK_MODEL}:`);
+    expect(urls.filter((url) => url.includes(`/${GEMINI_SUMMARY_MODEL}:`))).toHaveLength(1 + GEMINI_SUMMARY_RETRY_DELAYS_MS.length);
+  });
+
+  /** A retired name is the other thing a second model fixes — it has happened twice. */
+  it("asks the fallback model when the pinned one is gone", async () => {
+    const urls: string[] = [];
+    const call = vi.fn(async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return String(url).includes(`/${GEMINI_SUMMARY_MODEL}:`)
+        ? new Response(JSON.stringify({ error: { message: "no longer available" } }), { status: 404 })
+        : new Response(JSON.stringify(ok("요약")), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+
+    expect(await summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 })).toBe("요약");
+    expect(urls).toHaveLength(2);
+  });
+
+  /** 🔴 The free tier's own refusal is not a busy model — another model under the same key is the same refusal. */
+  it("does not take a rate limit to the fallback model", async () => {
+    const call = vi.fn(async () => new Response("", { status: 429 })) as unknown as typeof globalThis.fetch;
+    await expect(summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 })).rejects.toBeInstanceOf(NewsSummaryProviderError);
+    expect((call as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(1);
   });
 });
 
@@ -197,36 +237,37 @@ describe("what a failure is called", () => {
 
   it("keeps the provider's own sentence with the status — that is where a retired model says so", async () => {
     const call = answering({ error: { message: "This model models/gemini-3.6-flash is no longer available   to new users." } }, 404);
+    // Both models answered 404 here, so the one named is the last one asked.
     expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: call }))).toBe(
-      "http 404: This model models/gemini-3.6-flash is no longer available to new users.",
+      `${GEMINI_SUMMARY_FALLBACK_MODEL} http 404: This model models/gemini-3.6-flash is no longer available to new users.`,
     );
   });
 
   it("keeps the last status when a busy provider stays busy", async () => {
     const call = answering({ error: { message: "This model is currently experiencing high demand." } }, 503);
     expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 }))).toBe(
-      "http 503: This model is currently experiencing high demand.",
+      `${GEMINI_SUMMARY_FALLBACK_MODEL} http 503: This model is currently experiencing high demand.`,
     );
   });
 
   it("says only the status when the refusal carried no sentence", async () => {
     const call = vi.fn(async () => new Response("", { status: 429 })) as unknown as typeof globalThis.fetch;
-    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: call }))).toBe("http 429");
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: call }))).toBe(`${GEMINI_SUMMARY_MODEL} http 429`);
   });
 
   it("cuts a long sentence short rather than filling the ledger with it", async () => {
     const call = answering({ error: { message: "가".repeat(1_000) } }, 400);
-    expect((await failureOf(summariseArticle(ARTICLE, "key", { fetch: call }))).length).toBeLessThanOrEqual("http 400: ".length + 200);
+    expect((await failureOf(summariseArticle(ARTICLE, "key", { fetch: call }))).length).toBeLessThanOrEqual(`${GEMINI_SUMMARY_MODEL} http 400: `.length + 200);
   });
 
   it("tells a provider that never answered from one that could not be reached", async () => {
     const hangs = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_, reject) => {
       init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
     })) as unknown as typeof globalThis.fetch;
-    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: hangs, timeoutMs: 30 }))).toBe("timeout");
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: hangs, timeoutMs: 30 }))).toBe(`${GEMINI_SUMMARY_MODEL} timeout`);
 
     const refused = vi.fn(async () => { throw new TypeError("fetch failed"); }) as unknown as typeof globalThis.fetch;
-    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: refused }))).toBe("unreachable");
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: refused }))).toBe(`${GEMINI_SUMMARY_MODEL} unreachable`);
   });
 
   it("calls an answer with nothing in it empty", async () => {
