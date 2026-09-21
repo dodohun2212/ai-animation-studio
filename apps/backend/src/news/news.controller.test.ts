@@ -349,7 +349,8 @@ describe("what the screen is told about each publisher", () => {
     const bodyOf = (host: string) => publishers.find((publisher) => publisher.host === host)?.body;
 
     expect(bodyOf("imbc.com")).toBe("paste");
-    expect(bodyOf("donga.com")).toBe("varies");
+    // 동아 was the one `varies`; its body container is known now and ten of ten came back (2026-09-22).
+    expect(bodyOf("donga.com")).toBe("address");
     expect(bodyOf("yna.co.kr")).toBe("address");
     expect(bodyOf("imbc.com")).not.toBe(bodyOf("donga.com"));
   });

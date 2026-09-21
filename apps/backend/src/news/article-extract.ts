@@ -21,6 +21,12 @@
 const BODY_PATTERNS: readonly RegExp[] = [
   /<article\b[^>]*>([\s\S]*?)<\/article>/i,
   /<div\b[^>]*\b(?:id|class)\s*=\s*["'][^"']*\b(?:article-body|articleBody|article_body|story-body|news-article-body|art_text|article-text)\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+  /**
+   * 동아일보. The body is bare text between `<br><br>` straight inside `<section class="news_view">` — no `<p>`, so
+   * the structural fallback below finds no paragraphs, and the page's first `<article>` is the reporter box.
+   * 2026-09-22: ten of the day's 110 feed rows, every one `body_not_found` until this line.
+   */
+  /<section\b[^>]*\bclass\s*=\s*["'][^"']*\bnews_view\b[^"']*["'][^>]*>([\s\S]*?)<\/section>/i,
 ];
 
 /**
@@ -150,8 +156,11 @@ function stripTags(html: string): string {
       .replace(/<[^>]+>/g, ""),
   )
     .replace(/[ \t ]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
+    // Trim before collapsing: a line of only spaces is not empty until trimmed, so collapsing first let
+    // 동아일보's nine blank lines between the deck and the body through — each publisher's markup left its own
+    // gaps, which is part of why articles came out spaced differently.
     .split("\n").map((line) => line.trim()).join("\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 

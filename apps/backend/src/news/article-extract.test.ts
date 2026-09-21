@@ -25,6 +25,31 @@ describe("article extraction", () => {
   });
 
   /**
+   * 동아일보: no `<p>` at all — bare text between `<br><br>` straight inside `<section class="news_view">`, and the
+   * page's first `<article>` is the reporter box. Every 동아 article came back `body_not_found` until the section
+   * was named (2026-09-22, 0 of 10 → 10 of 10). Shaped like the real page, written here rather than copied.
+   */
+  it("reads 동아일보's body, which is bare text between line breaks in a section", () => {
+    const article = extractArticle(page(`
+      <article class='author_info'>기자 소개</article>
+      <section class="news_view">
+        <h2 class='sub_tit'>유엔총회서 기조연설<br />      <br />   </h2>
+        <figure class="img_cont"><figcaption>사진 설명 2026.9.21</figcaption></figure>
+        ${filler("정상회담")}<br><br>통계청은 3.2%라고 밝혔다.<br><br>
+      </section>`));
+    expect(article.body).toContain("통계청은 3.2%라고 밝혔다.");
+    expect(article.body).not.toContain("기자 소개");
+    expect(article.body).not.toContain("사진 설명");
+  });
+
+  /** A line of only spaces is a blank line; runs of them must not pile up into a tall gap between paragraphs. */
+  it("never leaves more than one blank line, however many space-only lines the markup has", () => {
+    const article = extractArticle(page(`<article><p>${filler("물가")}</p>   <br>  <br> <br>  <br>   <p>통계청은 3.2%라고 밝혔다.</p></article>`));
+    expect(article.body).not.toMatch(/\n{3,}/);
+    expect(article.body).toContain("통계청은 3.2%라고 밝혔다.");
+  });
+
+  /**
    * 🔴 **The pair this file exists for, and it is the *opposite* of the obvious danger.** A body that is too
    * small makes a summary thin (Cowork Round 931 §4) — bad, but every claim in it is genuinely in the text. A
    * body that is too **large** makes `checkNewsSummary` stop guarding: it asks "is this number in the article?",

@@ -35,7 +35,8 @@ import { newsDailyLimitReached, newsLedgerUnreadable, newsSummaryArticleInvalid,
  * Cowork Round 936 §1):
  *
  *     주소만으로 됨 (4/4)   연합 · 뉴시스 · 중앙 · 한겨레 · 경향 · 한국일보
- *     기사마다 다름 (3/4)   동아
+ *     기사마다 다름 (3/4)   동아 — 2026-09-22 에 0/4 로 재측정, 원인은 본문 틀(`section.news_view`)을 몰랐던 것.
+ *                          틀을 알려 준 뒤 그날 목록의 동아 10건이 10/10 → `address`
  *     본문이 HTML 에 없음   MBC · SBS · YTN — 기사 페이지가 4KB 에 글자 162자(MBC), 81자(SBS)다
  *     모름                 조선 · KBS
  *
@@ -52,7 +53,7 @@ const PUBLISHER_FACTS: Record<string, { name: string; body: NewsPublisherBody }>
   "newsis.com": { name: "뉴시스", body: "address" },
   "chosun.com": { name: "조선일보", body: "unknown" },
   "joongang.co.kr": { name: "중앙일보", body: "address" },
-  "donga.com": { name: "동아일보", body: "varies" },
+  "donga.com": { name: "동아일보", body: "address" },
   "hani.co.kr": { name: "한겨레", body: "address" },
   "khan.co.kr": { name: "경향신문", body: "address" },
   "hankookilbo.com": { name: "한국일보", body: "address" },
