@@ -7,6 +7,7 @@ import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { Spinner } from "./Spinner.js";
 import { cardSectionRoomy as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 import { CountedField, newsReelFieldValue } from "./ui/CountedField.js";
+import type { NewsReelCardText } from "./NewsReelCreateScreen.js";
 
 interface Props {
   onBack: () => void;
@@ -17,7 +18,12 @@ interface Props {
    * and that is deliberate rather than a warning: a person who is told "this might be wrong" and given a
    * working button presses the button.
    */
-  onUseSummary: (quote: string, sourceLine: string) => void;
+  /**
+   * 채운 네 줄과 언론사를 **뉴스 릴 만들기 화면**으로 넘깁니다.
+   *
+   * 🔴 출처 두 칸은 안 넘깁니다 — 그건 **그림에 딸린 것**이고 그림은 저쪽에서 고릅니다(D-054).
+   */
+  onUseCard: (text: NewsReelCardText) => void;
 }
 
 const field = "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600";
@@ -172,7 +178,7 @@ const PUBLISHER_GROUPS: Record<NewsPublisherBody, { title: string; note: string;
  */
 const PUBLISHER_GROUP_ORDER: NewsPublisherBody[] = ["address", "varies", "unknown", "paste"];
 
-export function NewsReelScreen({ onBack, onUseSummary }: Props) {
+export function NewsReelScreen({ onBack, onUseCard }: Props) {
   const [setup, setSetup] = useState<Setup>({ status: "loading" });
   const [feed, setFeed] = useState<Feed>({ status: "loading" });
   const [url, setUrl] = useState("");
@@ -379,10 +385,28 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   };
   const reelBoxes = NEWS_REEL_TEXT_FIELDS.map((field) => newsReelTextBox(field, newsReelFieldValue(reelValues[field])));
   const reelRefused = reelBoxes.filter((box) => box.refusal !== null);
+  /* 🔴 **언론사도 있어야 합니다** — 위 띠에 들어가는 이름이고, 계약이 `publisher` 를 필수로 받습니다.
+     🟠 글자 수를 안 세는 이유는 계약의 표에 그 칸이 없어서입니다 — 띠는 폭에 맞춰 그려집니다. */
 
   const trimmedArticle = articleText.trim();
   /** 🟠 접힌 칸이 **비었는지 채워졌는지**를 접힌 채로 말해 줍니다 — 안 그러면 사람이 열어 봐야 압니다. */
   const articleFilled = trimmedArticle !== "" || title.trim() !== "";
+
+  /**
+   * 🔴 **구워지는 글은 네 줄입니다 — 그래서 대조도 네 줄 위에서 돕니다.**
+   *
+   * 요약만 대조하고 네 줄을 안 보면, **정작 파일에 박히는 글이 검사 밖**에 있습니다(CLI Round 1055 §2).
+   * 🟠 요약 쪽 대조와 **둘이 되는 것이 맞습니다** — 칸이 둘이라서입니다. 이름으로 갈라 둡니다.
+   *
+   * 🟠 받은 `check` 를 그리지 않고 **다시 계산합니다.** 사람이 칸을 고치는 순간 받은 답은 낡습니다.
+   */
+  const reelJoined = [headline1, headline2, caption1, caption2].map((one) => one.trim()).filter((one) => one.length > 0).join(" ");
+  const reelCheck = useMemo(
+    () => (reelJoined.length > 0 && trimmedArticle.length > 0 ? checkNewsSummary(reelJoined, trimmedArticle) : { claims: [], missing: [] }),
+    [reelJoined, trimmedArticle],
+  );
+  const reelBlocked = reelCheck.missing.length > 0;
+  const reelReady = reelRefused.length === 0 && outlet.trim().length > 0 && !reelBlocked;
   const ready = trimmedSummary.length > 0 && trimmedArticle.length > 0;
 
   /* 글자를 칠 때마다 다시 봅니다 — 순수 함수라 서버도 돈도 안 듭니다. 「확인」 버튼을 따로 두면 사람이
@@ -799,6 +823,20 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         {/* 🔴 **못 채운 것을 말해 줍니다.** 세 가지가 서로 다른 일을 시킵니다 — 안 온 칸은 **쓰라**는 것이고,
             두 번 온 칸은 **둘 중 하나를 고르라**는 것이고, 라벨 없이 온 줄은 **쓸 만하면 옮겨 적으라**는 것입니다.
             하나로 뭉개면 사람이 어디를 봐야 할지 모릅니다. */}
+        {/* 🔴 **네 줄 대조** — 요약 대조와 다른 글을 봅니다. 구워지는 것이 이 넷이라, 여기서 걸리면 못 넘어갑니다. */}
+        {reelBlocked && (
+          <div role="alert" className="mt-3 space-y-1 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" data-testid="news-reel-check-failed">
+            <p>이 네 줄에 <strong>기사에서 못 찾은 것</strong>이 있습니다 — 고쳐야 넘어갈 수 있습니다.</p>
+            <ul className="list-disc space-y-0.5 pl-5 text-xs">
+              {reelCheck.missing.map((claim) => (
+                <li key={`${claim.kind}-${claim.text}`} data-testid={`news-reel-check-missing-${claim.text}`}>
+                  {CLAIM_LABEL[claim.kind]} 「{claim.text}」
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {drawLeftovers && (drawLeftovers.missing.length > 0 || drawLeftovers.repeated.length > 0 || drawLeftovers.ignored.length > 0) && (
           <div className="mt-3 space-y-1 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-300" data-testid="news-reel-draw-leftovers">
             {drawLeftovers.missing.length > 0 && (
@@ -860,11 +898,37 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         {/* 🔴 **아직 보낼 길이 없습니다.** 계약은 들어왔지만 라우트·핸들러는 CLI 가 한 커밋으로 넣는 중입니다
             (CLI 1029 §1). 회색 버튼을 만들어 두는 것보다 **없다고 적는 편**이 낫습니다 — 안 눌리는 버튼은
             「곧 될 것」이 아니라 「내가 뭘 잘못했나」로 읽힙니다. */}
-        <p className="mt-4 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3 text-xs text-slate-400" data-testid="news-reel-no-route">
-          {reelRefused.length === 0
-            ? "네 칸이 다 찼습니다. 릴로 굽는 길은 아직 서버에 없습니다 — 만들어지는 대로 이 자리에 버튼이 생깁니다."
-            : "글자 수가 맞으면 여기서 릴을 만들게 됩니다. 굽는 길은 아직 서버에 없습니다."}
-        </p>
+        {/* 🔴 **여기서 굽지 않습니다** — 그림을 고르는 자리가 다음 화면입니다. 이 버튼은 **글을 들고 넘어가는**
+            것뿐이고, 돈은 어느 쪽에서도 안 나갑니다. */}
+        <div className="mt-4 space-y-2">
+          <button
+            type="button"
+            data-testid="news-reel-use"
+            className={primaryButton}
+            disabled={!reelReady}
+            onClick={() => {
+              if (!reelReady) return;
+              onUseCard({
+                publisher: outlet.trim(),
+                headline: { line1: headline1.trim(), line2: headline2.trim() },
+                /* 🔴 빈 둘째 줄은 `""` 가 아니라 `null` — 계약이 빈 문자열을 값으로 안 칩니다(D-054). */
+                caption: { line1: caption1.trim(), line2: newsReelFieldValue(caption2) },
+              });
+            }}
+          >
+            이 글로 릴 만들기
+          </button>
+          {/* 🟠 못 누르는 이유를 **이유별로** 말합니다 — 닫힌 버튼만 두면 화면이 고장 난 것으로 읽힙니다. */}
+          {!reelReady && (
+            <p className="text-xs text-slate-500" data-testid="news-reel-use-why">
+              {reelRefused.length > 0
+                ? "글자 수가 맞지 않는 칸이 있습니다."
+                : reelBlocked
+                  ? "대조에서 걸린 것을 고쳐야 넘어갈 수 있습니다."
+                  : "언론사 칸이 비어 있습니다 — 띠에 들어갈 이름입니다."}
+            </p>
+          )}
+        </div>
       </section>
 
       <section className={cardSection} aria-label="원문 대조">
@@ -923,20 +987,6 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         </p>
       </section>
 
-      <button
-        type="button"
-        data-testid="news-use-summary"
-        className={primaryButton}
-        disabled={!ready || blocked || sourceLine.length === 0}
-        onClick={() => onUseSummary(trimmedSummary, sourceLine)}
-      >
-        이 요약으로 카드 만들기
-      </button>
-      {ready && blocked && (
-        <p className="text-xs text-slate-500" data-testid="news-use-blocked-why">
-          대조에서 걸린 것을 고쳐야 넘어갈 수 있습니다.
-        </p>
-      )}
     </div>
   );
 }

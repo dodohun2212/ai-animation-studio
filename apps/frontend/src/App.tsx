@@ -13,6 +13,8 @@ import { VideoLibraryScreen } from "./components/VideoLibraryScreen.js";
 import { PhotoCardScreen } from "./components/PhotoCardScreen.js";
 import { PhotoCardListScreen } from "./components/PhotoCardListScreen.js";
 import { NewsReelScreen } from "./components/NewsReelScreen.js";
+import { NewsReelListScreen } from "./components/NewsReelListScreen.js";
+import { NewsReelCreateScreen, type NewsReelCardText } from "./components/NewsReelCreateScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
 import { MappingReviewScreen } from "./components/MappingReviewScreen.js";
@@ -70,7 +72,18 @@ type Screen =
    * 자막·음악·출처가 두 곳에서 갈립니다) — 대신 그 화면이 **자기가 지금 무엇을 만드는 중인지** 말합니다.
    */
   | { name: "photoCardCreate"; from?: "newsReel" }
+  /** 만들어 둔 **뉴스 릴 목록** — 사이드바의 「뉴스 릴」이 여는 곳. */
   | { name: "newsReel" }
+  /** 기사에서 **네 줄을 뽑는** 화면. 목록(`newsReel`)과 갈라져 있습니다 — 하나는 찾는 곳, 하나는 쓰는 곳. */
+  | { name: "newsReelWrite" }
+  /**
+   * 뉴스 릴을 **만드는** 화면 — 그림을 고르고 이름을 붙입니다.
+   *
+   * 🔴 명언 카드 만들기와 갈라 둡니다(docs/06_DECISIONS.md D-052). 한 화면에 두면 그 화면이 **「지금 둘 중 뭘 만드나」**를
+   * 매번 물어야 하고, 받는 값도 `quote` 하나 대 네 줄로 다릅니다. 🟢 그림 고르개는 `PicturePicker` 하나를
+   * 같이 씁니다 — 갈라야 하는 건 계약이지 격자가 아닙니다.
+   */
+  | { name: "newsReelCreate" }
   | { name: "instagramPost"; initialProjectId?: string; initialEpisodeNumber?: number }
   | { name: "archive" }
   | { name: "workflowGuide" }
@@ -105,7 +118,7 @@ type Screen =
 type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber" | "from";
 const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber", "from"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
-  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: ["from"], newsReel: [],
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: ["from"], newsReel: [], newsReelWrite: [], newsReelCreate: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -298,7 +311,7 @@ export function navSectionFor(name: Screen["name"], from?: "newsReel"): NavSecti
   if (name === "audioLibrary") return "audioLibrary";
   // 만들기 화면에서도 사이드바의 「명언 카드」가 켜져 있어야 합니다 — 거기서 온 곳이 거기입니다.
   if (name === "photoCard") return "photoCard";
-  if (name === "newsReel") return "newsReel";
+  if (name === "newsReel" || name === "newsReelWrite" || name === "newsReelCreate") return "newsReel";
   // 🔴 만들기 화면은 **어디서 왔느냐**로 갈립니다 — 뉴스 릴에서 왔으면 왼쪽도 뉴스 릴에 남습니다.
   // 여기서 「명언 카드」로 옮겨 버리면 사람이 하던 일에서 **쫓겨난 것처럼** 보입니다.
   if (name === "photoCardCreate") return from === "newsReel" ? "newsReel" : "photoCard";
@@ -719,7 +732,10 @@ export function App() {
    * 다니지 않습니다** — 주소는 누구나 손으로 고칠 수 있어서, 거기 실으면 검사를 건너뛴 문장이 카드 화면에
    * 도착할 수 있습니다. 새로고침하면 사라지는 것이 맞습니다: 그때는 뉴스 화면에서 다시 대조해야 합니다.
    */
-  const [newsHandoff, setNewsHandoff] = useState<{ quote: string; sourceLine: string } | null>(null);
+  /* 🔴 뉴스 요약을 **명언 카드로** 넘기던 길은 없앴습니다 — 캡틴D: 「이건 뉴스 릴로 만들었는데 왜 명언
+     카드에 있는거야」. 릴은 이제 자기 길(`newsReelWrite` → `newsReelCreate`)로 만들어집니다. */
+  /* 🟠 뉴스 릴 글은 **주소가 아니라 상태**로 넘어갑니다 — 네 줄을 주소창에 실으면 되돌아온 주소가 무엇을 구울지 정하게 됩니다. */
+  const [reelText, setReelText] = useState<NewsReelCardText | null>(null);
   const shortProjectShell = useShortProjectShell(screen);
   /**
    * A story-only screen opened on a 명언 카드.
@@ -1017,21 +1033,36 @@ export function App() {
                 onBack={() => setScreen(screen.from === "newsReel" ? { name: "newsReel" } : { name: "photoCard" })}
                 onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
                 onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
-                initialQuote={newsHandoff?.quote}
-                initialCaptionNote={newsHandoff?.sourceLine}
               />
             )}
             {/* 뉴스 릴은 카드 한 장으로 끝납니다 — 그래서 자기 만들기 화면을 따로 두지 않고, 대조를 통과한
                 요약을 명언 카드 화면에 넘겨 줍니다. 릴을 만드는 길이 둘이 되면 자막·음악·출처가 두 곳에서
                 갈립니다. */}
+            {/* 🔴 **목록이 먼저입니다.** 릴은 단기 프로젝트에서도 명언 카드 목록에서도 빠지므로, 이 화면이
+                없으면 만든 릴이 아무 데도 안 실립니다. */}
             {screen.name === "newsReel" && (
-              <NewsReelScreen
+              <NewsReelListScreen
                 onBack={() => setScreen({ name: "list" })}
-                onUseSummary={(quote, sourceLine) => {
-                  setNewsHandoff({ quote, sourceLine });
-                  // 🟠 목록이 아니라 **만들기**로, 그리고 **어디서 왔는지 달고** 갑니다.
-                  setScreen({ name: "photoCardCreate", from: "newsReel" });
+                onCreateNew={() => setScreen({ name: "newsReelWrite" })}
+                onOpenReel={(projectId) => setScreen({ name: "detail", projectId })}
+              />
+            )}
+            {screen.name === "newsReelWrite" && (
+              <NewsReelScreen
+                onBack={() => setScreen({ name: "newsReel" })}
+                onUseCard={(text) => {
+                  setReelText(text);
+                  setScreen({ name: "newsReelCreate" });
                 }}
+              />
+            )}
+            {/* 🔴 글은 화면 상태로 넘깁니다 — 주소에 실으면 **네 줄이 주소창에** 들어가고, 되돌아온 주소가
+                무엇을 구울지 정하게 됩니다. 글 없이 열리면 그 화면이 「뉴스 릴에서 채워 오라」고 말합니다. */}
+            {screen.name === "newsReelCreate" && (
+              <NewsReelCreateScreen
+                text={reelText}
+                onBack={() => setScreen({ name: "newsReelWrite" })}
+                onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
               />
             )}
             {screen.name === "instagramPost" && <InstagramPostScreen initialProjectId={screen.initialProjectId} initialEpisodeNumber={screen.initialEpisodeNumber} onBack={() => setScreen({ name: "list" })} />}

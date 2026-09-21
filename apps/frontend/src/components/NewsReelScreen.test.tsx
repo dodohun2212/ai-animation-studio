@@ -41,9 +41,15 @@ const ARTICLE = [
   "야당은 \"제대로 된 개혁이라 할 수 있느냐\"고 비판했다.",
 ].join("\n");
 
-function renderScreen(onUseSummary = vi.fn()) {
-  render(<NewsReelScreen onBack={() => {}} onUseSummary={onUseSummary} />);
-  return onUseSummary;
+function renderScreen(): void {
+  render(<NewsReelScreen onBack={() => {}} onUseCard={vi.fn()} />);
+}
+
+/** 넘겨주는 쪽을 보는 짝은 **그 함수**를 돌려받아야 합니다 — 위 헬퍼는 요약 쪽을 돌려줍니다. */
+function renderScreenForCard(): ReturnType<typeof vi.fn> {
+  const onUseCard = vi.fn();
+  render(<NewsReelScreen onBack={() => {}} onUseCard={onUseCard} />);
+  return onUseCard;
 }
 
 async function typeUrlAndFetch(url: string): Promise<void> {
@@ -70,14 +76,19 @@ describe("NewsReelScreen", () => {
    * 그럴듯하게 지어내고, 뉴스에서는 그게 틀린 사실을 예쁘게 만들어 퍼뜨립니다. 그래서 짝의 첫 줄은
    * 「대조가 걸리면 넘어갈 수 없다」입니다 — 경고만 띄우고 버튼을 살려 두면 사람은 버튼을 누릅니다.
    */
-  it("will not hand a summary on while anything in it is missing from the article", () => {
-    const onUseSummary = renderScreen();
-    fill(ARTICLE, "국회가 후속 법안 53건을 통과시켰다.");
+  it("will not hand the four lines on while anything in them is missing from the article", () => {
+    const onUseCard = renderScreenForCard();
+    fill(ARTICLE, "국회가 후속 법안 51건을 통과시켰다.");
+    /* 🔴 구워지는 것은 **네 줄**입니다 — 요약이 통과해도 네 줄이 지어내면 막혀야 합니다. */
+    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "후속 법안 53건" } });
+    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "국회 본회의 통과" } });
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "재석 289명 중 180명 찬성" } });
 
-    expect(screen.getByTestId("news-check-failed").textContent).toContain("53건");
-    expect(screen.getByTestId("news-use-summary")).toBeDisabled();
-    fireEvent.click(screen.getByTestId("news-use-summary"));
-    expect(onUseSummary).not.toHaveBeenCalled();
+    expect(screen.getByTestId("news-reel-check-failed").textContent).toContain("53건");
+    expect(screen.getByTestId("news-reel-use")).toBeDisabled();
+    expect(screen.getByTestId("news-reel-use-why").textContent).toContain("대조");
+    fireEvent.click(screen.getByTestId("news-reel-use"));
+    expect(onUseCard).not.toHaveBeenCalled();
   });
 
   it("names what it could not find, and what kind of thing it was", () => {
@@ -88,17 +99,17 @@ describe("NewsReelScreen", () => {
     expect(screen.getByTestId("news-unverified-quote").textContent).toContain("완벽한 개혁이다");
   });
 
-  it("hands the summary and its source line on once everything checks out", () => {
-    const onUseSummary = renderScreen();
-    fill(ARTICLE, "국회가 2026년 9월 17일 후속 법안 51건을 통과시켰다. 10월 2일부터 시행된다.");
+  it("hands the four lines on once they check out against the article", () => {
+    const onUseCard = renderScreenForCard();
+    fill(ARTICLE, "국회가 2026년 9월 17일 후속 법안 51건을 통과시켰다.");
+    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "후속 법안 51건" } });
+    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "국회 본회의 통과" } });
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "10월 2일부터 시행" } });
 
-    expect(screen.getByTestId("news-check-passed")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("news-use-summary"));
+    expect(screen.queryByTestId("news-reel-check-failed")).toBeNull();
+    fireEvent.click(screen.getByTestId("news-reel-use"));
 
-    const [quote, sourceLine] = onUseSummary.mock.calls[0] as [string, string];
-    expect(quote).toContain("51건");
-    expect(sourceLine).toContain("서울경제");
-    expect(sourceLine).toContain("https://example.test/a");
+    expect(onUseCard.mock.calls[0]?.[0].headline.line1).toContain("51건");
   });
 
   /**
@@ -112,8 +123,18 @@ describe("NewsReelScreen", () => {
 
     expect(screen.queryByTestId("news-check-passed")).toBeNull();
     expect(screen.getByTestId("news-check-empty").textContent).toContain("확인된 것도 없습니다");
-    // 막지는 않습니다 — 딱딱한 사실이 없는 요약이 틀렸다는 뜻은 아닙니다.
-    expect(screen.getByTestId("news-use-summary")).not.toBeDisabled();
+  });
+
+  /* 🔴 대조할 것이 없는 네 줄도 **막지 않습니다** — 딱딱한 사실이 없다고 틀린 글은 아닙니다. */
+  it("does not block four lines that simply have nothing to check", () => {
+    renderScreenForCard();
+    fill(ARTICLE, "국회가 검찰 제도를 크게 바꾸기로 했다.");
+    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "검찰 제도 개편" } });
+    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "국회가 결정했다" } });
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "본회의 표결 뒤 회의장" } });
+
+    expect(screen.queryByTestId("news-reel-check-failed")).toBeNull();
+    expect(screen.getByTestId("news-reel-use")).not.toBeDisabled();
   });
 
   /**
@@ -131,12 +152,22 @@ describe("NewsReelScreen", () => {
     expect(limit).toContain("기사와 한 번 읽어");
   });
 
-  /** 출처 없이 남의 글을 요약해 올리는 것은 이 기능이 하려던 일이 아닙니다. */
-  it("will not hand anything on without a source line", () => {
-    renderScreen();
+  /**
+   * 🔴 출처 없이 남의 글로 무언가를 만드는 것은 이 기능이 하려던 일이 아닙니다.
+   *
+   * 🟠 넘기는 길이 바뀌면서 그 자리를 **언론사 칸**이 맡습니다 — 릴은 출처 한 줄이 아니라 **위 띠에 언론사
+   * 이름**을 박고, 계약이 `publisher` 를 필수로 받습니다. 「출처 없이는 안 넘어간다」는 규칙은 그대로입니다.
+   */
+  it("will not hand anything on without a publisher", () => {
+    const onUseCard = renderScreenForCard();
     fill(ARTICLE, "국회가 후속 법안 51건을 통과시켰다.", false);
+    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "후속 법안 51건" } });
+    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "국회 본회의 통과" } });
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "표결 직후 본회의장" } });
 
-    expect(screen.getByTestId("news-use-summary")).toBeDisabled();
+    expect(screen.getByTestId("news-reel-use")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("news-reel-use"));
+    expect(onUseCard).not.toHaveBeenCalled();
   });
 
   /**
@@ -837,17 +868,6 @@ describe("NewsReelScreen 릴 문구", () => {
     }
   });
 
-  it("treats an empty second caption line as a one-line caption, not as a refusal", async () => {
-    renderScreen();
-
-    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "국회 본회의 통과" } });
-    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "검찰청 62년 만에 폐지" } });
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "재석 289명 중 180명 찬성" } });
-
-    /* 🔴 둘째 자막은 안 채웠습니다. 그래도 **넷이 다 찬 것**입니다 — 계약이 그 칸만 없어도 된다고 말합니다. */
-    expect(screen.getByTestId("news-reel-no-route").textContent).toContain("네 칸이 다 찼습니다");
-  });
-
   it("counts a box of only spaces as empty, so it never becomes an empty string in the card", async () => {
     renderScreen();
 
@@ -855,14 +875,6 @@ describe("NewsReelScreen 릴 문구", () => {
 
     /* 🔴 `""` 는 계약이 값으로 안 칩니다(CLI 1029 §3). 공백만 친 칸도 **없는 것**이라야 `null` 로 넘어갑니다. */
     expect(screen.getByTestId("news-reel-caption2-count").textContent).toContain("0/");
-  });
-
-  it("does not offer a button it cannot honour — the route is not there yet", async () => {
-    renderScreen();
-
-    /* 🔴 안 눌리는 버튼은 「곧 됩니다」가 아니라 「내가 뭘 잘못했나」로 읽힙니다. */
-    expect(screen.queryByTestId("news-reel-create")).toBeNull();
-    expect(screen.getByTestId("news-reel-no-route").textContent).toContain("아직 서버에 없습니다");
   });
 });
 
@@ -944,5 +956,68 @@ describe("NewsReelScreen 네 줄 뽑기", () => {
     await screen.findByTestId("news-reel-draw-error");
     expect(screen.getByTestId("news-reel-draw")).toBeDisabled();
     expect(screen.getByTestId("news-summarize")).toBeDisabled();
+  });
+});
+
+/**
+ * 「이 글로 릴 만들기」 — **여기서 굽지 않습니다.** 글을 들고 넘어가는 것뿐입니다.
+ */
+describe("NewsReelScreen 릴로 넘기기", () => {
+  beforeEach(() => { stubRoutes(); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  function fillFour(): void {
+    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "국회 본회의 통과" } });
+    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "검찰청 62년 만에 폐지" } });
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "재석 289명 중 180명 찬성" } });
+    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "연합뉴스" } });
+  }
+
+  it("hands over the four lines and the publisher, and nothing else", async () => {
+    const onUseCard = renderScreenForCard();
+    fillFour();
+
+    fireEvent.click(screen.getByTestId("news-reel-use"));
+
+    /* 🔴 출처 두 칸은 **안 넘깁니다** — 그림에 딸린 것이고 그림은 다음 화면에서 고릅니다. */
+    expect(onUseCard).toHaveBeenCalledWith({
+      publisher: "연합뉴스",
+      headline: { line1: "국회 본회의 통과", line2: "검찰청 62년 만에 폐지" },
+      caption: { line1: "재석 289명 중 180명 찬성", line2: null },
+    });
+  });
+
+  it("sends an empty second caption line as null, never as an empty string", async () => {
+    const onUseCard = renderScreenForCard();
+    fillFour();
+    /* 공백만 친 칸도 없는 것입니다 — 계약은 빈 문자열을 값으로 치지 않습니다. */
+    fireEvent.change(screen.getByTestId("news-reel-caption2"), { target: { value: "   " } });
+
+    fireEvent.click(screen.getByTestId("news-reel-use"));
+
+    expect(onUseCard.mock.calls[0]?.[0].caption.line2).toBeNull();
+  });
+
+  it("will not hand over without a publisher — that name goes in the band", async () => {
+    const onUseCard = renderScreenForCard();
+    fillFour();
+    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "" } });
+
+    expect(screen.getByTestId("news-reel-use")).toBeDisabled();
+    expect(screen.getByTestId("news-reel-use-why").textContent).toContain("언론사");
+    fireEvent.click(screen.getByTestId("news-reel-use"));
+    expect(onUseCard).not.toHaveBeenCalled();
+  });
+
+  it("will not hand over a box that is over its limit", async () => {
+    const onUseCard = renderScreenForCard();
+    fillFour();
+    const limit = NEWS_REEL_TEXT_BOXES["headline.line1"].limit;
+    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "가".repeat(limit + 1) } });
+
+    expect(screen.getByTestId("news-reel-use")).toBeDisabled();
+    expect(screen.getByTestId("news-reel-use-why").textContent).toContain("글자 수");
+    fireEvent.click(screen.getByTestId("news-reel-use"));
+    expect(onUseCard).not.toHaveBeenCalled();
   });
 });

@@ -68,6 +68,25 @@ describe("ProjectList", () => {
     expect(screen.getByTestId("dashboard-summary").textContent).toContain("단기 프로젝트 1개");
   });
 
+  /**
+   * 🔴 뉴스 릴도 뺍니다 — 이 목록의 진행 막대는 릴에 없는 단계(승인·장면 영상)를 셉니다. 릴은 `photoCard` 가
+   * 아니라 **카드가 있느냐**(`newsReelCard`)로 알아봅니다. 서버가 묻는 것과 같은 질문입니다(docs/06_DECISIONS.md D-052).
+   */
+  it("leaves news reels out too — a reel has no steps this list counts", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [
+      makeProject({ id: "sample_project", workflowState: WorkflowState.Ready }),
+      makeProject({
+        id: "릴_검찰청", workflowState: WorkflowState.Completed,
+        newsReelCard: { publisher: "연합뉴스", headline: { line1: "국회 본회의 통과", line2: "검찰청 폐지" }, caption: { line1: "재석 289명", line2: null }, creditRequired: false },
+      }),
+    ] })));
+    render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+
+    expect(await screen.findByText("sample_project")).toBeTruthy();
+    expect(screen.queryByText("릴_검찰청")).toBeNull();
+    expect(screen.getByTestId("dashboard-summary").textContent).toContain("단기 프로젝트 1개");
+  });
+
   // Cards filling the whole answer is not an empty store, but it is an empty list — and the sentence a person
   // reads has to match what they see, not what the response carried.
   it("shows the empty-store message when every project in the answer is a photo card", async () => {

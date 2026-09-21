@@ -486,30 +486,41 @@ describe("App", () => {
   };
 
   /**
-   * 🔴 뉴스 릴은 카드 한 장으로 끝나므로, 자기 만들기 화면을 따로 두지 않고 **대조를 통과한 요약을 명언
-   * 카드 화면에 넘깁니다.** 그 넘김이 끊기면 사람은 방금 확인받은 문장을 카드 화면에서 **다시 손으로
-   * 옮겨 적게** 되고, 옮겨 적는 순간 대조는 아무 의미가 없어집니다(옮기다 틀려도 아무도 안 봅니다).
+   * 🔴 뉴스 릴은 **자기 길로만** 만들어집니다 — 네 줄을 쓰는 화면에서 만들기 화면으로, 명언 카드 화면을 거치지
+   * 않고. 캡틴D: 「이건 뉴스 릴로 만들었는데 왜 명언 카드에 있는거야」 — 요약을 명언 카드로 넘기던 옛 길로
+   * 만들어진 것은 **진짜 명언 카드**였습니다(docs/06_DECISIONS.md D-052).
    *
-   * 출처도 같이 가야 합니다 — 남의 기사를 줄인 글에서 출처가 빠지면 우리 글인 척하는 것입니다.
+   * 🟠 넘김이 끊기면 사람은 대조를 통과한 네 줄을 다음 화면에서 **다시 옮겨 적게** 되고, 옮겨 적는 순간
+   * 대조는 아무 의미가 없어집니다.
    */
-  it("carries a checked news summary — and its source — into the card screen", async () => {
+  it("carries the four lines into the reel's own make screen, not the card screen", async () => {
+    stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
+    render(<App />);
+    window.location.hash = "#/newsReelWrite";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+
+    fireEvent.change(await screen.findByTestId("news-reel-headline1"), { target: { value: "국회 본회의 통과" } });
+    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "후속 법률 51건" } });
+    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "재석 289명 중 180명 찬성" } });
+    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "서울경제" } });
+
+    fireEvent.click(screen.getByTestId("news-reel-use"));
+
+    const card = await screen.findByTestId("news-reel-create-card");
+    expect(card.textContent).toContain("후속 법률 51건");
+    expect(screen.queryByTestId("photo-card-quote")).toBeNull();
+  });
+
+  it("opens the reel list from the news reel door, and a 명언 카드 is not on it", async () => {
     stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
     render(<App />);
     window.location.hash = "#/newsReel";
     fireEvent(window, new HashChangeEvent("hashchange"));
 
-    const article = "국회는 2026년 9월 17일 후속 법률 51건을 통과시켰다.";
-    fireEvent.change(await screen.findByTestId("news-article"), { target: { value: article } });
-    fireEvent.change(screen.getByTestId("news-summary"), { target: { value: "국회가 법안 51건을 통과시켰다." } });
-    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "서울경제" } });
-    fireEvent.change(screen.getByTestId("news-published"), { target: { value: "2026-09-17" } });
-    fireEvent.change(screen.getByTestId("news-url"), { target: { value: "https://example.test/a" } });
-
-    fireEvent.click(screen.getByTestId("news-use-summary"));
-
-    const quote = await screen.findByTestId("photo-card-quote");
-    expect((quote as HTMLTextAreaElement).value).toContain("51건");
-    expect(screen.getByTestId("photo-card-source-note").textContent).toContain("서울경제");
+    /* 목록이 받은 것은 명언 카드 하나뿐입니다 — 릴이 아니니 싣지 않고, 없다고 말합니다. */
+    expect(await screen.findByTestId("news-reel-none")).toBeTruthy();
+    expect(screen.getByTestId("news-reel-new")).toBeTruthy();
+    expect(screen.queryByTestId("news-reel-headline1")).toBeNull();
   });
 
   it("gives a 명언 카드 its own two steps instead of the story pipeline", async () => {

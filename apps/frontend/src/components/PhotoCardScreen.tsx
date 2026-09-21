@@ -5,9 +5,9 @@ import { PHOTO_CARD_MAX_PICTURES, PHOTO_CARD_DURATIONS, PHOTO_CARD_QUOTE_MAX_LEN
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createPhotoCard, toPhotoCardDisplayError } from "../api/photoCardsApi.js";
 import { listProjects, toDisplayError } from "../api/projectsApi.js";
-import { Spinner } from "./Spinner.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSectionRoomy as cardSection, outlineButton } from "./ui/surfaces.js";
+import { PicturePicker } from "./ui/PicturePicker.js";
 
 interface Props {
   onBack: () => void;
@@ -130,12 +130,6 @@ export function PhotoCardScreen({ fromNewsReel = false, onBack, onCreated, onOpe
   const trimmedId = projectId.trim();
   const nameTaken = takenNames !== null && takenNames.has(trimmedId);
   const nameUsable = trimmedId.length > 0 && SAFE_NAME.test(trimmedId) && !nameTaken;
-  const atLimit = assetIds.length >= PHOTO_CARD_MAX_PICTURES;
-  /**
-   * 🔴 **상한에 닿아도 빼는 것은 늘 열려 있습니다.** 「12장이 찼다」를 이유로 버튼 전체를 닫으면, 잘못 고른
-   * 한 장을 **바꿀 수가 없어서** 사람이 갇힙니다 — 나가는 길은 폼을 다시 채우는 것뿐이고요. 닫히는 것은
-   * **아직 안 고른 것**뿐입니다.
-   */
   function togglePicture(id: string): void {
     setAssetIds((current) => {
       if (current.includes(id)) return current.filter((one) => one !== id);
@@ -144,14 +138,6 @@ export function PhotoCardScreen({ fromNewsReel = false, onBack, onCreated, onOpe
     });
   }
 
-  /**
-   * 🟠 **고르는 것이 곧 길이를 고르는 것입니다**(계약 주석, CLI Round 950).
-   *
-   * 카드는 예전엔 장면 하나라 길이가 곧 그 한 장의 유지 시간이었습니다. 이제 사진마다 장면 하나라
-   * **장수 × 한 장당 길이**가 완성 길이입니다. 이걸 화면이 말하지 않으면, 세 장을 고른 사람은 10초짜리를
-   * 기대하고 30초를 받습니다 — 그리고 그건 **다 구워진 뒤에야** 압니다.
-   */
-  const totalSeconds = assetIds.length * seconds;
   const ready = assetIds.length > 0 && trimmedQuote.length > 0 && nameUsable && trimmedQuote.length <= PHOTO_CARD_QUOTE_MAX_LENGTH;
 
   async function submit(event: FormEvent) {
@@ -207,81 +193,15 @@ export function PhotoCardScreen({ fromNewsReel = false, onBack, onCreated, onOpe
       )}
 
       <form className="space-y-5" onSubmit={(event) => void submit(event)}>
-        <section aria-label="그림 고르기" className={cardSection}>
-          <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-100">
-            <span aria-hidden="true" className="h-4 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-            그림 고르기
-          </h2>
-          {!assets && !listError && <Spinner label="보관함을 불러오는 중..." />}
-          {listError && (
-            <p role="alert" data-testid="photo-card-list-error" data-error-code={listError.code} className="text-sm text-rose-400">
-              {listError.message}
-            </p>
-          )}
-          {assets && assets.length === 0 && (
-            <p data-testid="photo-card-empty" className="text-sm text-slate-400">
-              보관함에 쓸 수 있는 그림이 없습니다. 이미지 보관함에서 먼저 등록해 주세요.
-            </p>
-          )}
-          {assets && assets.length > 0 && (
-            <ul aria-label="그림 목록" className="grid max-h-[420px] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
-              {assets.map((asset) => {
-                const order = assetIds.indexOf(asset.assetId);
-                const picked = order >= 0;
-                // 🔴 이미 고른 것은 상한과 무관하게 계속 누를 수 있습니다 — 그 누름은 「빼기」입니다.
-                const closed = pending || (!picked && atLimit);
-                return (
-                  <li key={asset.assetId}>
-                    <button
-                      type="button"
-                      data-testid={`photo-card-asset-${asset.assetId}`}
-                      data-pick-order={picked ? order + 1 : undefined}
-                      aria-pressed={picked}
-                      disabled={closed}
-                      className={`relative w-full space-y-1 rounded-xl border p-1.5 text-left disabled:opacity-40 ${picked ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 hover:bg-white/5"}`}
-                      onClick={() => togglePicture(asset.assetId)}
-                    >
-                      {asset.contentUrl && (
-                        <img src={asset.contentUrl} alt={asset.displayName} className="w-full rounded-xl border border-white/10 object-cover" />
-                      )}
-                      {/*
-                        * 🔴 번호는 「골랐다」가 아니라 **「몇 번째로 나온다」**를 말합니다. 체크 표시로 그리면
-                        * 순서를 정한 줄도 모른 채 고르게 되고, 순서는 **되돌릴 수 없는 결과**(영상)에 그대로
-                        * 실립니다. 색만으로 상태를 말하지 않는다는 §6 도 이 번호가 같이 지킵니다.
-                        */}
-                      {picked && (
-                        <span
-                          data-testid={`photo-card-order-${asset.assetId}`}
-                          className="type-mono absolute left-3 top-3 flex h-5 min-w-5 items-center justify-center rounded bg-ground/85 px-1 text-[11px] font-semibold text-bone"
-                        >
-                          {order + 1}
-                        </span>
-                      )}
-                      <span className="block truncate text-xs text-slate-300">{asset.displayName}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          {/*
-            * 🟠 이 두 줄이 이 화면에서 **고른 결과를 말하는 유일한 자리**입니다. 그림 격자는 무엇을 골랐는지만
-            * 보여 주지, 그게 무엇이 되는지는 말하지 않습니다.
-            */}
-          <p className="text-xs text-slate-400 tabular-nums" data-testid="photo-card-length">
-            {assetIds.length === 0
-              ? "아직 고른 그림이 없습니다. 고른 순서대로 한 장씩 이어 붙습니다."
-              : `사진 ${assetIds.length}장 × 한 장당 ${seconds}초 = ${totalSeconds}초`}
-          </p>
-          {atLimit && (
-            /* 🔴 「더 못 고른다」만 말하면 사람은 화면이 고장 난 줄 압니다. 왜 닫혔는지와 **어떻게 여는지**를
-               같이 말합니다 — 여는 방법은 고른 것을 다시 눌러 빼는 것입니다. */
-            <p className="text-xs text-amber-300" data-testid="photo-card-limit">
-              한 카드에 {PHOTO_CARD_MAX_PICTURES}장까지입니다. 다른 그림을 넣으시려면 고른 것을 다시 눌러 빼 주세요.
-            </p>
-          )}
-        </section>
+        <PicturePicker
+          assets={assets}
+          listError={listError}
+          assetIds={assetIds}
+          onToggle={togglePicture}
+          max={PHOTO_CARD_MAX_PICTURES}
+          seconds={seconds}
+          disabled={pending}
+        />
 
         <section aria-label="문장과 길이" className={cardSection}>
           <label className="block text-sm text-slate-300">

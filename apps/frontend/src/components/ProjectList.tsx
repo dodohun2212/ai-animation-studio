@@ -267,7 +267,11 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
    * cards away — it would make finished work unreachable. The two ship together.
    */
   const projects = useMemo(
-    () => (state.projects ?? []).filter((project) => project.photoCard !== true),
+    /* 🔴 **뉴스 릴도 같은 이유로 빠집니다.** 릴에는 이 목록이 세는 단계가 없고(승인도, 장면 영상도),
+       캡틴D가 *「뉴스 릴로 만들었는데 왜 명언 카드에 있냐」*고 하신 그 어긋남의 다른 쪽입니다.
+       🔴 그리고 명언 카드와 마찬가지로 **목록과 같이 움직입니다** — `NewsReelListScreen` 이 없이 여기서만
+       빼면 만든 릴이 **아무 데도 안 실립니다.** */
+    () => (state.projects ?? []).filter((project) => project.photoCard !== true && project.newsReelCard === undefined),
     [state.projects],
   );
   const shown = useMemo(
