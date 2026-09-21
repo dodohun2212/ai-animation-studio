@@ -216,7 +216,7 @@ describe("news summary route", () => {
     await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
 
     news.callCardProvider = async () => { throw new Error("not the adapter's"); };
-    await expect(news.cardText({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
+    await expect(news.cardText({ article: ARTICLE, sceneCount: 1 })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
 
     news.callProvider = async () => "통계청은 3.2%라고 밝혔다.";
     await news.summarise({ article: ARTICLE });
@@ -365,17 +365,17 @@ describe("news reel card text route", () => {
   const ANSWER = [
     "제목1: 물가 오름세 한풀 꺾여",
     "제목2: 3.2%로 둔화",
-    "자막1: 통계청 9월 발표",
+    "자막1-1: 통계청 9월 발표",
   ].join("\n");
 
   it("returns the boxes the provider filled, and the day's count with them", async () => {
     const { controller: news } = await summariser();
     news.callCardProvider = async () => ANSWER;
 
-    const result = await news.cardText({ article: ARTICLE });
+    const result = await news.cardText({ article: ARTICLE, sceneCount: 1 });
 
-    expect(result.values["headline.line1"]).toBe("물가 오름세 한풀 꺾여");
-    expect(result.values["headline.line2"]).toBe("3.2%로 둔화");
+    expect(result.headline.line1).toBe("물가 오름세 한풀 꺾여");
+    expect(result.headline.line2).toBe("3.2%로 둔화");
     expect(result.missing, "자막 둘째 줄은 없어도 됩니다").toEqual([]);
     expect(result.dailyCalls).toEqual({ used: 1, limit: NEWS_SUMMARY_DAILY_CALL_LIMIT });
   });
@@ -386,44 +386,76 @@ describe("news reel card text route", () => {
    */
   it("checks the lines themselves, so a figure invented in the caption is caught too", async () => {
     const { controller: news } = await summariser();
-    news.callCardProvider = async () => "제목1: 물가 오름세 한풀 꺾여\n제목2: 3.2%로 둔화\n자막1: 지난해는 7.8%였다";
+    news.callCardProvider = async () => "제목1: 물가 오름세 한풀 꺾여\n제목2: 3.2%로 둔화\n자막1-1: 지난해는 7.8%였다";
 
-    const result = await news.cardText({ article: ARTICLE });
+    const result = await news.cardText({ article: ARTICLE, sceneCount: 1 });
 
     expect(result.check.missing.map((claim) => claim.text)).toContain("7.8%");
-    expect(result.values["caption.line1"], "지어낸 줄도 돌려줍니다 — 감추면 고칠 수가 없습니다").toContain("7.8%");
+    expect(result.captions[0]!.line1, "지어낸 줄도 돌려줍니다 — 감추면 고칠 수가 없습니다").toContain("7.8%");
   });
 
   /** 🔴 돈이 나간 답입니다. 한 칸이 비어 왔다고 통째로 거절하면 돈은 나가고 남는 게 없습니다. */
   it("hands back an incomplete answer and names the box that is missing", async () => {
     const { controller: news } = await summariser();
-    news.callCardProvider = async () => "물론입니다!\n제목1: 물가 오름세 한풀 꺾여\n자막1: 통계청 9월 발표";
+    news.callCardProvider = async () => "물론입니다!\n제목1: 물가 오름세 한풀 꺾여\n자막1-1: 통계청 9월 발표";
 
-    const result = await news.cardText({ article: ARTICLE });
+    const result = await news.cardText({ article: ARTICLE, sceneCount: 1 });
 
-    expect(result.missing).toEqual(["headline.line2"]);
+    expect(result.missing).toEqual([{ field: "headline.line2" }]);
     expect(result.ignored, "못 읽은 줄도 버렸다고 말합니다").toEqual(["물론입니다!"]);
-    expect(result.values["headline.line1"], "읽은 것은 그대로 옵니다").toBeTruthy();
+    expect(result.headline.line1, "읽은 것은 그대로 옵니다").toBeTruthy();
   });
 
   /** 🔴 길이는 여기서 안 자릅니다 — 자르면 사람은 무엇을 잃었는지 모른 채 칸을 받습니다. */
   it("does not trim a line that ran long", async () => {
     const { controller: news } = await summariser();
     const long = "가".repeat(40);
-    news.callCardProvider = async () => `제목1: ${long}\n제목2: 3.2%로 둔화\n자막1: 통계청 9월 발표`;
+    news.callCardProvider = async () => `제목1: ${long}\n제목2: 3.2%로 둔화\n자막1-1: 통계청 9월 발표`;
 
-    const result = await news.cardText({ article: ARTICLE });
+    const result = await news.cardText({ article: ARTICLE, sceneCount: 1 });
 
-    expect(result.values["headline.line1"]).toBe(long);
+    expect(result.headline.line1).toBe(long);
   });
 
   it("books a failed call against the day here too", async () => {
     const { controller: news } = await summariser();
     news.callCardProvider = async () => { throw new Error("provider down"); };
 
-    await expect(news.cardText({ article: ARTICLE })).rejects.toThrow();
+    await expect(news.cardText({ article: ARTICLE, sceneCount: 1 })).rejects.toThrow();
     const after = await summariserUsed(news);
     expect(after, "부른 것은 부른 것입니다").toBe(1);
+  });
+
+  /**
+   * 🔴 캡틴D, 2026-09-22: 그림마다 자막이 하나. 모델은 **그림 수를 듣고**, 답의 자막은 그림 순서대로 돌아오며,
+   * 대조는 **모든 그림의 자막** 위에서 돕니다 — 세 번째 그림에 지어낸 숫자도 제목에 지어낸 숫자와 같습니다.
+   */
+  it("asks for a caption per picture and checks every one of them", async () => {
+    const { controller: news } = await summariser();
+    let asked: number | undefined;
+    news.callCardProvider = async (_article, sceneCount) => {
+      asked = sceneCount;
+      return ["제목1: 물가 오름세 한풀 꺾여", "제목2: 3.2%로 둔화", "자막1-1: 통계청 9월 발표", "자막2-1: 지난해는 7.8%였다"].join(String.fromCharCode(10));
+    };
+
+    const result = await news.cardText({ article: ARTICLE, sceneCount: 2 });
+
+    expect(asked).toBe(2);
+    expect(result.captions).toEqual([{ line1: "통계청 9월 발표" }, { line1: "지난해는 7.8%였다" }]);
+    expect(result.check.missing.map((claim) => claim.text)).toContain("7.8%");
+  });
+
+  /** 🟠 쓸 수 없는 그림 수는 부르기 **전에** 거절합니다 — 돈도, 하루 횟수도 안 씁니다. */
+  it("refuses a picture count it cannot use before anything is spent", async () => {
+    for (const sceneCount of [0, 13, 1.5, undefined, "2"]) {
+      const { controller: news } = await summariser();
+      let called = false;
+      news.callCardProvider = async () => { called = true; return ANSWER; };
+
+      await expect(news.cardText({ article: ARTICLE, sceneCount }), String(sceneCount)).rejects.toMatchObject({ response: { code: "NEWS_ARTICLE_INVALID" } });
+      expect(called, String(sceneCount)).toBe(false);
+      expect(await summariserUsed(news), String(sceneCount)).toBe(0);
+    }
   });
 
   /** 🔴 키가 없으면 나간 요청이 없습니다 — 안 나간 요청을 하루에서 깎으면 사람이 손해를 봅니다. */
@@ -432,7 +464,7 @@ describe("news reel card text route", () => {
     let called = false;
     news.callCardProvider = async () => { called = true; return ANSWER; };
 
-    await expect(news.cardText({ article: ARTICLE })).rejects.toThrow();
+    await expect(news.cardText({ article: ARTICLE, sceneCount: 1 })).rejects.toThrow();
     expect(called).toBe(false);
     expect(await summariserUsed(news)).toBe(0);
   });
@@ -443,7 +475,7 @@ describe("news reel card text route", () => {
     let called = false;
     news.callCardProvider = async () => { called = true; return ANSWER; };
 
-    await expect(news.cardText({ article: { ...ARTICLE, body: "짧다." } })).rejects.toThrow();
+    await expect(news.cardText({ article: { ...ARTICLE, body: "짧다." }, sceneCount: 1 })).rejects.toThrow();
     expect(called).toBe(false);
   });
 });

@@ -2941,32 +2941,37 @@ export type NewsReelTextRefusal = "too_long" | "missing" | "blank";
  */
 export interface CreateNewsReelCardTextRequest {
   article: NewsArticleInput;
+  /**
+   * How many pictures the reel has — one caption is asked for each (`NewsReelCard.captions`). A whole number from
+   * 1 to `PHOTO_CARD_MAX_PICTURES`; anything else is refused before the call is made, so it costs nothing.
+   */
+  sceneCount: number;
 }
 
 /**
- * What came back, box by box — and never a card.
- *
- * 🔴 **This does not return a `NewsReelCard`, on purpose.** A card is what gets burned, and it is only a card
- * once the boxes hold text that fits and the picture's credit is settled. What arrives here is the provider's
- * attempt at four lines, which may be too long, may be missing one, and is finished by a person in the boxes
- * that already count characters for them. Handing back a half-built card typed as a whole one would be this
- * contract telling itself a thing it does not know.
- *
- * 🔴 **`check` runs on the card's own lines, not on a summary of the article.** The lines are what gets burned
- * under a real publisher's name, so they are what has to be looked for in the article word for word. The
- * summary route checks the paragraph it returns for the same reason; this is the same rule applied to what
- * actually reaches the screen.
+ * One box in the answer: a headline line, or a caption line of one picture (`scene`, from 0). The same address
+ * `NewsReelTextBox` uses, so a screen can put a sentence beside the exact box it is about.
  */
+export interface NewsReelTextSlot {
+  field: NewsReelTextField;
+  scene?: number;
+}
+
 export interface CreateNewsReelCardTextResponse {
-  /** Every box a label arrived for, as the provider wrote it — never trimmed to fit. */
-  values: Partial<Record<NewsReelTextField, string>>;
+  /** The headline lines a label arrived for, as the provider wrote them — never trimmed to fit. */
+  headline: Partial<NewsReelHeadline>;
+  /**
+   * One entry per picture, `sceneCount` long, each holding the caption lines a label arrived for. An entry can be
+   * empty: a picture the model wrote nothing for is still a picture, and its slot keeps the order.
+   */
+  captions: Partial<{ line1: string; line2: string }>[];
   /** Required boxes no label arrived for, so a screen can say which one to write rather than "something failed". */
-  missing: NewsReelTextField[];
+  missing: NewsReelTextSlot[];
   /** Boxes whose label arrived twice. Never chosen between — which one was meant is not knowable from here. */
-  repeated: NewsReelTextField[];
+  repeated: NewsReelTextSlot[];
   /** Lines the answer carried that no box claimed. Reported rather than dropped: the call was paid for. */
   ignored: string[];
-  /** The four lines, checked against the article — the same shape, and the same refusal, as the summary's. */
+  /** Every line, checked against the article — the same shape, and the same refusal, as the summary's. */
   check: NewsSummaryCheck;
   /** Comes back on every answer, including refusals, because the number somebody needs is the one after this press. */
   dailyCalls: NewsDailyCallCount;

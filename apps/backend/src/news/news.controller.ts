@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post } from "@nestjs/common";
 import {
   API_ROUTES,
   NEWS_SUMMARY_MAX_CHARS,
+  PHOTO_CARD_MAX_PICTURES,
   assertNewsSummaryCheck,
   checkNewsSummary,
   type CreateNewsReelCardTextResponse,
@@ -270,6 +271,11 @@ export class NewsController {
   @Post(API_ROUTES.newsReelCardText)
   async cardText(@Body() body: unknown): Promise<CreateNewsReelCardTextResponse> {
     const article = validArticle(body);
+    // Before the key and the quota, like the article: a count we cannot use must not cost a call.
+    const sceneCount = (body as { sceneCount?: unknown }).sceneCount;
+    if (typeof sceneCount !== "number" || !Number.isInteger(sceneCount) || sceneCount < 1 || sceneCount > PHOTO_CARD_MAX_PICTURES) {
+      throw newsSummaryArticleInvalid(`그림 수는 1장부터 ${PHOTO_CARD_MAX_PICTURES}장까지입니다.`);
+    }
 
     const apiKey = (await this.settings.read("gemini"))?.trim();
     if (!apiKey) throw newsSummaryKeyMissing();
@@ -284,21 +290,23 @@ export class NewsController {
 
     let answer: string;
     try {
-      answer = await this.callCardProvider(article, apiKey);
+      answer = await this.callCardProvider(article, sceneCount, apiKey);
     } catch (error) {
       await this.quota.record(false, undefined, failureOf(error)).catch(() => undefined);
       throw newsSummaryFailed();
     }
     await this.quota.record(true);
 
-    const parsed = parseNewsReelCardText(answer);
-    // 🟠 The lines joined, because the checker looks inside one text — and a figure invented in the caption is
-    // no better than one invented in the headline.
-    const check = checkNewsSummary(Object.values(parsed.values).join("\n"), article.body);
+    const parsed = parseNewsReelCardText(answer, sceneCount);
+    // 🟠 Every line joined, because the checker looks inside one text — and a figure invented in the third
+    // picture's caption is no better than one invented in the headline.
+    const lines = [...Object.values(parsed.headline), ...parsed.captions.flatMap((caption) => Object.values(caption))];
+    const check = checkNewsSummary(lines.join("\n"), article.body);
     assertNewsSummaryCheck(check);
 
     return {
-      values: parsed.values,
+      headline: parsed.headline,
+      captions: parsed.captions,
       missing: parsed.missing,
       repeated: parsed.repeated,
       ignored: parsed.ignored,

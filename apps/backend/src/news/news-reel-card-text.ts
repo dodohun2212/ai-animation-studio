@@ -1,8 +1,9 @@
 import {
   NEWS_REEL_TEXT_BOXES,
-  NEWS_REEL_TEXT_FIELDS,
   type NewsArticleInput,
+  type NewsReelHeadline,
   type NewsReelTextField,
+  type NewsReelTextSlot,
 } from "@ai-animation-studio/shared";
 
 /**
@@ -33,39 +34,42 @@ import {
  * nothing about the *wording*, and the two are different things (docs/06_DECISIONS.md D-052).
  */
 
-/** The label each box answers under. Keyed by the contract's own field names, so a new box fails to compile here. */
-const LABELS: Readonly<Record<NewsReelTextField, string>> = {
-  "headline.line1": "제목1",
-  "headline.line2": "제목2",
-  "caption.line1": "자막1",
-  "caption.line2": "자막2",
-};
+/**
+ * One label per box. A caption label carries its picture: 「자막2-1」 is the first line under the second picture.
+ * 🟠 One scheme for every count — a one-picture reel is 「자막1-1」 too — so the parser never has to guess which
+ * scheme an answer used.
+ */
+const HEADLINE_LABELS = { "headline.line1": "제목1", "headline.line2": "제목2" } as const;
+const captionLabel = (scene: number, line: 1 | 2): string => `자막${scene + 1}-${line}`;
 
-/** What each box is for, in the prompt's own words — beside its label, so the two cannot drift apart. */
 const JOBS: Readonly<Record<NewsReelTextField, string>> = {
   "headline.line1": "무슨 일이 있었는지의 **배경·상황**. 사람이 이 줄만 보고 「무슨 얘긴지」 알 수 있어야 합니다.",
   "headline.line2": "그래서 **결국 어떻게 됐는지** 한 방으로. 이 줄이 노란색으로 나갑니다 — 제일 세게 남는 줄입니다.",
-  "caption.line1": "지금 화면에서 **무엇이 보이는지**, 언제·어디인지를 짧은 문장으로.",
+  "caption.line1": "그 그림이 떠 있는 동안 아래에 깔리는 자막. **무엇이 있었는지**, 언제·어디인지를 짧은 문장으로.",
   "caption.line2": "자막이 한 줄로 모자랄 때만 씁니다. **모자라지 않으면 이 줄은 아예 쓰지 마십시오.**",
 };
 
-/**
- * 🟠 The limits come from the contract's table rather than being typed here.
- *
- * A number repeated in a prompt is a copy like any other, and this one would be the copy nobody notices: the
- * model would go on being asked for 15 characters long after the box held 13, and the refusal would arrive
- * after the money was spent.
- */
-const limitLine = (field: NewsReelTextField): string =>
-  `- **${LABELS[field]}**: ${NEWS_REEL_TEXT_BOXES[field].limit}자 이내. ${JOBS[field]}`;
+const limitOf = (field: NewsReelTextField): number => NEWS_REEL_TEXT_BOXES[field].limit;
 
-export function newsReelCardPrompt(article: NewsArticleInput): string {
+/**
+ * 🔴 캡틴D, 2026-09-22: 「릴스가 몇 장면 몇 분인 줄 알고 이렇게 적음?」 — the card now has a caption per picture,
+ * so the model is told how many pictures there are and asked for that many captions, each saying something the
+ * others do not, in the order the article tells it.
+ */
+export function newsReelCardPrompt(article: NewsArticleInput, sceneCount: number): string {
+  const scenes = Array.from({ length: sceneCount }, (_, scene) => scene);
   return [
     "아래 기사로 **짧은 뉴스 릴 카드**에 얹을 글을 써 주세요.",
     "",
-    "**요약문이 아닙니다.** 카드에는 제목 두 줄과 아래 자막만 들어갑니다. 한 문단을 쓰고 자르는 것이 아니라, 아래 네 줄을 각각 따로 써 주십시오.",
+    `**요약문이 아닙니다.** 릴은 그림 ${sceneCount}장이 차례로 넘어가고, 위에는 제목 두 줄이 릴 내내 고정으로, 아래에는 **그림마다 다른 자막**이 깔립니다. 한 문단을 쓰고 자르는 것이 아니라, 아래 줄을 각각 따로 써 주십시오.`,
     "",
-    ...NEWS_REEL_TEXT_FIELDS.map(limitLine),
+    `- **${HEADLINE_LABELS["headline.line1"]}**: ${limitOf("headline.line1")}자 이내. ${JOBS["headline.line1"]}`,
+    `- **${HEADLINE_LABELS["headline.line2"]}**: ${limitOf("headline.line2")}자 이내. ${JOBS["headline.line2"]}`,
+    `- **자막N-1** (N = 1부터 ${sceneCount}까지, N번째 그림): ${limitOf("caption.line1")}자 이내. ${JOBS["caption.line1"]}`,
+    `- **자막N-2**: ${limitOf("caption.line2")}자 이내. ${JOBS["caption.line2"]}`,
+    ...(sceneCount > 1
+      ? ["- 자막은 **그림마다 다른 사실**을 씁니다. 같은 말을 되풀이하지 않고, 기사가 전하는 순서대로 이어지게 씁니다."]
+      : []),
     "",
     "**말은 새로 지어 주세요.** 기사의 문장을 그대로 옮기지 않습니다 — 통신사 문체가 그대로 따라옵니다.",
     "- 직함을 길게 붙이지 않습니다. 「…라고 밝혔다」, 「…한 것으로 전해졌다」 같은 끝맺음을 쓰지 않습니다.",
@@ -74,9 +78,11 @@ export function newsReelCardPrompt(article: NewsArticleInput): string {
     "**그런데 숫자·날짜·인용문은 기사에 적힌 그대로만 씁니다.** 표현은 새로 짓되 **사실은 기사 안에서만** 가져옵니다. 기사에 없는 숫자·날짜·인용문은 절대 만들어 넣지 않습니다. 기사가 말하지 않은 원인이나 결과도 쓰지 않습니다.",
     "- 숫자는 그 줄에 **꼭 있어야 할 때만** 씁니다. 카드에서 숫자는 자리를 많이 먹습니다.",
     "",
-    "출력은 아래 모양 그대로, 다른 말 없이 써 주세요. 머리말·따옴표·목록 기호를 붙이지 않습니다.",
+    "출력은 아래 모양 그대로, 다른 말 없이 써 주세요. 머리말·따옴표·목록 기호를 붙이지 않습니다. 자막N-2 는 필요할 때만 덧붙입니다.",
     "",
-    ...NEWS_REEL_TEXT_FIELDS.filter((field) => NEWS_REEL_TEXT_BOXES[field].required).map((field) => `${LABELS[field]}: `),
+    `${HEADLINE_LABELS["headline.line1"]}: `,
+    `${HEADLINE_LABELS["headline.line2"]}: `,
+    ...scenes.map((scene) => `${captionLabel(scene, 1)}: `),
     "",
     `제목: ${article.title}`,
     "",
@@ -85,55 +91,17 @@ export function newsReelCardPrompt(article: NewsArticleInput): string {
   ].join("\n");
 }
 
-/**
- * What came back, read into the contract's boxes.
- *
- * 🔴 **Nothing is thrown away silently and nothing is guessed at.** The answer was paid for: refusing it
- * outright costs the money and returns nothing, so whatever arrived is handed back even when it is
- * incomplete, and the person can finish it by hand in the boxes that already count characters for them. That
- * is the same choice `CreateNewsSummaryResponse.tooLong` made — reported rather than trimmed.
- *
- * 🔴 **A label that came twice is `repeated`, not "the first one wins".** Which of the two the model meant is
- * not knowable from here, and picking one is the kind of quiet decision that shows up burned into a file.
- *
- * 🟠 **Length is not judged here.** `checkNewsReelCardText` does that, with the contract's own numbers, for
- * the screen and the server alike — a second opinion about length living in the parser is exactly the second
- * copy that contract keeps being careful to avoid.
- */
 export interface NewsReelCardTextParse {
-  /** Every box a label was found for, as written. Missing boxes are simply absent. */
-  values: Partial<Record<NewsReelTextField, string>>;
-  /** Required boxes no label arrived for. */
-  missing: NewsReelTextField[];
-  /** Boxes whose label arrived more than once — never chosen between. */
-  repeated: NewsReelTextField[];
-  /** Non-blank lines that carried no label. Kept so an answer is never quietly half-dropped. */
+  headline: Partial<NewsReelHeadline>;
+  /** `sceneCount` long; an entry is empty when nothing arrived for that picture. */
+  captions: Partial<{ line1: string; line2: string }>[];
+  missing: NewsReelTextSlot[];
+  repeated: NewsReelTextSlot[];
   ignored: string[];
 }
 
-/**
- * A line that looks like `<라벨>: <값>`, however the model dressed it up.
- *
- * 🔴 **A regex literal, not `new RegExp` over a template.** The first draft built this string with `\s` inside
- * a template literal — where `\s` is simply the letter `s` — so the pattern matched a class of `s`, `*`, `#`,
- * `>` and `-` with **no whitespace in it at all**. It read `제목1:` and not `- 제목2 : `, which is exactly the
- * shape a model answers in. The pair caught it; the escape would not have been visible in review.
- *
- * 🟠 The label is captured as whatever token sits there and then **looked up** in the table below, rather than
- * spelled into the pattern. One list of labels, and an unknown one falls through to `ignored` instead of
- * silently failing to match.
- */
 const LABEL_PATTERN = /^[\s*#>-]*([^\s:：*]+)\s*\**\s*[:：]\s*(.*)$/;
 
-const FIELD_BY_LABEL = new Map<string, NewsReelTextField>(
-  NEWS_REEL_TEXT_FIELDS.map((field) => [LABELS[field], field]),
-);
-
-/**
- * 🟠 Only a wrapper around the **whole** value is stripped. A 「」 pair inside the line is the article's own
- * quotation and the checker looks for it word for word — peeling one off there would turn a quotation that
- * matches into one that does not.
- */
 function unwrap(value: string): string {
   const trimmed = value.trim().replace(/^\*+|\*+$/g, "").trim();
   const pairs: readonly [string, string][] = [["\"", "\""], ["'", "'"], ["「", "」"], ["“", "”"], ["‘", "’"]];
@@ -145,34 +113,66 @@ function unwrap(value: string): string {
   return trimmed;
 }
 
-export function parseNewsReelCardText(text: string): NewsReelCardTextParse {
-  const values: Partial<Record<NewsReelTextField, string>> = {};
-  const seen = new Set<NewsReelTextField>();
-  const repeated: NewsReelTextField[] = [];
+/** The slot a label names, for this many pictures — or undefined for a label that is not one of ours. */
+function slotsFor(sceneCount: number): Map<string, NewsReelTextSlot> {
+  const slots = new Map<string, NewsReelTextSlot>([
+    [HEADLINE_LABELS["headline.line1"], { field: "headline.line1" }],
+    [HEADLINE_LABELS["headline.line2"], { field: "headline.line2" }],
+  ]);
+  for (let scene = 0; scene < sceneCount; scene++) {
+    slots.set(captionLabel(scene, 1), { field: "caption.line1", scene });
+    slots.set(captionLabel(scene, 2), { field: "caption.line2", scene });
+  }
+  return slots;
+}
+
+const slotKey = (slot: NewsReelTextSlot): string => `${slot.field}@${slot.scene ?? ""}`;
+
+/**
+ * Read the labelled lines back into boxes.
+ *
+ * 🔴 **A label that arrives twice fills neither.** Which one was meant is not knowable here, and choosing would
+ * burn a guess under a real publisher's name; the screen says so and a person writes it. 🟠 A caption label for a
+ * picture that does not exist (「자막4-1」 on a three-picture reel) is not ours, so it is reported in `ignored`
+ * rather than silently dropped — the call was paid for.
+ */
+export function parseNewsReelCardText(text: string, sceneCount: number): NewsReelCardTextParse {
+  const slots = slotsFor(sceneCount);
+  const values = new Map<string, { slot: NewsReelTextSlot; value: string }>();
+  const repeated = new Map<string, NewsReelTextSlot>();
   const ignored: string[] = [];
 
   for (const line of text.split(/\r\n|\r|\n/)) {
     if (line.trim() === "") continue;
     const match = LABEL_PATTERN.exec(line);
-    const field = match ? FIELD_BY_LABEL.get(match[1]!) : undefined;
-    if (!match || field === undefined) { ignored.push(line.trim()); continue; }
+    const slot = match ? slots.get(match[1]!) : undefined;
+    if (!match || slot === undefined) { ignored.push(line.trim()); continue; }
     const value = unwrap(match[2]!);
-    // 🟠 A label with nothing after it is the model declining that box, not an empty value — the contract has
-    // no empty strings in it, so it is recorded as absent and reported as missing if the box is required.
     if (value === "") continue;
-    if (seen.has(field)) {
-      if (!repeated.includes(field)) repeated.push(field);
-      delete values[field];
+    const key = slotKey(slot);
+    if (values.has(key) || repeated.has(key)) {
+      repeated.set(key, slot);
+      values.delete(key);
       continue;
     }
-    seen.add(field);
-    values[field] = value;
+    values.set(key, { slot, value });
   }
 
+  const headline: Partial<NewsReelHeadline> = {};
+  const captions: Partial<{ line1: string; line2: string }>[] = Array.from({ length: sceneCount }, () => ({}));
+  for (const { slot, value } of values.values()) {
+    if (slot.field === "headline.line1") headline.line1 = value;
+    else if (slot.field === "headline.line2") headline.line2 = value;
+    else if (slot.field === "caption.line1") captions[slot.scene!]!.line1 = value;
+    else captions[slot.scene!]!.line2 = value;
+  }
+
+  const required = [...slots.values()].filter((slot) => NEWS_REEL_TEXT_BOXES[slot.field].required);
   return {
-    values,
-    missing: NEWS_REEL_TEXT_FIELDS.filter((field) => NEWS_REEL_TEXT_BOXES[field].required && values[field] === undefined),
-    repeated,
+    headline,
+    captions,
+    missing: required.filter((slot) => !values.has(slotKey(slot)) ),
+    repeated: [...repeated.values()],
     ignored,
   };
 }

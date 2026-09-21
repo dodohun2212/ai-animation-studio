@@ -55,7 +55,7 @@ async function start(key: string | null, answer: string) {
   return { base: `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}` };
 }
 
-const ANSWER = ["제목1: 물가 오름세 한풀 꺾여", "제목2: 3.2%로 둔화", "자막1: 통계청 9월 발표"].join("\n");
+const ANSWER = ["제목1: 물가 오름세 한풀 꺾여", "제목2: 3.2%로 둔화", "자막1-1: 통계청 9월 발표"].join("\n");
 
 describe("asking for a card's lines over HTTP", () => {
   const post = (base: string, body: unknown) =>
@@ -64,11 +64,12 @@ describe("asking for a card's lines over HTTP", () => {
   it("answers at the address the client builds, with the boxes and the day's count", async () => {
     const { base } = await start("test-key", ANSWER);
 
-    const response = await post(base, { article: ARTICLE });
+    const response = await post(base, { article: ARTICLE, sceneCount: 1 });
 
     expect(response.status).toBe(201);
-    const body = await response.json() as { values?: Record<string, string>; dailyCalls?: { used: number } };
-    expect(body.values?.["headline.line2"]).toBe("3.2%로 둔화");
+    const body = await response.json() as { headline?: Record<string, string>; captions?: unknown[]; dailyCalls?: { used: number } };
+    expect(body.headline?.line2).toBe("3.2%로 둔화");
+    expect(body.captions).toEqual([{ line1: "통계청 9월 발표" }]);
     expect(body.dailyCalls?.used).toBe(1);
   });
 
@@ -79,7 +80,7 @@ describe("asking for a card's lines over HTTP", () => {
   it("says the key is missing as a 400 with its code, having spent nothing", async () => {
     const { base } = await start(null, ANSWER);
 
-    const response = await post(base, { article: ARTICLE });
+    const response = await post(base, { article: ARTICLE, sceneCount: 1 });
 
     expect(response.status).toBe(400);
     expect((await response.json() as { code?: string }).code).toBe("NEWS_SUMMARY_KEY_MISSING");

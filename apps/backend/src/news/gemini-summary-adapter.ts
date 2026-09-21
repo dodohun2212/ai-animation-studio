@@ -177,10 +177,11 @@ export async function summariseArticle(
  */
 export async function writeNewsReelCardText(
   article: NewsArticleInput,
+  sceneCount: number,
   apiKey: string,
   deps: GeminiSummaryDeps = {},
 ): Promise<string> {
-  return askGemini(newsReelCardPrompt(article), apiKey, deps);
+  return askGemini(newsReelCardPrompt(article, sceneCount), apiKey, deps);
 }
 
 /** One request to the provider, with the retries, the fallback and the timeout the whole feature shares. */

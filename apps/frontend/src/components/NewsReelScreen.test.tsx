@@ -889,7 +889,8 @@ describe("NewsReelScreen 네 줄 뽑기", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   const answer = (overrides: Record<string, unknown> = {}) => ({
-    values: {},
+    headline: {},
+    captions: [{}],
     missing: [],
     repeated: [],
     ignored: [],
@@ -909,8 +910,9 @@ describe("NewsReelScreen 네 줄 뽑기", () => {
   it("fills the boxes with what came back, without shortening any of them, and moves the count on", async () => {
     const tooLong = "가".repeat(NEWS_REEL_TEXT_BOXES["headline.line1"].limit + 4);
     await drawWith(answer({
-      values: { "headline.line1": tooLong, "headline.line2": "검찰청 62년 만에 폐지", "caption.line1": "재석 289명 중 180명 찬성" },
-      missing: ["caption.line2"],
+      headline: { line1: tooLong, line2: "검찰청 62년 만에 폐지" },
+      captions: [{ line1: "재석 289명 중 180명 찬성" }],
+      missing: [{ field: "caption.line2", scene: 0 }],
     }));
 
     await waitFor(() => expect((screen.getByTestId("news-reel-headline1") as HTMLInputElement).value).toBe(tooLong));
@@ -924,8 +926,8 @@ describe("NewsReelScreen 네 줄 뽑기", () => {
 
   it("leaves a box that came back twice empty, and says so instead of choosing", async () => {
     await drawWith(answer({
-      values: { "headline.line1": "국회 본회의 통과", "headline.line2": "하나를 골랐다면 이것" },
-      repeated: ["headline.line2"],
+      headline: { line1: "국회 본회의 통과", line2: "하나를 골랐다면 이것" },
+      repeated: [{ field: "headline.line2" }],
       ignored: ["라벨 없이 온 줄"],
     }));
 
@@ -937,7 +939,7 @@ describe("NewsReelScreen 네 줄 뽑기", () => {
 
   /** 🔴 한 칸도 못 읽은 답도 **모양은 맞는 답**입니다 — 「서버 응답 이상」으로 버리면 무엇이 없었는지 못 봅니다. */
   it("keeps an answer with no values, and names every box as missing", async () => {
-    await drawWith(answer({ missing: ["headline.line1", "headline.line2", "caption.line1"] }));
+    await drawWith(answer({ missing: [{ field: "headline.line1" }, { field: "headline.line2" }, { field: "caption.line1", scene: 0 }] }));
 
     const missing = await screen.findByTestId("news-reel-draw-missing");
     expect(missing.textContent).toContain("제목 첫 줄");
@@ -945,10 +947,26 @@ describe("NewsReelScreen 네 줄 뽑기", () => {
   });
 
   it("refuses an answer whose box names are not the contract's, rather than filling a box it does not have", async () => {
-    await drawWith(answer({ values: { "headline.line3": "없는 칸" } }));
+    await drawWith(answer({ missing: [{ field: "headline.line3" }] }));
 
     await screen.findByTestId("news-reel-draw-error");
     expect((screen.getByTestId("news-reel-headline1") as HTMLInputElement).value).toBe("");
+  });
+
+  /**
+   * 🔴 서버는 그림 수를 들어야 자막을 그만큼 청합니다(캡틴D, 2026-09-22). 이 화면은 아직 자막을 하나만 쓰므로
+   * 하나를 청합니다 — 그림을 먼저 고르는 화면이 서면 그 수가 여기 실립니다.
+   */
+  it("says how many pictures it is asking captions for", async () => {
+    const mock = stubRoutes({ "POST /news/card-text": answer() });
+    renderScreen();
+    await screen.findByTestId("news-daily-calls");
+    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
+    fireEvent.click(screen.getByTestId("news-reel-draw"));
+
+    await waitFor(() => expect(mock.mock.calls.some(([url]) => String(url).includes("/news/card-text"))).toBe(true));
+    const [, init] = mock.mock.calls.find(([url]) => String(url).includes("/news/card-text"))! as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).sceneCount).toBe(1);
   });
 
   it("closes both buttons when the server says the day is spent", async () => {

@@ -367,7 +367,16 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
         publisher: outlet.trim(),
         publishedAt: publishedAt.trim(),
         sourceUrl: sourceUrl.trim(),
-      });
+      /* 🟠 CLI 의 다리: 이 화면은 아직 자막을 하나만 쓰므로 그림 하나 분을 청합니다. 그림을 먼저 고르는 화면이
+         서면 그 그림 수를 넘깁니다. */
+      }, 1);
+      const repeatedFields = new Set(response.repeated.map((slot) => slot.field));
+      const received: Record<NewsReelTextField, string | undefined> = {
+        "headline.line1": response.headline.line1,
+        "headline.line2": response.headline.line2,
+        "caption.line1": response.captions[0]?.line1,
+        "caption.line2": response.captions[0]?.line2,
+      };
       const setters: Record<NewsReelTextField, (value: string) => void> = {
         "headline.line1": setHeadline1,
         "headline.line2": setHeadline2,
@@ -375,11 +384,15 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
         "caption.line2": setCaption2,
       };
       for (const field of NEWS_REEL_TEXT_FIELDS) {
-        const value = response.values[field];
-        if (value !== undefined && !response.repeated.includes(field)) setters[field](value);
+        const value = received[field];
+        if (value !== undefined && !repeatedFields.has(field)) setters[field](value);
       }
       setDailyCalls(response.dailyCalls);
-      setDrawLeftovers({ missing: response.missing, repeated: response.repeated, ignored: response.ignored });
+      setDrawLeftovers({
+        missing: response.missing.map((slot) => slot.field),
+        repeated: [...repeatedFields],
+        ignored: response.ignored,
+      });
       /* 🟠 대조는 **네 줄 위에서** 돌아옵니다. 화면은 요약 칸의 것을 다시 계산하는 쪽이라, 여기서는
          받은 `check` 를 그리지 않고 **칸을 채우는 일만** 합니다 — 같은 이유로 `news-summary` 도 안 건드립니다. */
     } catch (caught) {

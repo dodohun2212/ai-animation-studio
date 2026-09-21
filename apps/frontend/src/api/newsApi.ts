@@ -184,14 +184,21 @@ function isCreateNewsReelCardTextResponse(value: unknown): value is CreateNewsRe
 
   const isField = (one: unknown): one is NewsReelTextField =>
     typeof one === "string" && (NEWS_REEL_TEXT_FIELDS as readonly string[]).includes(one);
-  const isFieldList = (list: unknown): boolean => Array.isArray(list) && list.every(isField);
+  /* 자막 칸은 어느 그림인지(`scene`)를 같이 들고 옵니다 — 제목 칸에는 없습니다. */
+  const isSlot = (one: unknown): boolean => {
+    if (typeof one !== "object" || one === null) return false;
+    const slot = one as { field?: unknown; scene?: unknown };
+    return isField(slot.field) && (slot.scene === undefined || (Number.isInteger(slot.scene) && (slot.scene as number) >= 0));
+  };
+  const isSlotList = (list: unknown): boolean => Array.isArray(list) && list.every(isSlot);
+  /* 한 줄도 못 읽은 칸은 빈 객체로 옵니다 — 그 그림도 그림이라 자리를 지킵니다. */
+  const isLines = (one: unknown, keys: readonly string[]): boolean =>
+    typeof one === "object" && one !== null && !Array.isArray(one)
+    && Object.entries(one as Record<string, unknown>).every(([key, line]) => keys.includes(key) && typeof line === "string");
 
-  const values = candidate.values;
-  if (typeof values !== "object" || values === null) return false;
-  for (const [key, one] of Object.entries(values as Record<string, unknown>)) {
-    if (!isField(key) || typeof one !== "string") return false;
-  }
-  if (!isFieldList(candidate.missing) || !isFieldList(candidate.repeated)) return false;
+  if (!isLines(candidate.headline, ["line1", "line2"])) return false;
+  if (!Array.isArray(candidate.captions) || !candidate.captions.every((one) => isLines(one, ["line1", "line2"]))) return false;
+  if (!isSlotList(candidate.missing) || !isSlotList(candidate.repeated)) return false;
   if (!Array.isArray(candidate.ignored) || !candidate.ignored.every((one) => typeof one === "string")) return false;
 
   const check = candidate.check as { claims?: unknown; missing?: unknown } | null;
@@ -212,8 +219,8 @@ function isCreateNewsReelCardTextResponse(value: unknown): value is CreateNewsRe
  *
  * 🟠 **대조는 네 줄 위에서** 돌아옵니다 — 요약이 아니라. 구워지는 게 그 줄이라서입니다.
  */
-export function createNewsReelCardText(article: NewsArticleInput): Promise<CreateNewsReelCardTextResponse> {
-  const request: CreateNewsReelCardTextRequest = { article };
+export function createNewsReelCardText(article: NewsArticleInput, sceneCount: number): Promise<CreateNewsReelCardTextResponse> {
+  const request: CreateNewsReelCardTextRequest = { article, sceneCount };
   return read(API_ROUTES.newsReelCardText, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
