@@ -54,6 +54,8 @@ interface NewsCallRecord {
   /** Which paid-capable call this was. One kind today; named so a second one cannot silently share the count. */
   api_type: "news_summary";
   succeeded: boolean;
+  /** Why a failed call failed (`NewsSummaryProviderError.failure`). Absent on successes and on rows written before it existed. */
+  failure?: string;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -135,9 +137,9 @@ export class NewsCallQuota {
    * paths stay apart here rather than in the screen, because a screen drawn correctly over one shared endpoint
    * still spends the count.
    */
-  async record(succeeded: boolean, now = new Date()): Promise<void> {
+  async record(succeeded: boolean, now = new Date(), failure?: string): Promise<void> {
     const records = await this.load();
-    records.push({ timestamp: now.toISOString(), api_type: "news_summary", succeeded });
+    records.push({ timestamp: now.toISOString(), api_type: "news_summary", succeeded, ...(failure === undefined ? {} : { failure }) });
     await fs.mkdir(path.dirname(this.filePath), { recursive: true }).catch(() => undefined);
     await atomicWriteUtf8File(this.filePath, JSON.stringify(records, null, 2));
   }

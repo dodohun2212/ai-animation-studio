@@ -15,7 +15,7 @@ import {
 
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { ARTICLE_MIN_BODY_CHARS, extractArticle } from "./article-extract.js";
-import { summariseArticle, writeNewsReelCardText } from "./gemini-summary-adapter.js";
+import { NewsSummaryProviderError, summariseArticle, writeNewsReelCardText } from "./gemini-summary-adapter.js";
 import { parseNewsReelCardText } from "./news-reel-card-text.js";
 import { NewsCallQuota, NewsDailyQuotaExceededError, NewsQuotaLedgerUnreadableError } from "./news-call-quota.js";
 import { fetchAllFeeds } from "./news-feed.js";
@@ -227,9 +227,10 @@ export class NewsController {
     let summary: string;
     try {
       summary = await this.callProvider(article, apiKey);
-    } catch {
-      // Booked before the refusal is thrown: the call went out.
-      await this.quota.record(false).catch(() => undefined);
+    } catch (error) {
+      // Booked before the refusal is thrown: the call went out. The reason goes with it — the screen's sentence
+      // is the same for every cause, so the ledger is the one place a busy model and a retired one differ.
+      await this.quota.record(false, undefined, failureOf(error)).catch(() => undefined);
       throw newsSummaryFailed();
     }
     await this.quota.record(true);
@@ -283,8 +284,8 @@ export class NewsController {
     let answer: string;
     try {
       answer = await this.callCardProvider(article, apiKey);
-    } catch {
-      await this.quota.record(false).catch(() => undefined);
+    } catch (error) {
+      await this.quota.record(false, undefined, failureOf(error)).catch(() => undefined);
       throw newsSummaryFailed();
     }
     await this.quota.record(true);
@@ -313,6 +314,11 @@ export class NewsController {
  * makes every claim in the summary "missing" — or, worse, makes a two-line stub produce a summary that passes.
  * Neither is something to spend a call discovering.
  */
+/** What the ledger keeps about a failed call: the adapter's reason, or that something else threw. */
+function failureOf(error: unknown): string {
+  return error instanceof NewsSummaryProviderError ? error.failure : "unexpected";
+}
+
 function validArticle(body: unknown): NewsArticleInput {
   const article = (body as { article?: unknown } | null)?.article as NewsArticleInput | undefined;
   if (!article || typeof article !== "object") throw newsSummaryArticleInvalid();

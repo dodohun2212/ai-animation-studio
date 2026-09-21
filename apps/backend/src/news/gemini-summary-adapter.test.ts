@@ -185,3 +185,51 @@ describe("a provider that is merely busy", () => {
     expect((call as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(2);
   });
 });
+
+/**
+ * 🔴 **Why a call failed has to survive the call.** 2026-09-21, twice: 「요약을 받지 못했다」, and the ledger said
+ * `succeeded: false` and nothing more. A busy model, a retired model name and a dead connection all read the
+ * same, and the only way left to tell them apart was to spend another call. The adapter names the reason; the
+ * route books it.
+ */
+describe("what a failure is called", () => {
+  const failureOf = (promise: Promise<unknown>) => promise.then(() => "resolved", (error: unknown) => (error as NewsSummaryProviderError).failure);
+
+  it("keeps the provider's own sentence with the status — that is where a retired model says so", async () => {
+    const call = answering({ error: { message: "This model models/gemini-3.6-flash is no longer available   to new users." } }, 404);
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: call }))).toBe(
+      "http 404: This model models/gemini-3.6-flash is no longer available to new users.",
+    );
+  });
+
+  it("keeps the last status when a busy provider stays busy", async () => {
+    const call = answering({ error: { message: "This model is currently experiencing high demand." } }, 503);
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: call, retryDelayMs: 0 }))).toBe(
+      "http 503: This model is currently experiencing high demand.",
+    );
+  });
+
+  it("says only the status when the refusal carried no sentence", async () => {
+    const call = vi.fn(async () => new Response("", { status: 429 })) as unknown as typeof globalThis.fetch;
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: call }))).toBe("http 429");
+  });
+
+  it("cuts a long sentence short rather than filling the ledger with it", async () => {
+    const call = answering({ error: { message: "가".repeat(1_000) } }, 400);
+    expect((await failureOf(summariseArticle(ARTICLE, "key", { fetch: call }))).length).toBeLessThanOrEqual("http 400: ".length + 200);
+  });
+
+  it("tells a provider that never answered from one that could not be reached", async () => {
+    const hangs = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+    })) as unknown as typeof globalThis.fetch;
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: hangs, timeoutMs: 30 }))).toBe("timeout");
+
+    const refused = vi.fn(async () => { throw new TypeError("fetch failed"); }) as unknown as typeof globalThis.fetch;
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: refused }))).toBe("unreachable");
+  });
+
+  it("calls an answer with nothing in it empty", async () => {
+    expect(await failureOf(summariseArticle(ARTICLE, "key", { fetch: answering({ candidates: [] }) }))).toBe("empty");
+  });
+});

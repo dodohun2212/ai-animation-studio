@@ -61,10 +61,25 @@ export const GEMINI_SUMMARY_TIMEOUT_MS = 30_000;
 export const GEMINI_SUMMARY_RETRY_DELAY_MS = 1_500;
 
 export class NewsSummaryProviderError extends Error {
-  constructor(message: string, readonly status?: number) {
+  /**
+   * @param failure Why, in words short enough for the call ledger: `http 503: <the provider's own message>`,
+   *   `timeout`, `unreachable`, `empty`. 🔴 캡틴D pressed 요약 twice on 2026-09-21 and got 「요약을 받지 못했다」
+   *   both times; the ledger said `succeeded: false` and nothing else, so a busy model, a retired model name and
+   *   a dead connection all read the same. The reason is booked with the call so the next one can be told apart
+   *   without spending another call to find out. Never holds the key — nothing here ever sees the request headers.
+   */
+  constructor(message: string, readonly status?: number, readonly failure: string = "unknown") {
     super(message);
     this.name = "NewsSummaryProviderError";
   }
+}
+
+/** The provider's own error sentence, cut short — `{"error":{"message":"…"}}` is Google's shape. */
+const PROVIDER_MESSAGE_MAX_CHARS = 200;
+async function providerMessageOf(response: Response): Promise<string> {
+  const payload = await response.json().catch(() => null) as { error?: { message?: unknown } } | null;
+  const message = payload?.error?.message;
+  return typeof message === "string" ? message.replace(/\s+/g, " ").trim().slice(0, PROVIDER_MESSAGE_MAX_CHARS) : "";
 }
 
 export interface GeminiSummaryDeps {
@@ -105,12 +120,12 @@ function prompt(article: NewsArticleInput): string {
 function textOf(payload: unknown): string {
   const candidate = (payload as { candidates?: unknown[] } | null)?.candidates?.[0];
   const parts = (candidate as { content?: { parts?: unknown[] } } | undefined)?.content?.parts;
-  if (!Array.isArray(parts)) throw new NewsSummaryProviderError("The summary response had no content.");
+  if (!Array.isArray(parts)) throw new NewsSummaryProviderError("The summary response had no content.", undefined, "empty");
   const text = parts
     .map((part) => (typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : ""))
     .join("")
     .trim();
-  if (!text) throw new NewsSummaryProviderError("The summary response was empty.");
+  if (!text) throw new NewsSummaryProviderError("The summary response was empty.", undefined, "empty");
   return text;
 }
 
@@ -163,8 +178,9 @@ async function askGemini(promptText: string, apiKey: string, deps: GeminiSummary
         }),
         signal: AbortSignal.timeout(deps.timeoutMs ?? GEMINI_SUMMARY_TIMEOUT_MS),
       });
-    } catch {
-      throw new NewsSummaryProviderError("The summary provider could not be reached.");
+    } catch (error) {
+      const timedOut = error instanceof Error && error.name === "TimeoutError";
+      throw new NewsSummaryProviderError("The summary provider could not be reached.", undefined, timedOut ? "timeout" : "unreachable");
     }
   };
 
@@ -177,7 +193,12 @@ async function askGemini(promptText: string, apiKey: string, deps: GeminiSummary
   if (!response.ok) {
     // 🟠 The status travels because 429 is the one the person can act on — it is the free tier's own refusal,
     // arriving after ours would have. Anything else is ours to look at, not theirs.
-    throw new NewsSummaryProviderError(`The summary provider refused the request (${response.status}).`, response.status);
+    const said = await providerMessageOf(response);
+    throw new NewsSummaryProviderError(
+      `The summary provider refused the request (${response.status}).`,
+      response.status,
+      said ? `http ${response.status}: ${said}` : `http ${response.status}`,
+    );
   }
   return textOf(await response.json().catch(() => null));
 }

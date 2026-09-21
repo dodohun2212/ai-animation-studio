@@ -8,6 +8,7 @@ import { NEWS_SUMMARY_MAX_CHARS, isCreateNewsSummaryResponse, isNewsFetchArticle
 import { NEWS_SOURCE_HOSTS } from "./news-source.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { NewsCallQuota, NEWS_SUMMARY_DAILY_CALL_LIMIT } from "./news-call-quota.js";
+import { NewsSummaryProviderError } from "./gemini-summary-adapter.js";
 import { NewsController } from "./news.controller.js";
 
 const roots: string[] = [];
@@ -203,6 +204,26 @@ describe("news summary route", () => {
 
     await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
     expect(await new NewsCallQuota(root).usedToday()).toBe(1);
+  });
+
+  /**
+   * 🔴 And **why** it failed goes with it. The screen's sentence is the same for every cause, so the ledger is the
+   * one place a busy model and a retired one differ — without it, finding out costs another call.
+   */
+  it("books why a failed call failed, and nothing extra on a success", async () => {
+    const { controller: news, root } = await summariser();
+    news.callProvider = async () => { throw new NewsSummaryProviderError("refused", 503, "http 503: busy"); };
+    await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
+
+    news.callCardProvider = async () => { throw new Error("not the adapter's"); };
+    await expect(news.cardText({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
+
+    news.callProvider = async () => "통계청은 3.2%라고 밝혔다.";
+    await news.summarise({ article: ARTICLE });
+
+    const rows = JSON.parse(await fs.readFile(path.join(root, "news_call_usage.json"), "utf8")) as Record<string, unknown>[];
+    expect(rows.map((row) => row.failure)).toEqual(["http 503: busy", "unexpected", undefined]);
+    expect(await new NewsCallQuota(root).usedToday(), "the rows with a reason still read back").toBe(3);
   });
 
   /** And the day's allowance closing is our refusal, which the message has to say — not Google's. */
