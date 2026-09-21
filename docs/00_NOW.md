@@ -1316,7 +1316,7 @@ audio.clipVolume 을 보냄          서버가 거절한다 (클립이 없으니
 
 ```
 ⬜ 게시 캡션에 그림 출처 · 그 전엔 뉴스 릴 게시 보류                                   ← Cowork(화면) · 캡틴D
-⬜ 명언 카드 화면의 죽은 입구(fromNewsReel·initialQuote·initialCaptionNote) 지우기          ← Cowork + CLI(짝)
+✅ 명언 카드 화면의 옛 뉴스 릴 입구 지움 · 만들기 화면에 언론사 · 라운드 인용 → D-번호   `97a8e2d`
 ⬜ 세로 자리 실측 · 한 편 뽑아 보기 · 주제 목록 · 공짜 사진 출처                         ← 캡틴D · Cowork
 ```
 
