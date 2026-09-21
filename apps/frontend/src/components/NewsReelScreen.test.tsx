@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NEWS_REEL_TEXT_BOXES, type NewsReelTextField } from "@ai-animation-studio/shared";
 import { stubFetchByRoute } from "../api/testUtils.js";
-import { NewsReelScreen, feedItemTime } from "./NewsReelScreen.js";
+import { NewsReelScreen, feedItemIsFlash, feedItemTime } from "./NewsReelScreen.js";
 
 const PUBLISHERS = [
   /* 🔴 Three answers, not two rows — the screen has to draw "주소만으로 됨", "늘 붙여넣기" and
@@ -1080,5 +1080,77 @@ describe("NewsReelScreen 주소와 본문이 어긋날 때", () => {
 
     /* 아래 칸이 비어 있으면 어긋날 것이 없습니다. */
     expect(screen.queryByTestId("news-fetch-stale")).toBeNull();
+  });
+});
+
+/**
+ * 🔴 **누르기 전에 말합니다.** 속보는 본문이 한두 문장이라 서버의 400자 칸에 걸려 못 가져옵니다 — 고장이
+ * 아니라 기사가 얇은 것인데, 누른 뒤에 「본문을 못 찾았습니다」만 뜨면 앱이 깨진 줄 압니다.
+ */
+describe("NewsReelScreen 속보", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const FLASH = { url: "https://www.yna.co.kr/view/f1", host: "yna.co.kr", publisher: "연합뉴스", title: "[속보] 한미일 \"대만해협 평화 유지\"", publishedAt: "2026-09-22T01:22:00.000Z", imageUrl: null };
+  const PLAIN = { url: "https://www.yna.co.kr/view/p1", host: "yna.co.kr", publisher: "연합뉴스", title: "한미일 외교장관 회담 결과", publishedAt: "2026-09-22T01:00:00.000Z", imageUrl: null };
+
+  it("knows a flash by its bracket, and does not mistake a wrap-up for one", () => {
+    expect(feedItemIsFlash("[속보] 한미일 회담")).toBe(true);
+    expect(feedItemIsFlash("[1보] 한미일 회담")).toBe(true);
+    /* 🟠 「종합」은 본문이 있는 기사입니다 — 같이 묶으면 멀쩡한 기사에 경고가 붙습니다. */
+    expect(feedItemIsFlash("[종합] 한미일 회담")).toBe(false);
+    expect(feedItemIsFlash("한미일 회담 결과")).toBe(false);
+  });
+
+  it("says so on the row, before it is pressed", async () => {
+    stubRoutes({ "GET /news/feed": { items: [FLASH, PLAIN], unavailable: [] } });
+    renderScreen();
+
+    await screen.findByTestId(`news-feed-item-${FLASH.url}`);
+    expect(screen.getByTestId(`news-feed-flash-${FLASH.url}`).textContent).toContain("속보");
+    /* 🔴 일반 기사에는 안 붙습니다 — 다 붙으면 아무 말도 아닙니다. */
+    expect(screen.queryByTestId(`news-feed-flash-${PLAIN.url}`)).toBeNull();
+  });
+
+  it("does not block it — a flash with a body still works", async () => {
+    stubRoutes({
+      "GET /news/feed": { items: [FLASH], unavailable: [] },
+      "POST /news/article": { outcome: "article", article: { title: FLASH.title, body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: FLASH.url } },
+    });
+    renderScreen();
+
+    fireEvent.click(await screen.findByTestId(`news-feed-item-${FLASH.url}`));
+    expect(screen.getByTestId("news-fetch")).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("news-fetch"));
+
+    await screen.findByTestId("news-fetch-ok");
+  });
+
+  it("gives the real reason when the body could not be found, not the generic one alone", async () => {
+    stubRoutes({
+      "GET /news/feed": { items: [FLASH], unavailable: [] },
+      "POST /news/article": { outcome: "body_not_found", title: FLASH.title, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: FLASH.url },
+    });
+    renderScreen();
+
+    fireEvent.click(await screen.findByTestId(`news-feed-item-${FLASH.url}`));
+    fireEvent.click(screen.getByTestId("news-fetch"));
+
+    const why = await screen.findByTestId("news-fetch-flash-why");
+    /* 🔴 「못 가려냈다」와 「원래 짧다」는 할 일이 다릅니다 — 뒤엣것은 다른 기사를 고르는 게 답입니다. */
+    expect(why.textContent).toContain("일반 기사");
+  });
+
+  it("says nothing about flashes when an ordinary article simply failed", async () => {
+    stubRoutes({
+      "GET /news/feed": { items: [PLAIN], unavailable: [] },
+      "POST /news/article": { outcome: "body_not_found", title: PLAIN.title, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: PLAIN.url },
+    });
+    renderScreen();
+
+    fireEvent.click(await screen.findByTestId(`news-feed-item-${PLAIN.url}`));
+    fireEvent.click(screen.getByTestId("news-fetch"));
+
+    await screen.findByTestId("news-fetch-body-not-found");
+    expect(screen.queryByTestId("news-fetch-flash-why")).toBeNull();
   });
 });

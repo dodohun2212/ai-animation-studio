@@ -103,6 +103,22 @@ export function matchesFeedQuery(item: NewsFeedItem, query: string): boolean {
   return item.title.toLowerCase().includes(wanted) || item.publisher.toLowerCase().includes(wanted);
 }
 
+/**
+ * 속보인가 — **제목으로만** 봅니다.
+ *
+ * 🔴 **누르기 전에 말하려고** 있습니다. 속보는 본문이 한두 문장이라 서버의 400자 칸(「크롤러용 요약 토막을
+ * 본문으로 받지 않는다」)에 걸려 `body_not_found` 가 됩니다 — 고장이 아니라 **기사가 얇은 것**인데, 누른 뒤에
+ * 「본문을 못 찾았습니다」만 뜨면 사람은 앱이 깨진 줄 압니다(캡틴D, 실측 4/4).
+ *
+ * 🟠 **막지는 않습니다.** 속보에도 본문이 붙는 날이 있고, 붙여넣으면 그대로 됩니다 — 말해 주기만 합니다.
+ *
+ * 🟠 제목 맨 앞의 대괄호만 봅니다. 「[속보]」와 「[1보]」는 같은 것이고, 「[종합]」은 본문이 있는 기사라
+ * 여기 안 넣습니다.
+ */
+export function feedItemIsFlash(title: string): boolean {
+  return /^\s*\[\s*(?:속보|1보|긴급)\s*\]/.test(title);
+}
+
 export function feedItemTime(publishedAt: string | null): string {
   return publishedAt === null ? "시각 없음" : formatDateTime(publishedAt);
 }
@@ -527,6 +543,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
                 /* 🔴 **누르기 전에** 알아야 합니다 — 늘 붙여넣어야 하는 곳(SBS·MBC·YTN)은 주소가 채워져도
                    본문이 안 따라옵니다. 누른 다음에 말하면 그건 안내가 아니라 변명입니다. */
                 const pasteNeeded = publishers.some((one) => one.host === item.host && one.body === "paste");
+                const flash = feedItemIsFlash(item.title);
                 return (
                   <li key={item.url}>
                     <button
@@ -577,6 +594,11 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
                           {pasteNeeded && (
                             <span className="text-[11px] text-slate-400" data-testid={`news-feed-paste-${item.url}`}>· 본문은 붙여넣어야 합니다</span>
                           )}
+                          {/* 🟠 **붙여넣기 안내와 같은 자리, 다른 말**입니다 — 저쪽은 「이 언론사는 늘 그렇다」고,
+                              이쪽은 「이 기사가 얇다」고 말합니다. 뭉치면 어느 쪽을 고쳐야 할지 모릅니다. */}
+                          {flash && (
+                            <span className="text-[11px] text-amber-300/80" data-testid={`news-feed-flash-${item.url}`}>· 속보 — 본문이 짧아 못 가져올 수 있습니다</span>
+                          )}
                         </span>
                         <span className="mt-0.5 block truncate text-sm leading-snug text-slate-200">{item.title}</span>
                       </span>
@@ -624,6 +646,13 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
             <p className="text-xs text-slate-300">
               페이지는 받았는데 어디부터 어디까지가 기사인지 가려내지 못했습니다. <strong className="text-slate-200">주소·언론사·제목·발행일은 채워 뒀으니</strong> 본문만 복사해 붙여넣으시면 됩니다.
             </p>
+            {/* 🔴 **이유가 다르면 할 일도 다릅니다.** 속보는 「못 가려냈다」가 아니라 **원래 짧은 것**이라,
+                붙여넣어도 두세 문장입니다 — 다른 기사를 고르는 쪽이 보통 맞습니다. */}
+            {feedItemIsFlash(title) && (
+              <p className="text-xs text-amber-300" data-testid="news-fetch-flash-why">
+                이 기사는 <strong>속보</strong>입니다. 속보는 본문이 한두 문장이라 릴에 넣을 내용이 얇습니다 — 같은 사건의 일반 기사를 고르시는 편이 낫습니다.
+              </p>
+            )}
           </div>
         )}
 
