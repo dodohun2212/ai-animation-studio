@@ -984,7 +984,7 @@ describe("NewsReelScreen 릴로 넘기기", () => {
     expect(onUseCard).toHaveBeenCalledWith({
       publisher: "연합뉴스",
       headline: { line1: "국회 본회의 통과", line2: "검찰청 62년 만에 폐지" },
-      caption: { line1: "재석 289명 중 180명 찬성", line2: null },
+      captions: [{ line1: "재석 289명 중 180명 찬성", line2: null }],
     });
   });
 
@@ -996,7 +996,7 @@ describe("NewsReelScreen 릴로 넘기기", () => {
 
     fireEvent.click(screen.getByTestId("news-reel-use"));
 
-    expect(onUseCard.mock.calls[0]?.[0].caption.line2).toBeNull();
+    expect(onUseCard.mock.calls[0]?.[0].captions[0].line2).toBeNull();
   });
 
   it("will not hand over without a publisher — that name goes in the band", async () => {

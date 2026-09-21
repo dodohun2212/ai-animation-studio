@@ -40,6 +40,8 @@ export function countNewsReelText(value: string): number {
  */
 export interface NewsReelTextBox {
   field: NewsReelTextField;
+  /** Which picture's caption, from 0 — on caption boxes only. A headline box has none; there is one headline. */
+  scene?: number;
   limit: number;
   count: number;
   /** `limit - count`. Negative when the box is over, which is how far over it is. */
@@ -87,18 +89,21 @@ export interface NewsReelCardTextCheck {
   refused: NewsReelTextBox[];
 }
 
-/** The value in a card for one named box, so the walk below never spells a field name twice. */
-function textAt(card: NewsReelCard, field: NewsReelTextField): string | null {
-  switch (field) {
-    case "headline.line1": return card.headline.line1;
-    case "headline.line2": return card.headline.line2;
-    case "caption.line1": return card.caption.line1;
-    case "caption.line2": return card.caption.line2;
-  }
-}
-
+/**
+ * Every box on the card: the two headline boxes once, then both caption boxes **for each picture**.
+ *
+ * 🟠 The four field names stay the *kinds* of box, with their limits; a caption box adds `scene`. So a screen
+ * counting one caption line calls `newsReelTextBox("caption.line1", value)` exactly as before, per picture.
+ */
 export function checkNewsReelCardText(card: NewsReelCard): NewsReelCardTextCheck {
-  const boxes = NEWS_REEL_TEXT_FIELDS.map((field) => newsReelTextBox(field, textAt(card, field)));
+  const headlineFields = NEWS_REEL_TEXT_FIELDS.filter((field) => field.startsWith("headline."));
+  const boxes: NewsReelTextBox[] = [
+    ...headlineFields.map((field) => newsReelTextBox(field, field === "headline.line1" ? card.headline.line1 : card.headline.line2)),
+    ...card.captions.flatMap((caption, scene) => [
+      { ...newsReelTextBox("caption.line1", caption.line1), scene },
+      { ...newsReelTextBox("caption.line2", caption.line2), scene },
+    ]),
+  ];
   return { boxes, refused: boxes.filter((box) => box.refusal !== null) };
 }
 

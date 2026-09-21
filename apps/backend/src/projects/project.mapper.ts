@@ -97,7 +97,18 @@ export function photoCardFor(stored: StoredProject): boolean {
 export function newsReelCardFor(stored: StoredProject): NewsReelCard | undefined {
   const card = stored.lore_context.news_reel_card as Record<string, unknown> | undefined;
   const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-  return record(card) && record(card.headline) && record(card.caption) ? (card as unknown as NewsReelCard) : undefined;
+  if (!record(card) || !record(card.headline)) return undefined;
+  if (Array.isArray(card.captions) && card.captions.length > 0 && card.captions.every(record)) return card as unknown as NewsReelCard;
+  /*
+   * 🟠 A reel made before 2026-09-22 stored one `caption` for the whole reel. Read it as that caption under every
+   * picture — which is exactly what it burned — so an old reel still merges. Nothing is rewritten on disk.
+   */
+  if (record(card.caption)) {
+    const { caption, ...rest } = card;
+    const pictures = Math.max(1, stored.scenes.length);
+    return { ...rest, captions: Array.from({ length: pictures }, () => caption) } as unknown as NewsReelCard;
+  }
+  return undefined;
 }
 
 /**

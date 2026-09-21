@@ -56,8 +56,16 @@ function band(style: string, y: number, height: number, width: number, durationS
   return `Dialogue: 0,${timestamp(0)},${timestamp(durationSeconds)},${style},,0,0,0,,${draw}`;
 }
 
-export function newsReelCardAss(card: NewsReelCard, durationSeconds: number, width: number, height: number): string {
-  const captionLineCount = card.caption.line2 === null ? 1 : 2;
+export function newsReelCardAss(card: NewsReelCard, scene: number, durationSeconds: number, width: number, height: number): string {
+  /*
+   * 🔴 Each picture is its own scene with its own `.ass`, so each draws **its own** caption; the headline is the
+   * same in every one. A missing caption is refused rather than borrowed from a neighbour — the server already
+   * refuses a card whose captions do not match its pictures, so reaching here without one is a bug to see.
+   */
+  const caption = card.captions[scene];
+  if (caption === undefined) throw new Error(`News reel card has no caption for picture ${scene + 1} of ${card.captions.length}.`);
+  // The caption band takes its height from this picture's own lines; the headline does not move with it.
+  const captionLineCount = caption.line2 === null ? 1 : 2;
   const g = newsReelCardGeometry(width, height, captionLineCount);
 
   /**
@@ -98,8 +106,8 @@ export function newsReelCardAss(card: NewsReelCard, durationSeconds: number, wid
     cue("Publisher", g.publisherY, card.publisher),
     cue("Headline", g.headline1Y, card.headline.line1),
     cue("HeadlineAccent", g.headline2Y, card.headline.line2),
-    cue("Caption", g.caption1Y, card.caption.line1),
-    ...(card.caption.line2 === null ? [] : [cue("Caption", g.caption2Y, card.caption.line2)]),
+    cue("Caption", g.caption1Y, caption.line1),
+    ...(caption.line2 === null ? [] : [cue("Caption", g.caption2Y, caption.line2)]),
     "",
   ].join("\n");
 }

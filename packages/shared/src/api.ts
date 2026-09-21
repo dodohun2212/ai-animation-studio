@@ -2825,8 +2825,18 @@ export interface CreateNewsSummaryResponse {
  */
 export interface NewsReelCard {
   publisher: string;
+  /** Fixed for the whole reel — the band does not change when the picture does. */
   headline: NewsReelHeadline;
-  caption: NewsReelCaption;
+  /**
+   * One caption per picture, in the same order as the reel's pictures: `captions[i]` sits under picture `i` for
+   * as long as that picture is held.
+   *
+   * 🔴 캡틴D, 2026-09-22: 「릴스가 몇 장면 몇 분인 줄 알고 이렇게 적음?」 — one caption for the whole reel held
+   * the same two lines for thirty seconds across three pictures. MBC's reels change the line when the picture
+   * changes. 🔴 **The length must equal the number of pictures**, and the server refuses a card whose count
+   * differs before anything is written: otherwise which picture a caption belongs to is written nowhere.
+   */
+  readonly captions: readonly NewsReelCaption[];
   /**
    * Whether publishing this reel requires crediting the picture — the same pair, for the same reason, that
    * `AudioLibraryTrack` already carries for music.

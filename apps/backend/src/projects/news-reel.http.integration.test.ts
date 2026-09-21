@@ -29,7 +29,7 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 const CARD: NewsReelCard = {
   publisher: "연합뉴스",
   headline: { line1: "검찰청 폐지 하루 만에", line2: "후속 법률 51건 통과" },
-  caption: { line1: "9월 17일 국회 본회의", line2: null },
+  captions: [{ line1: "9월 17일 국회 본회의", line2: null }],
   creditRequired: false,
 };
 

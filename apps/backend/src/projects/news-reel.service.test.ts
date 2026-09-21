@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { NewsReelService } from "./news-reel.service.js";
+import { newsReelCardFor } from "./project.mapper.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
@@ -17,7 +18,7 @@ afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: tr
 const CARD: NewsReelCard = {
   publisher: "연합뉴스",
   headline: { line1: "검찰청 폐지 하루 만에", line2: "후속 법률 51건 통과" },
-  caption: { line1: "9월 17일 국회 본회의", line2: null },
+  captions: [{ line1: "9월 17일 국회 본회의", line2: null }],
   creditRequired: false,
 };
 
@@ -97,7 +98,7 @@ describe("news reel creation", () => {
   /** 🔴 빈 문자열은 값이 아닙니다 — 「둘째 줄이 없다」와 「아직 안 썼다」가 같은 값이 되면 안 됩니다. */
   it("refuses an empty second caption line, which null is for", async () => {
     const { service, assetId } = await setup();
-    const blank = { ...CARD, caption: { line1: CARD.caption.line1, line2: "" } };
+    const blank = { ...CARD, captions: [{ line1: CARD.captions[0]!.line1, line2: "" }] };
 
     await expect(service.create(request(assetId, { card: blank }))).rejects.toMatchObject({
       response: { code: "NEWS_REEL_INVALID_REQUEST" },
@@ -128,6 +129,28 @@ describe("news reel creation", () => {
     await expect(projects.findById("news_1")).rejects.toThrow();
   });
 
+  /**
+   * 🔴 One caption per picture (캡틴D, 2026-09-22). A count that differs leaves which picture a caption belongs to
+   * written nowhere — refused before a project exists, and the sentence says both numbers.
+   */
+  it("refuses captions that do not match the pictures one for one, without writing a project", async () => {
+    const { service, projects, assetId } = await setup();
+    const two = { ...CARD, captions: [CARD.captions[0]!, { line1: "개정법은 10월 2일부터", line2: null }] };
+
+    const refused = await service.create(request(assetId, { card: two })).catch((error: unknown) => error);
+    expect(refused).toMatchObject({ response: { code: "NEWS_REEL_INVALID_REQUEST" } });
+    expect(JSON.stringify((refused as { response: unknown }).response)).toContain("그림은 1장인데 자막은 2개");
+    await expect(projects.findById("news_1")).rejects.toThrow();
+  });
+
+  it("names the picture whose caption is too long, not just the kind of line", async () => {
+    const { service, assetId } = await setup();
+    const long = { ...CARD, captions: [{ line1: "가".repeat(40), line2: null }] };
+
+    const refused = await service.create(request(assetId, { card: long })).catch((error: unknown) => error);
+    expect(JSON.stringify((refused as { response: unknown }).response)).toContain("1번째 그림의 caption.line1");
+  });
+
   it("refuses a field the contract does not have, rather than ignoring it", async () => {
     const { service, assetId } = await setup();
 
@@ -150,6 +173,21 @@ describe("news reel creation", () => {
     expect(project.photoCard, "포토카드가 아닙니다").toBeUndefined();
     expect(project.subtitleLayout, "자막 슬라이더가 없습니다").toBeUndefined();
     expect(project.sceneSubtitleLayout, "장면 자막도 없습니다").toBeUndefined();
+  });
+
+  /**
+   * 🟠 A reel made before 2026-09-22 stored one `caption` for the whole reel. It is read as that caption under
+   * every picture — what it actually burned — so it still merges. Nothing on disk is rewritten.
+   */
+  it("reads a reel stored with one caption as that caption under every picture", async () => {
+    const { service, projects, assetId } = await setup();
+    await service.create(request(assetId));
+    const stored = await projects.findById("news_1");
+    const { captions, ...rest } = CARD;
+    stored.lore_context = { ...stored.lore_context, news_reel_card: { ...rest, caption: captions[0] } };
+    stored.scenes = [...stored.scenes, { ...(stored.scenes[0] as object), number: 2 }, { ...(stored.scenes[0] as object), number: 3 }];
+
+    expect(newsReelCardFor(stored)?.captions).toEqual([captions[0], captions[0], captions[0]]);
   });
 });
 

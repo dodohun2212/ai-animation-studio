@@ -77,7 +77,7 @@ describe("ProjectList", () => {
       makeProject({ id: "sample_project", workflowState: WorkflowState.Ready }),
       makeProject({
         id: "릴_검찰청", workflowState: WorkflowState.Completed,
-        newsReelCard: { publisher: "연합뉴스", headline: { line1: "국회 본회의 통과", line2: "검찰청 폐지" }, caption: { line1: "재석 289명", line2: null }, creditRequired: false },
+        newsReelCard: { publisher: "연합뉴스", headline: { line1: "국회 본회의 통과", line2: "검찰청 폐지" }, captions: [{ line1: "재석 289명", line2: null }], creditRequired: false },
       }),
     ] })));
     render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);

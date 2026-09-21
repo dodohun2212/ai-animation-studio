@@ -960,7 +960,9 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
                 publisher: outlet.trim(),
                 headline: { line1: headline1.trim(), line2: headline2.trim() },
                 /* 🔴 빈 둘째 줄은 `""` 가 아니라 `null` — 계약이 빈 문자열을 값으로 안 칩니다(D-054). */
-                caption: { line1: caption1.trim(), line2: newsReelFieldValue(caption2) },
+                /* 🟠 CLI 의 다리: 계약은 이제 그림마다 자막이 하나(`captions`)입니다. 이 화면은 아직 자막을 하나만
+                   쓰므로 하나를 넘기고, 만들기 화면이 그것을 그림마다 깝니다 — 예전과 같은 릴입니다. */
+                captions: [{ line1: caption1.trim(), line2: newsReelFieldValue(caption2) }],
               });
             }}
           >

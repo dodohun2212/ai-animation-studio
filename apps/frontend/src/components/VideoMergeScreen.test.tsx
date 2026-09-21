@@ -1538,7 +1538,7 @@ describe("VideoMergeScreen 뉴스 릴", () => {
   const card = {
     publisher: "연합뉴스",
     headline: { line1: "국회 본회의 통과", line2: "검찰청 62년 만에 폐지" },
-    caption: { line1: "재석 289명 중 180명 찬성", line2: null },
+    captions: [{ line1: "재석 289명 중 180명 찬성", line2: null }],
     creditRequired: false,
   };
   const still: Scene[] = [{ number: 1, script: "", motionPrompt: "" }];

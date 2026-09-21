@@ -6,13 +6,13 @@ import { HANGUL_WIDTH_RATIO, checkNewsReelCardText, countNewsReelText, newsReelC
 const card = (over: Partial<NewsReelCard> = {}): NewsReelCard => ({
   publisher: "연합뉴스",
   headline: { line1: "국회 검찰청 폐지", line2: "후속 법률 통과" },
-  caption: { line1: "여야 합의로 본회의를 통과했다", line2: null },
+  captions: [{ line1: "여야 합의로 본회의를 통과했다", line2: null }],
   creditRequired: false,
   ...over,
 });
 
-const refusals = (boxes: readonly { field: string; refusal: string | null }[]): string[] =>
-  boxes.filter((box) => box.refusal !== null).map((box) => `${box.field}:${box.refusal}`);
+const refusals = (boxes: readonly { field: string; scene?: number; refusal: string | null }[]): string[] =>
+  boxes.filter((box) => box.refusal !== null).map((box) => `${box.field}${box.scene === undefined ? "" : `@${box.scene}`}:${box.refusal}`);
 
 describe("news reel text count", () => {
   it("counts a Hangul line by its syllables", () => {
@@ -82,6 +82,7 @@ describe("news reel text box", () => {
 describe("news reel card text check", () => {
   it("looks at every box, not only the ones that failed", () => {
     const check = checkNewsReelCardText(card());
+    // Headline boxes once, then both caption boxes for the one picture this card has.
     expect(check.boxes.map((box) => box.field)).toEqual([...NEWS_REEL_TEXT_FIELDS]);
     expect(check.refused).toEqual([]);
   });
@@ -89,19 +90,37 @@ describe("news reel card text check", () => {
   it("names each box that cannot be used", () => {
     const check = checkNewsReelCardText(card({
       headline: { line1: "검찰청폐지후속법률통과국회의결안", line2: "" },
-      caption: { line1: "여야 합의로 본회의를 통과했다고 밝혔다", line2: "" },
+      captions: [{ line1: "여야 합의로 본회의를 통과했다고 밝혔다", line2: "" }],
     }));
     expect(refusals(check.refused)).toEqual([
       "headline.line1:too_long",
       "headline.line2:missing",
-      "caption.line1:too_long",
-      "caption.line2:blank",
+      "caption.line1@0:too_long",
+      "caption.line2@0:blank",
     ]);
+  });
+
+  /**
+   * 🔴 캡틴D, 2026-09-22: one caption for the whole reel held the same two lines for thirty seconds. Each picture
+   * has its own now, and a refusal says **which picture's** caption is wrong — "자막 첫 줄이 넘었습니다" is no
+   * help when there are three of them.
+   */
+  it("counts every picture's caption, and says which picture a refusal belongs to", () => {
+    const check = checkNewsReelCardText(card({
+      captions: [
+        { line1: "여야 합의로 본회의를 통과했다", line2: null },
+        { line1: "재석 289명 중 180명이 찬성한 것으로 집계됐다", line2: null },
+        { line1: "시행은 10월 2일부터", line2: "공소청으로 이름이 바뀐다" },
+      ],
+    }));
+    expect(check.boxes.filter((box) => box.field === "caption.line1").map((box) => box.scene)).toEqual([0, 1, 2]);
+    expect(check.boxes.filter((box) => box.field.startsWith("headline.")).every((box) => box.scene === undefined)).toBe(true);
+    expect(refusals(check.refused)).toEqual(["caption.line1@1:too_long"]);
   });
 
   /** `refused` is a convenience over `boxes` and must not be able to disagree with it. */
   it("keeps refused in agreement with boxes", () => {
-    const check = checkNewsReelCardText(card({ caption: { line1: "여야 합의로 본회의를 통과했다고 한다", line2: "표결은 재적 과반으로 이뤄졌다" } }));
+    const check = checkNewsReelCardText(card({ captions: [{ line1: "여야 합의로 본회의를 통과했다고 한다", line2: "표결은 재적 과반으로 이뤄졌다" }] }));
     expect(check.refused).toEqual(check.boxes.filter((box) => box.refusal !== null));
   });
 

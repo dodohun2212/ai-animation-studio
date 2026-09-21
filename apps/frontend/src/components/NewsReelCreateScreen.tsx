@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Asset, NewsReelCard, PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
-import { NEWS_REEL_TEXT_FIELDS, PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_PICTURES, newsReelTextBox } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_PICTURES, checkNewsReelCardText } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createNewsReel, toNewsReelDisplayError } from "../api/newsReelsApi.js";
@@ -96,12 +96,12 @@ export function NewsReelCreateScreen({ text, onBack, onCreated }: Props) {
   const nameUsable = trimmedId.length > 0 && SAFE_NAME.test(trimmedId) && !nameTaken;
   /* 🔴 **서버와 같은 함수로 셉니다.** 화면이 통과시킨 카드가 서버에서 거절당하면, 사람은 **고칠 곳이 없는
      거절**을 받습니다(서버가 같은 자리에서 거절합니다). */
+  /* 🟠 CLI 의 다리: 글 쓰는 화면이 아직 자막을 하나만 넘기므로, 그 하나를 **그림마다** 깝니다 — 계약은 그림
+     수만큼의 자막을 받고, 서버는 수가 다르면 거절합니다. 장면마다 다른 자막은 이 화면이 다시 설 때 옵니다. */
+  const captions = text === null ? [] : assetIds.map(() => text.captions[0]!);
   const refused = text === null
     ? []
-    : NEWS_REEL_TEXT_FIELDS.map((one) => newsReelTextBox(one, one === "caption.line2" ? text.caption.line2
-      : one === "caption.line1" ? text.caption.line1
-      : one === "headline.line2" ? text.headline.line2
-      : text.headline.line1)).filter((box) => box.refusal !== null);
+    : checkNewsReelCardText({ ...text, captions: captions.length > 0 ? captions : text.captions, creditRequired: false }).refused;
   const trimmedCredit = creditText.trim();
   /* 🔴 **출처가 필요한데 문구가 비어 있으면 안 만듭니다.** 서버도 같은 자리에서 거절하는데, 여기서 막는 이유는
      이 지점을 지나면 그림이 **사람이 올릴 수 있는 파일 안**으로 들어가기 때문입니다(서버가 같은 자리에서 거절합니다). */
@@ -119,7 +119,7 @@ export function NewsReelCreateScreen({ text, onBack, onCreated }: Props) {
         assetIds,
         /* 🟠 `creditText` 는 **켜져 있을 때만** 실립니다 — 꺼진 채 남은 글자를 같이 보내면 계약이
            「필요 없는데 문구가 있는」 모양을 받게 됩니다. */
-        card: creditRequired ? { ...text, creditRequired: true, creditText: trimmedCredit } : { ...text, creditRequired: false },
+        card: creditRequired ? { ...text, captions, creditRequired: true, creditText: trimmedCredit } : { ...text, captions, creditRequired: false },
         clipDurationSeconds: seconds,
         aspectRatio: "9:16",
       });
@@ -170,8 +170,8 @@ export function NewsReelCreateScreen({ text, onBack, onCreated }: Props) {
               </div>
               <div>
                 <dt className="text-xs text-slate-500">자막</dt>
-                <dd className="text-slate-300">{text.caption.line1}</dd>
-                {text.caption.line2 !== null && <dd className="text-slate-300">{text.caption.line2}</dd>}
+                <dd className="text-slate-300">{text.captions[0]?.line1}</dd>
+                {text.captions[0]?.line2 && <dd className="text-slate-300">{text.captions[0].line2}</dd>}
               </div>
             </dl>
             <p className="mt-2 text-xs text-slate-500">고치시려면 뉴스 릴 화면으로 돌아가십시오 — 글자 수는 거기서 셉니다.</p>

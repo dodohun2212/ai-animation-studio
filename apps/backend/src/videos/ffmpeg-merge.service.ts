@@ -326,7 +326,7 @@ export class FfmpegMergeEngine {
           /* 🔴 The card brings its whole overlay, bands included, so none of the photo card's questions are
              asked for it. Sampling colours off the picture in particular would be a free but pointless ffmpeg
              pass whose answer nothing reads: this card's colours are its own design, not the picture's. */
-          await fs.writeFile(assPath, newsReelCardAss(scene.newsReelCard, clipDurationSeconds, width, height), "utf8");
+          await fs.writeFile(assPath, newsReelCardAss(scene.newsReelCard, index, clipDurationSeconds, width, height), "utf8");
         } else {
           // A still is a photo card (see the input shape below), and a card's text is the whole point of the
           // frame rather than a caption under the action — it gets its own layout. Nothing new has to be

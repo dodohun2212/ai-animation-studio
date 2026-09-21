@@ -6,13 +6,44 @@ import { newsReelCardAss } from "./news-reel-card-ass.js";
 const CARD: NewsReelCard = {
   publisher: "연합뉴스",
   headline: { line1: "검찰청 폐지 하루 만에", line2: "후속 법률 51건 통과" },
-  caption: { line1: "9월 17일 국회 본회의", line2: "개정법은 10월 2일부터" },
+  captions: [{ line1: "9월 17일 국회 본회의", line2: "개정법은 10월 2일부터" }],
   creditRequired: false,
 };
 
 const WIDTH = 1080;
 const HEIGHT = 1920;
-const ass = (card: NewsReelCard = CARD) => newsReelCardAss(card, 10, WIDTH, HEIGHT);
+const ass = (card: NewsReelCard = CARD) => newsReelCardAss(card, 0, 10, WIDTH, HEIGHT);
+/**
+ * 🔴 Each picture is its own scene and draws **its own** caption, under the same headline (캡틴D, 2026-09-22:
+ * one caption held the same two lines for thirty seconds across three pictures).
+ */
+describe("a card with a caption per picture", () => {
+  const three: NewsReelCard = {
+    ...CARD,
+    captions: [
+      { line1: "9월 17일 국회 본회의", line2: null },
+      { line1: "재석 289명 중 180명 찬성", line2: "여야 표결" },
+      { line1: "개정법은 10월 2일부터", line2: null },
+    ],
+  };
+  const dialogue = (scene: number) => newsReelCardAss(three, scene, 10, 1080, 1920).split("\n").filter((line) => line.startsWith("Dialogue:")).join("\n");
+
+  it("draws each picture's own caption and no other", () => {
+    expect(dialogue(1)).toContain("재석 289명 중 180명 찬성");
+    expect(dialogue(1)).toContain("여야 표결");
+    expect(dialogue(1)).not.toContain("9월 17일 국회 본회의");
+    expect(dialogue(2)).toContain("개정법은 10월 2일부터");
+  });
+
+  it("keeps the headline the same on every picture", () => {
+    for (const scene of [0, 1, 2]) expect(dialogue(scene)).toContain("검찰청 폐지 하루 만에");
+  });
+
+  it("refuses a picture the card has no caption for, rather than borrowing a neighbour's", () => {
+    expect(() => newsReelCardAss(three, 3, 10, 1080, 1920)).toThrow(/picture 4 of 3/);
+  });
+});
+
 const events = (text: string): string[] => text.split("\n").filter((line) => line.startsWith("Dialogue:"));
 const styleRow = (text: string, name: string): string => text.split("\n").find((line) => line.startsWith(`Style: ${name},`))!;
 
@@ -85,7 +116,7 @@ describe("news reel card overlay", () => {
 
   /** 🔴 한 줄짜리 자막은 **둘째 줄 큐가 아예 없어야** 한다 — 빈 큐는 띠 안에 빈 줄을 남긴다. */
   it("writes no second caption cue when there is no second caption line", () => {
-    const oneLine = ass({ ...CARD, caption: { line1: "9월 17일 국회 본회의", line2: null } });
+    const oneLine = ass({ ...CARD, captions: [{ line1: "9월 17일 국회 본회의", line2: null }] });
     expect(events(oneLine).filter((line) => line.includes(",Caption,"))).toHaveLength(1);
     expect(events(ass()).filter((line) => line.includes(",Caption,"))).toHaveLength(2);
   });

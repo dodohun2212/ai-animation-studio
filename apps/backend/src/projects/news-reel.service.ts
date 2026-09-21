@@ -126,7 +126,13 @@ export class NewsReelService {
     if (!(PHOTO_CARD_DURATIONS as readonly number[]).includes(data.clipDurationSeconds as number)) throw newsReelInvalidRequest();
     if (!isAspectRatio(data.aspectRatio)) throw newsReelInvalidRequest();
 
-    return { projectId, assetIds, card: validCard(data.card), clipDurationSeconds: data.clipDurationSeconds as CreateNewsReelRequest["clipDurationSeconds"], aspectRatio: data.aspectRatio };
+    const card = validCard(data.card);
+    // 🔴 One caption per picture, in order. A different count leaves which picture a caption belongs to written
+    // nowhere, so it is refused here, before a project exists.
+    if (card.captions.length !== assetIds.length) {
+      throw newsReelInvalidRequest(`그림은 ${assetIds.length}장인데 자막은 ${card.captions.length}개입니다. 그림마다 자막이 하나씩 있어야 합니다.`);
+    }
+    return { projectId, assetIds, card, clipDurationSeconds: data.clipDurationSeconds as CreateNewsReelRequest["clipDurationSeconds"], aspectRatio: data.aspectRatio };
   }
 }
 
@@ -139,11 +145,16 @@ function validCard(value: unknown): NewsReelCard {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw newsReelInvalidRequest();
   const data = value as Record<string, unknown>;
   const headline = data.headline as Record<string, unknown> | undefined;
-  const caption = data.caption as Record<string, unknown> | undefined;
+  const captions = Array.isArray(data.captions) ? data.captions as unknown[] : undefined;
   if (typeof data.publisher !== "string" || !data.publisher.trim()) throw newsReelInvalidRequest();
   if (!headline || typeof headline.line1 !== "string" || typeof headline.line2 !== "string") throw newsReelInvalidRequest();
-  if (!caption || typeof caption.line1 !== "string") throw newsReelInvalidRequest();
-  if (caption.line2 !== null && typeof caption.line2 !== "string") throw newsReelInvalidRequest();
+  if (!captions || captions.length === 0) throw newsReelInvalidRequest();
+  for (const caption of captions) {
+    if (typeof caption !== "object" || caption === null || Array.isArray(caption)) throw newsReelInvalidRequest();
+    const lines = caption as Record<string, unknown>;
+    if (typeof lines.line1 !== "string") throw newsReelInvalidRequest();
+    if (lines.line2 !== null && typeof lines.line2 !== "string") throw newsReelInvalidRequest();
+  }
   if (typeof data.creditRequired !== "boolean") throw newsReelInvalidRequest();
   if (data.creditText !== undefined && (typeof data.creditText !== "string" || !data.creditText.trim())) throw newsReelInvalidRequest();
   /**
@@ -158,7 +169,10 @@ function validCard(value: unknown): NewsReelCard {
   const card: NewsReelCard = {
     publisher: data.publisher.trim(),
     headline: { line1: headline.line1, line2: headline.line2 },
-    caption: { line1: caption.line1, line2: caption.line2 as string | null },
+    captions: captions.map((caption) => {
+      const lines = caption as Record<string, unknown>;
+      return { line1: lines.line1 as string, line2: lines.line2 as string | null };
+    }),
     creditRequired: data.creditRequired,
     ...(data.creditText === undefined ? {} : { creditText: data.creditText as string }),
   };
@@ -167,9 +181,14 @@ function validCard(value: unknown): NewsReelCard {
   if (refused !== undefined) {
     throw newsReelInvalidRequest(
       refused.refusal === "too_long"
-        ? `${refused.field} 이 ${refused.limit}자를 ${-refused.remaining}자 넘었습니다.`
-        : `${refused.field} 이 비어 있습니다.`,
+        ? `${boxName(refused)} 이 ${refused.limit}자를 ${-refused.remaining}자 넘었습니다.`
+        : `${boxName(refused)} 이 비어 있습니다.`,
     );
   }
   return card;
+}
+
+/** A caption box names its picture: with several captions, "caption.line1" alone does not say which one. */
+function boxName(box: { field: string; scene?: number }): string {
+  return box.scene === undefined ? box.field : `${box.scene + 1}번째 그림의 ${box.field}`;
 }

@@ -7,7 +7,7 @@ import { NewsReelCreateScreen, type NewsReelCardText } from "./NewsReelCreateScr
 const TEXT: NewsReelCardText = {
   publisher: "연합뉴스",
   headline: { line1: "국회 본회의 통과", line2: "검찰청 62년 만에 폐지" },
-  caption: { line1: "재석 289명 중 180명 찬성", line2: null },
+  captions: [{ line1: "재석 289명 중 180명 찬성", line2: null }],
 };
 
 const ONE = makeAsset({ assetId: "ASSET-GENERAL-000000000001", displayName: "국회 본회의장" });
@@ -74,6 +74,25 @@ describe("NewsReelCreateScreen", () => {
     fireEvent.click(screen.getByTestId("news-reel-create-submit"));
 
     await waitFor(() => expect(sentBody(mock).assetIds).toEqual([TWO.assetId, ONE.assetId]));
+  });
+
+  /**
+   * 🔴 The contract wants one caption per picture and the server refuses a count that differs. Until this screen
+   * writes a caption per picture, the one it was handed goes under every picture — the reel it always made.
+   */
+  it("sends one caption per picture, so the count matches what the server checks", async () => {
+    const mock = stubRoutes();
+    renderScreen();
+    await screen.findByTestId(`news-reel-create-asset-${TWO.assetId}`);
+
+    fireEvent.click(screen.getByTestId(`news-reel-create-asset-${TWO.assetId}`));
+    fireEvent.click(screen.getByTestId(`news-reel-create-asset-${ONE.assetId}`));
+    fireEvent.change(screen.getByTestId("news-reel-create-name"), { target: { value: "뉴스릴-0922" } });
+    fireEvent.click(screen.getByTestId("news-reel-create-submit"));
+
+    const captionsSent = () => (sentBody(mock).card as { captions: unknown[] }).captions;
+    await waitFor(() => expect(captionsSent()).toHaveLength(2));
+    expect(captionsSent()[0]).toEqual(captionsSent()[1]);
   });
 
   it("sends the card without a credit when none is required — not an empty string", async () => {

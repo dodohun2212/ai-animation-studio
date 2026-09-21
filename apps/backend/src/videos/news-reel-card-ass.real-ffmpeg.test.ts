@@ -27,7 +27,7 @@ const DURATION = 10;
 const CARD: NewsReelCard = {
   publisher: "연합뉴스",
   headline: { line1: "검찰청 폐지 하루 만에", line2: "후속 법률 51건 통과" },
-  caption: { line1: "9월 17일 국회 본회의", line2: "개정법은 10월 2일부터" },
+  captions: [{ line1: "9월 17일 국회 본회의", line2: "개정법은 10월 2일부터" }],
   creditRequired: false,
 };
 
@@ -38,7 +38,7 @@ const fontsDir = path.resolve(import.meta.dirname, "..", "..", "..", "..", "font
 
 function renderFrame(card: NewsReelCard): string {
   const assPath = path.join(root, "card.ass");
-  fs.writeFileSync(assPath, newsReelCardAss(card, DURATION, WIDTH, HEIGHT), "utf8");
+  fs.writeFileSync(assPath, newsReelCardAss(card, 0, DURATION, WIDTH, HEIGHT), "utf8");
   const framePath = path.join(root, "frame.png");
   // 🟠 Mid grey, so both a dark band and white letters are a long way from the background either way.
   execFileSync("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=0x808080:s=${WIDTH}x${HEIGHT}:d=1`, "-vf",
