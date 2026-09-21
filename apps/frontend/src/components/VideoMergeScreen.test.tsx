@@ -1526,3 +1526,41 @@ describe("VideoMergeScreen source", () => {
     }
   });
 });
+
+/**
+ * 뉴스 릴은 포토카드가 아니지만 **멈춘 그림**입니다 — 서버가 `pictureCardFor` 로 묻는 것과 같은 질문을 화면도
+ * 해야 합니다(docs/06_DECISIONS.md D-052). `photoCard` 로만 물으면 승인이 없는 릴이 「0개 확정됨」에 막히고,
+ * 서버가 거절하는 `frameFit`·영상 소리 칸이 보입니다.
+ */
+describe("VideoMergeScreen 뉴스 릴", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const card = {
+    publisher: "연합뉴스",
+    headline: { line1: "국회 본회의 통과", line2: "검찰청 62년 만에 폐지" },
+    caption: { line1: "재석 289명 중 180명 찬성", line2: null },
+    creditRequired: false,
+  };
+  const still: Scene[] = [{ number: 1, script: "", motionPrompt: "" }];
+
+  it("merges a news reel, which has no scene video to confirm, and says nothing about confirming one", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { newsReelCard: card, scenes: still }, undefined, undefined, [], undefined, undefined, { 1: { width: 1080, height: 1920, hasAudio: true } });
+
+    await screen.findByTestId("merge-scope-notice");
+    expect(screen.queryByTestId("merge-blocked")).toBeNull();
+    expect(screen.queryByTestId("merge-approved-count")).toBeNull();
+    expect(screen.getByTestId("merge-scope-notice").textContent).toContain("그림 한 장");
+    /* 🔴 둘 다 서버가 거절합니다 — 안 보여야 누르지 않습니다. */
+    expect(screen.queryByTestId("merge-frame-fit")).toBeNull();
+    expect(screen.queryByTestId("merge-clip-audio")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const body = JSON.parse(String((mergeFetch.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(Object.keys(body)).not.toContain("frameFit");
+    /* 🟠 포토카드 자막 슬라이더 값도 안 갑니다 — 그 조절기는 포토카드 것이고, 뉴스 릴에 보내면 거절됩니다. */
+    expect(Object.keys(body)).not.toContain("subtitleLayout");
+  });
+});

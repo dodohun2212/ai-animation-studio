@@ -865,3 +865,84 @@ describe("NewsReelScreen 릴 문구", () => {
     expect(screen.getByTestId("news-reel-no-route").textContent).toContain("아직 서버에 없습니다");
   });
 });
+
+/**
+ * 「기사에서 네 줄 뽑기」 — `POST /news/card-text`.
+ *
+ * 🔴 돈이 나간 답이라 **버리는 것이 없어야** 합니다. 칸은 받은 그대로 채우고(자르지 않음), 두 번 온 칸은
+ * 고르지 않고 비워 두고, 못 넣은 줄은 보여 줍니다.
+ */
+describe("NewsReelScreen 네 줄 뽑기", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const answer = (overrides: Record<string, unknown> = {}) => ({
+    values: {},
+    missing: [],
+    repeated: [],
+    ignored: [],
+    check: { claims: [], missing: [] },
+    dailyCalls: { used: 3, limit: 10 },
+    ...overrides,
+  });
+
+  async function drawWith(response: unknown): Promise<void> {
+    stubRoutes({ "POST /news/card-text": response });
+    renderScreen();
+    await screen.findByTestId("news-daily-calls");
+    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
+    fireEvent.click(screen.getByTestId("news-reel-draw"));
+  }
+
+  it("fills the boxes with what came back, without shortening any of them, and moves the count on", async () => {
+    const tooLong = "가".repeat(NEWS_REEL_TEXT_BOXES["headline.line1"].limit + 4);
+    await drawWith(answer({
+      values: { "headline.line1": tooLong, "headline.line2": "검찰청 62년 만에 폐지", "caption.line1": "재석 289명 중 180명 찬성" },
+      missing: ["caption.line2"],
+    }));
+
+    await waitFor(() => expect((screen.getByTestId("news-reel-headline1") as HTMLInputElement).value).toBe(tooLong));
+    expect((screen.getByTestId("news-reel-headline2") as HTMLInputElement).value).toBe("검찰청 62년 만에 폐지");
+    expect((screen.getByTestId("news-reel-caption1") as HTMLInputElement).value).toBe("재석 289명 중 180명 찬성");
+    /* 🟠 잘라 주지 않고 칸이 넘었다고 셉니다 — 무엇을 지울지는 사람이 정합니다. */
+    expect(screen.getByTestId("news-reel-headline1-count").textContent).toContain("4자 넘었습니다");
+    expect(screen.getByTestId("news-daily-calls").textContent).toContain("3 / 10");
+    expect(screen.getByTestId("news-reel-draw-missing").textContent).toContain("자막 둘째 줄");
+  });
+
+  it("leaves a box that came back twice empty, and says so instead of choosing", async () => {
+    await drawWith(answer({
+      values: { "headline.line1": "국회 본회의 통과", "headline.line2": "하나를 골랐다면 이것" },
+      repeated: ["headline.line2"],
+      ignored: ["라벨 없이 온 줄"],
+    }));
+
+    await waitFor(() => expect((screen.getByTestId("news-reel-headline1") as HTMLInputElement).value).toBe("국회 본회의 통과"));
+    expect((screen.getByTestId("news-reel-headline2") as HTMLInputElement).value).toBe("");
+    expect(screen.getByTestId("news-reel-draw-repeated").textContent).toContain("제목 둘째 줄");
+    expect(screen.getByTestId("news-reel-draw-ignored").textContent).toContain("라벨 없이 온 줄");
+  });
+
+  /** 🔴 한 칸도 못 읽은 답도 **모양은 맞는 답**입니다 — 「서버 응답 이상」으로 버리면 무엇이 없었는지 못 봅니다. */
+  it("keeps an answer with no values, and names every box as missing", async () => {
+    await drawWith(answer({ missing: ["headline.line1", "headline.line2", "caption.line1"] }));
+
+    const missing = await screen.findByTestId("news-reel-draw-missing");
+    expect(missing.textContent).toContain("제목 첫 줄");
+    expect(screen.queryByTestId("news-reel-draw-error")).toBeNull();
+  });
+
+  it("refuses an answer whose box names are not the contract's, rather than filling a box it does not have", async () => {
+    await drawWith(answer({ values: { "headline.line3": "없는 칸" } }));
+
+    await screen.findByTestId("news-reel-draw-error");
+    expect((screen.getByTestId("news-reel-headline1") as HTMLInputElement).value).toBe("");
+  });
+
+  it("closes both buttons when the server says the day is spent", async () => {
+    await drawWith({ status: 409, body: { code: "NEWS_DAILY_LIMIT_REACHED", message: "" } });
+
+    await screen.findByTestId("news-reel-draw-error");
+    expect(screen.getByTestId("news-reel-draw")).toBeDisabled();
+    expect(screen.getByTestId("news-summarize")).toBeDisabled();
+  });
+});
