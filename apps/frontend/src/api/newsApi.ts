@@ -1,5 +1,7 @@
 import {
   API_ROUTES,
+  type CreateNewsReelCardTextRequest,
+  type CreateNewsReelCardTextResponse,
   type CreateNewsSummaryRequest,
   type CreateNewsSummaryResponse,
   isCreateNewsSummaryResponse,
@@ -7,6 +9,8 @@ import {
   isNewsFetchArticleResponse,
   isNewsReelSetupResponse,
   type NewsArticleInput,
+  NEWS_REEL_TEXT_FIELDS,
+  type NewsReelTextField,
   type NewsFeedResponse,
   type NewsFetchArticleRequest,
   type NewsFetchArticleResponse,
@@ -160,4 +164,59 @@ export function createNewsSummary(article: NewsArticleInput): Promise<CreateNews
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   }, isCreateNewsSummaryResponse);
+}
+
+/**
+ * 답의 모양을 여기서 검사합니다 — 계약이 아니라 **부르는 쪽**에서.
+ *
+ * 🟠 CLI 가 라우트를 낼 때 가드를 일부러 안 만들었습니다(Round 1041 §3): *「부르는 쪽이 생길 때 그 자리에서」*.
+ * 지금 그 자리가 생겼습니다.
+ *
+ * 🔴 **칸 이름을 손으로 안 적습니다.** `NEWS_REEL_TEXT_FIELDS` 로 거릅니다 — 다섯째 칸이 생기는 날, 손으로 적은
+ * 목록은 **조용히 그 칸을 버립니다**(docs/06_DECISIONS.md D-052 의 같은 이유).
+ *
+ * 🟠 **`values` 가 비어 있어도 통과시킵니다.** 한 칸도 못 읽은 답은 **모양이 틀린 게 아니라 내용이 없는 것**이고,
+ * 그건 `missing` 이 말합니다. 여기서 거절하면 **돈이 나간 답을 통째로 버리면서 이유는 「서버 응답 이상」**이 됩니다.
+ */
+function isCreateNewsReelCardTextResponse(value: unknown): value is CreateNewsReelCardTextResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+
+  const isField = (one: unknown): one is NewsReelTextField =>
+    typeof one === "string" && (NEWS_REEL_TEXT_FIELDS as readonly string[]).includes(one);
+  const isFieldList = (list: unknown): boolean => Array.isArray(list) && list.every(isField);
+
+  const values = candidate.values;
+  if (typeof values !== "object" || values === null) return false;
+  for (const [key, one] of Object.entries(values as Record<string, unknown>)) {
+    if (!isField(key) || typeof one !== "string") return false;
+  }
+  if (!isFieldList(candidate.missing) || !isFieldList(candidate.repeated)) return false;
+  if (!Array.isArray(candidate.ignored) || !candidate.ignored.every((one) => typeof one === "string")) return false;
+
+  const check = candidate.check as { claims?: unknown; missing?: unknown } | null;
+  if (typeof check !== "object" || check === null) return false;
+  if (!Array.isArray(check.claims) || !Array.isArray(check.missing)) return false;
+
+  const calls = candidate.dailyCalls as { used?: unknown; limit?: unknown } | null;
+  if (typeof calls !== "object" || calls === null) return false;
+  return Number.isInteger(calls.used) && (calls.used as number) >= 0
+    && Number.isInteger(calls.limit) && (calls.limit as number) > 0;
+}
+
+/**
+ * 기사 하나로 **칸 넷**을 받습니다. 🔴 **오늘 쓸 수 있는 횟수를 한 번 씁니다** — 요약과 같은 장부입니다.
+ *
+ * 🔴 **아무것도 안 자르고 안 고칩니다.** 긴 줄은 긴 채로 칸에 들어가고, 칸이 빨갛게 세 줍니다 — 화면에서
+ * 자르면 사람은 **무엇을 잃었는지 모른 채** 굽습니다(CLI Round 1041 §1).
+ *
+ * 🟠 **대조는 네 줄 위에서** 돌아옵니다 — 요약이 아니라. 구워지는 게 그 줄이라서입니다.
+ */
+export function createNewsReelCardText(article: NewsArticleInput): Promise<CreateNewsReelCardTextResponse> {
+  const request: CreateNewsReelCardTextRequest = { article };
+  return read(API_ROUTES.newsReelCardText, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  }, isCreateNewsReelCardTextResponse);
 }

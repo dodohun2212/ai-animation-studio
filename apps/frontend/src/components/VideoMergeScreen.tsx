@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AspectRatio, AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoClipFacts, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
+import type { AspectRatio, AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, NewsReelCard, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoClipFacts, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
 import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, isAspectRatio, MERGE_FRAME_FOR_ASPECT, VIDEO_MODEL_OPTIONS, WorkflowState } from "@ai-animation-studio/shared";
 import { FRAME_FIT_NOTES, frameFitOutcome } from "../utils/videoModelFacts.js";
 
@@ -158,6 +158,12 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    */
   const [photoCard, setPhotoCard] = useState(false);
   /**
+   * 뉴스 릴이면 그 카드가, 아니면 없습니다.
+   *
+   * 🔴 **깃발 하나 더가 아니라 카드 자체입니다** — 불리언 둘은 서로 어긋날 수 있고 사실 하나는 못 어긋납니다(D-052).
+   */
+  const [newsReelCard, setNewsReelCard] = useState<NewsReelCard | undefined>(undefined);
+  /**
    * The card's own subtitle size and height, and the line they lay out.
    *
    * Both start from the server: a card always comes back carrying a layout (the default filled in when nobody
@@ -279,6 +285,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             .catch(() => { /* Unknown, which is what approvedCount already is. */ });
         }
         setPhotoCard(response.project.photoCard === true);
+        setNewsReelCard(response.project.newsReelCard);
         if (response.project.subtitleLayout) {
           setLayout(response.project.subtitleLayout);
           setSavedLayout(response.project.subtitleLayout);
@@ -374,7 +381,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         audioSettings,
         photoCard ? layout : undefined,
         sceneSubtitleAdjustable ? sceneLayout : undefined,
-        photoCard || frameFit === "pad" ? undefined : frameFit,
+        pictureCard || frameFit === "pad" ? undefined : frameFit,
         rotatable && rotateClockwise ? true : undefined,
       );
       setResult(response);
@@ -405,7 +412,14 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    * project with subtitles turned off still carries narration text it will not burn in, so "has narration" is
    * not the question; "will any of it appear" is.
    */
-  const sceneSubtitleAdjustable = !photoCard && subtitledScenes.length > 0 && mediaMode?.subtitlesEnabled === true;
+  /**
+   * 「클립이 아니라 멈춘 그림」인가 — 서버가 묻는 것과 **글자 그대로 같은 질문**입니다(`pictureCardFor`, D-052).
+   *
+   * 🔴 포토카드 자기 조절기(자막 슬라이더·그림에서 뽑은 색)는 이것과 **다른 질문**이라 `photoCard` 그대로 둡니다.
+   * 뉴스 릴은 슬라이더가 없고 자기 색이 설계라, 여기에 섞으면 **없는 조절기를 뉴스 릴이 받는 것처럼** 보입니다.
+   */
+  const pictureCard = photoCard || newsReelCard !== undefined;
+  const sceneSubtitleAdjustable = !pictureCard && subtitledScenes.length > 0 && mediaMode?.subtitlesEnabled === true;
   /* 서버는 16:9 가 아닌 프로젝트에서 `rotateClockwise: true` 를 받으면 렌더 전에 거절합니다(계약 주석) — 그래서
      그 모양일 때만 선택지를 보여줍니다. 포토카드는 `frameFit`과 같은 이유로 뺍니다: 틀에 맞춰 그려지는 쪽이라
      이 선택이 실제로 바꾸는 것을 아직 확인하지 못했습니다. */
@@ -413,11 +427,11 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   const contentSentence = mergeContentSentence(mediaMode);
   /* Only blocks on a count we actually read. Unknown stays unblocked — the server refuses either way, and a
      button disabled on a guess is worse than one that fails honestly. Same rule as the Episode's merge. */
-  const blocked = !photoCard && approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
+  const blocked = !pictureCard && approvedCount !== null && sceneCount !== null && approvedCount < sceneCount;
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
   /* 포토카드엔 클립이 없어 서버가 거절합니다 — 화면이 아예 안 보내고, 아래 칸도 숨깁니다. */
   const audioSettings: MergeAudioSettings | null = toAudioSettings(
-    audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds, photoCard ? 0 : clipVolumePercent,
+    audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds, pictureCard ? 0 : clipVolumePercent,
   );
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
   /**
@@ -442,7 +456,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       <ScreenHeader title="최종 영상 병합" backLabel="프로젝트로 돌아가기" onBack={onBack} />
       <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300" data-testid="merge-scope-notice">
         이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
-        {photoCard
+        {pictureCard
           ? " 고른 그림 한 장을 정해 둔 길이만큼 하나의 영상으로 만듭니다."
           : `${approvedCount !== null ? ` 확정된 ${approvedCount}개` : ""} 장면 영상을 순서대로 이어 붙입니다.`}
         {contentSentence ? ` ${contentSentence}` : ""}
@@ -459,7 +473,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         </p>
       )}
 
-      {!photoCard && approvedCount !== null && sceneCount !== null && (
+      {!pictureCard && approvedCount !== null && sceneCount !== null && (
         <p className="text-sm text-slate-300 tabular-nums" data-testid="merge-approved-count">
           장면 {sceneCount}개 중 <strong className="text-slate-100">{approvedCount}개 확정됨</strong>
         </p>
@@ -508,7 +522,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           나갔는지 틀리게 보고했습니다(CLI Round 809 · F5). 그래서 두 줄은 모델과 무관하게 참인 말만 합니다.
 
           포토카드는 틀에 맞춰 그려지므로 선택이 아무것도 바꾸지 않고, 서버도 거절합니다 — 그래서 숨깁니다. */}
-      {(!result || remaking) && !photoCard && (
+      {(!result || remaking) && !pictureCard && (
         <fieldset data-testid="merge-frame-fit" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-100">화면 맞춤</legend>
           {FRAME_FITS.map((value) => (
@@ -575,7 +589,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           그리고 이 앱은 그 소리를 한 번도 쓰지 않습니다: 병합이 클립에서 화면만 가져오고 소리는 내레이션
           아니면 무음으로 새로 붙입니다. 소리 되는 모델을 일부러 골라 더 내고 그 소리를 버리는 일이 여기서
           보이지 않으면, 사람은 그걸 영원히 모릅니다. (선택지 자체는 소리 묶음에서 생깁니다.) */}
-      {(!result || remaking) && !photoCard && audibleClips > 0 && (
+      {(!result || remaking) && !pictureCard && audibleClips > 0 && (
         <fieldset data-testid="merge-clip-audio" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-100">영상 소리</legend>
           {/* 설명이 먼저, 칸이 뒤 — 이 줄은 잰 사실입니다(`VideoReview.clip.hasAudio`). 소리가 들어 있는 클립이
@@ -630,7 +644,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             onClick={openConfirmation}
             disabled={confirmOpen || pending || blocked || audioUnready}
           >
-            {mergeButtonLabel(audioMode, photoCard ? 0 : clipVolumePercent)}
+            {mergeButtonLabel(audioMode, pictureCard ? 0 : clipVolumePercent)}
           </button>
           {/* 🟠 못 누르는 이유를 **이유별로** 말합니다. 버튼이 닫힌 채 아무 말도 없으면 화면이 고장 난 것으로
               읽히고, 두 이유를 한 문장으로 뭉개면 「음악을 고르라」는 말이 아직 불러오는 중인 사람에게 갑니다. */}
@@ -653,7 +667,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
               className="space-y-3 rounded-xl border border-amber-400/40 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4"
             >
               <p className="text-sm font-semibold text-amber-300">
-                {photoCard
+                {pictureCard
                   ? "고른 그림을"
                   : approvedCount !== null
                     ? `확정된 ${approvedCount}개 장면 영상을`

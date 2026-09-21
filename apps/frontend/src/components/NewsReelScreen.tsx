@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { NEWS_CHECK_SCOPE_NOTICE, NEWS_REEL_TEXT_FIELDS, checkNewsSummary, newsReelTextBox, type NewsClaimCheck, type NewsDailyCallCount, type NewsFeedItem, type NewsFetchRefusalReason, type NewsPublisher, type NewsPublisherBody, type NewsReelTextField } from "@ai-animation-studio/shared";
-import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsSummary, fetchNewsArticle, getNewsFeed, getNewsReelSetup } from "../api/newsApi.js";
+import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsReelCardText, createNewsSummary, fetchNewsArticle, getNewsFeed, getNewsReelSetup } from "../api/newsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { Spinner } from "./Spinner.js";
@@ -22,6 +22,14 @@ interface Props {
 
 const field = "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600";
 const label = "block text-sm text-slate-300";
+
+/** 칸 이름을 사람이 보는 말로. 🟠 계약이 부르는 이름(`headline.line1`)을 화면에 그대로 보여 주면, 고칠 자리를 못 찾습니다. */
+export const REEL_FIELD_LABEL: Record<NewsReelTextField, string> = {
+  "headline.line1": "제목 첫 줄",
+  "headline.line2": "제목 둘째 줄",
+  "caption.line1": "자막 첫 줄",
+  "caption.line2": "자막 둘째 줄",
+};
 
 /** 화면이 못 찾은 것을 무엇이라 부를지 — 사람이 고칠 자리를 가리키는 말로. */
 const CLAIM_LABEL: Record<NewsClaimCheck["kind"], string> = {
@@ -201,6 +209,11 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
   const [headline2, setHeadline2] = useState("");
   const [caption1, setCaption1] = useState("");
   const [caption2, setCaption2] = useState("");
+  /* 🔴 「글 뽑기」가 돌려준 **부스러기**입니다. 버리지 않고 그대로 보여 줍니다 — 돈이 나간 답이라,
+     못 읽은 줄과 두 번 온 칸은 **사람이 손으로 채울 근거**입니다(CLI Round 1035 §4). */
+  const [drawing, setDrawing] = useState(false);
+  const [drawError, setDrawError] = useState<string | null>(null);
+  const [drawLeftovers, setDrawLeftovers] = useState<{ missing: NewsReelTextField[]; repeated: NewsReelTextField[]; ignored: string[] } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -298,6 +311,50 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
       if (caught instanceof NewsApiError && caught.code === "NEWS_DAILY_LIMIT_REACHED") setLimitReached(true);
     } finally {
       setSummarizing(false);
+    }
+  }
+
+  /**
+   * 기사 하나로 **칸 넷**을 받아 채웁니다. 🔴 **요약과 같은 장부에서 한 번 씁니다.**
+   *
+   * 🔴 **받은 값을 안 자릅니다.** 긴 줄은 긴 채로 칸에 들어가고 칸이 빨갛게 셉니다 — 화면이 잘라 주면
+   * 사람은 **무엇을 잃었는지 모른 채** 굽습니다.
+   *
+   * 🔴 **두 번 온 칸(`repeated`)은 채우지 않습니다.** 계약이 고르지 않는 이유가 여기서도 같습니다 — 무엇을
+   * 뜻했는지 **여기서는 알 수 없고**, 고르면 그건 구워진 뒤에야 드러나는 결정입니다. 대신 말해 줍니다.
+   */
+  async function drawCardText(): Promise<void> {
+    if (drawing || !canSummarise) return;
+    setDrawing(true);
+    setDrawError(null);
+    setDrawLeftovers(null);
+    try {
+      const response = await createNewsReelCardText({
+        title: title.trim(),
+        body: trimmedArticle,
+        publisher: outlet.trim(),
+        publishedAt: publishedAt.trim(),
+        sourceUrl: sourceUrl.trim(),
+      });
+      const setters: Record<NewsReelTextField, (value: string) => void> = {
+        "headline.line1": setHeadline1,
+        "headline.line2": setHeadline2,
+        "caption.line1": setCaption1,
+        "caption.line2": setCaption2,
+      };
+      for (const field of NEWS_REEL_TEXT_FIELDS) {
+        const value = response.values[field];
+        if (value !== undefined && !response.repeated.includes(field)) setters[field](value);
+      }
+      setDailyCalls(response.dailyCalls);
+      setDrawLeftovers({ missing: response.missing, repeated: response.repeated, ignored: response.ignored });
+      /* 🟠 대조는 **네 줄 위에서** 돌아옵니다. 화면은 요약 칸의 것을 다시 계산하는 쪽이라, 여기서는
+         받은 `check` 를 그리지 않고 **칸을 채우는 일만** 합니다 — 같은 이유로 `news-summary` 도 안 건드립니다. */
+    } catch (caught) {
+      setDrawError(messageOf(caught));
+      if (caught instanceof NewsApiError && caught.code === "NEWS_DAILY_LIMIT_REACHED") setLimitReached(true);
+    } finally {
+      setDrawing(false);
     }
   }
 
@@ -715,6 +772,50 @@ export function NewsReelScreen({ onBack, onUseSummary }: Props) {
         <p className="mt-1 text-xs text-slate-500">
           제목 두 줄은 <strong className="text-slate-300">색이 갈립니다</strong> — 첫 줄은 흰색, 둘째 줄은 노란색입니다. 어디서 끊을지는 사람이 정합니다.
         </p>
+
+        {/* 🔴 **이 버튼이 오늘 쓸 수 있는 횟수를 한 번 씁니다** — 위 「AI로 요약 뽑기」와 같은 장부입니다.
+            둘 다 같은 모양으로 그려 두면 사람은 **어느 쪽이 깎는지 모른 채** 누릅니다. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button
+            type="button"
+            data-testid="news-reel-draw"
+            className={outlineButton}
+            disabled={drawing || !canSummarise}
+            onClick={() => void drawCardText()}
+          >
+            {drawing ? "글을 받는 중..." : "기사에서 네 줄 뽑기"}
+          </button>
+          <span className="text-xs text-slate-500">
+            {dailyCalls ? `누를 때마다 하나씩 씁니다 — 오늘 ${callsLeft}번 남았습니다.` : "누를 때마다 오늘 쓸 수 있는 횟수를 하나 씁니다."}
+          </span>
+        </div>
+
+        {drawError && (
+          <p role="alert" className="mt-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" data-testid="news-reel-draw-error">
+            {drawError}
+          </p>
+        )}
+
+        {/* 🔴 **못 채운 것을 말해 줍니다.** 세 가지가 서로 다른 일을 시킵니다 — 안 온 칸은 **쓰라**는 것이고,
+            두 번 온 칸은 **둘 중 하나를 고르라**는 것이고, 라벨 없이 온 줄은 **쓸 만하면 옮겨 적으라**는 것입니다.
+            하나로 뭉개면 사람이 어디를 봐야 할지 모릅니다. */}
+        {drawLeftovers && (drawLeftovers.missing.length > 0 || drawLeftovers.repeated.length > 0 || drawLeftovers.ignored.length > 0) && (
+          <div className="mt-3 space-y-1 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-300" data-testid="news-reel-draw-leftovers">
+            {drawLeftovers.missing.length > 0 && (
+              <p data-testid="news-reel-draw-missing">안 온 칸이 있습니다: {drawLeftovers.missing.map((field) => REEL_FIELD_LABEL[field]).join(" · ")} — 직접 써 주세요.</p>
+            )}
+            {drawLeftovers.repeated.length > 0 && (
+              <p data-testid="news-reel-draw-repeated">
+                {drawLeftovers.repeated.map((field) => REEL_FIELD_LABEL[field]).join(" · ")}이(가) 두 번 왔습니다. 어느 쪽을 뜻했는지 알 수 없어 <strong>채우지 않았습니다</strong> — 직접 써 주세요.
+              </p>
+            )}
+            {drawLeftovers.ignored.length > 0 && (
+              <p data-testid="news-reel-draw-ignored">
+                칸에 못 넣은 줄 {drawLeftovers.ignored.length}개: {drawLeftovers.ignored.map((line) => `「${line}」`).join(" ")}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 space-y-3">
           <CountedField
