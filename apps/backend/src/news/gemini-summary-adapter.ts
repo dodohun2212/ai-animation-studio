@@ -37,8 +37,16 @@ export const GEMINI_SUMMARY_MODEL = "gemini-3.6-flash";
 const ENDPOINT = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-/** How long one summary request may take. A person is waiting on this with a screen open. */
-export const GEMINI_SUMMARY_TIMEOUT_MS = 30_000;
+/**
+ * How long one summary request may take. A person is waiting on this with a screen open.
+ *
+ * 🔴 **30 seconds was too short, measured.** 2026-09-22, the first night the ledger kept reasons: two presses,
+ * ten minutes apart, both booked `timeout` — not a busy burst (that is a 503, retried) but a model that takes
+ * longer than 30 seconds on a whole article. 🟠 Cutting it off saves nothing: the request already reached the
+ * provider and is booked against the day either way, so a short ceiling spends the call and throws the answer
+ * away. 90 seconds is a ceiling on a hung connection, not a wait — a fast answer still returns when it arrives.
+ */
+export const GEMINI_SUMMARY_TIMEOUT_MS = 90_000;
 
 /**
  * 🔴 **One retry, and only for 5xx.**
