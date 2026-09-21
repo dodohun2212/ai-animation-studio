@@ -20,24 +20,6 @@ interface Props {
    * and an optional callback would let a caller render rows that go nowhere.
    */
   onOpenCard: (projectId: string) => void;
-  /**
-   * 뉴스 화면이 넘겨준, **대조를 통과한** 요약. 없으면 빈 칸으로 시작합니다.
-   *
-   * 🔴 한 번만 채웁니다 — 넘어온 뒤 사람이 고친 글을 다시 덮으면, 고친 것이 말없이 사라집니다.
-   */
-  /**
-   * 🔴 뉴스 릴에서 넘어왔나. 만드는 일은 같고 **부르는 이름이 다릅니다** — 캡틴D가 뉴스 릴을 만들다
-   * 「명언 카드」라고 적힌 화면에 떨어지면, 잘못 눌렀다고 읽습니다.
-   */
-  fromNewsReel?: boolean;
-  initialQuote?: string;
-  /**
-   * 출처 한 줄(언론사 · 발행일 · 링크). 요약과 **같이** 와야 합니다.
-   *
-   * 🔴 남의 기사를 줄여 만든 카드에서 출처가 빠지면 그건 우리 글인 척하는 것입니다. 그래서 이 화면은
-   * 받은 줄을 보여 주고, 캡션에 그대로 들어간다고 말합니다.
-   */
-  initialCaptionNote?: string;
 }
 
 type DisplayError = { code: string; message: string };
@@ -64,7 +46,7 @@ const field =
  * the line. This screen is that front door and nothing more; it hands the finished card to the merge screen,
  * which is where music and its credit line already live and where they will keep living.
  */
-export function PhotoCardScreen({ fromNewsReel = false, onBack, onCreated, onOpenCard, initialQuote, initialCaptionNote }: Props) {
+export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [listError, setListError] = useState<DisplayError | null>(null);
   /**
@@ -76,7 +58,7 @@ export function PhotoCardScreen({ fromNewsReel = false, onBack, onCreated, onOpe
    */
   const [assetIds, setAssetIds] = useState<string[]>([]);
   const [projectId, setProjectId] = useState("");
-  const [quote, setQuote] = useState(initialQuote ?? "");
+  const [quote, setQuote] = useState("");
   const [seconds, setSeconds] = useState<PhotoCardDurationSeconds>(PHOTO_CARD_DURATIONS[0]);
   // Was a `vertical` boolean (9:16 vs 16:9 only) — item 6 gave `AspectRatio` two more members (1:1, then 4:5),
   // and a boolean has no way to hold a third or fourth value. Carrying the real `AspectRatio` here, the same
@@ -172,8 +154,8 @@ export function PhotoCardScreen({ fromNewsReel = false, onBack, onCreated, onOpe
       {/* 🔴 같은 화면이 두 가지를 만듭니다. 이름을 안 바꾸면 뉴스 릴을 만들던 사람이 「명언 카드」에
           떨어져 **잘못 눌렀다고 읽습니다** — 캡틴D가 실제로 그렇게 읽으셨습니다. */}
       <ScreenHeader
-        title={fromNewsReel ? "뉴스 릴 카드 만들기" : "새 명언 카드"}
-        backLabel={fromNewsReel ? "뉴스 릴로" : "명언 카드로"}
+        title="새 명언 카드"
+        backLabel="명언 카드로"
         onBack={onBack}
       />
       <p className="text-sm text-slate-400">
@@ -221,19 +203,6 @@ export function PhotoCardScreen({ fromNewsReel = false, onBack, onCreated, onOpe
           <p className={`text-xs tabular-nums ${trimmedQuote.length > PHOTO_CARD_QUOTE_MAX_LENGTH ? "text-rose-400" : "text-slate-500"}`} data-testid="photo-card-quote-count">
             {trimmedQuote.length} / {PHOTO_CARD_QUOTE_MAX_LENGTH}자
           </p>
-          {/*
-            🔴 뉴스 화면에서 넘어온 카드에만 뜹니다. 남의 기사를 줄여 만든 글에서 출처가 빠지면 그건 우리
-            글인 척하는 것이라, **어디서 왔는지를 이 화면이 계속 들고 있어야** 합니다 — 넘어온 뒤 이 화면에서
-            글을 고치는 동안에도요.
-            🟠 그리고 대조는 **넘어온 그 문장**에 대해 통과한 것입니다. 여기서 글을 고치면 그 통과는 고친
-            문장에 대해서는 아무 말도 하지 않습니다. 그 말을 안 하면 사람은 초록이 따라온다고 읽습니다.
-          */}
-          {initialCaptionNote && (
-            <div className="mt-2 space-y-1 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2" data-testid="photo-card-source-note">
-              <p className="text-xs text-slate-300">출처 · {initialCaptionNote}</p>
-              <p className="text-xs text-slate-500">캡션에 이 줄을 같이 넣어 주세요. 여기서 문장을 고치시면 원문 대조는 다시 하셔야 합니다.</p>
-            </div>
-          )}
 
           {/* 🔴 「길이」가 아니라 **「한 장당 길이」**입니다. 사진이 여럿이 되면서 이 값은 완성 길이가 아니게
               됐는데, 이름이 그대로면 사람은 이걸 전체 길이로 읽습니다. 전체는 위의 한 줄이 말합니다. */}

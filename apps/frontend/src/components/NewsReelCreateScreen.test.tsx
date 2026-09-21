@@ -40,6 +40,13 @@ describe("NewsReelCreateScreen", () => {
   beforeEach(() => { stubRoutes(); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
+  /** 🔴 띠에 박히는 이름이라 **구워지는 값**입니다 — 안 보이면 무엇이 나갈지 모른 채 누르게 됩니다. */
+  it("shows the publisher that goes in the band, not just the lines", async () => {
+    renderScreen();
+
+    expect(screen.getByTestId("news-reel-create-publisher").textContent).toBe("연합뉴스");
+  });
+
   it("has nothing to make without the four lines, and says where they come from", async () => {
     renderScreen(null);
 

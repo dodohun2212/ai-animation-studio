@@ -7,7 +7,7 @@ import { newsReelTextBox, type NewsReelTextField } from "@ai-animation-studio/sh
  *
  * 🔴 **이 파일에는 숫자가 없습니다.** 15·20 을 여기 적으면 계약과 화면 두 군데가 되고, 캡틴D가 「제목을 더 크게」
  * 하셔서 15가 13이 되는 날 **둘 중 하나만** 바뀝니다. `newsReelTextBox(field, value)` 가 `limit` 을 들고 옵니다
- * (CLI Round 1029 §2 — 제가 1028 §3 에서 여쭌 것의 답).
+ * (docs/06_DECISIONS.md D-053).
  *
  * 🔴 **자르지 않습니다.** `maxLength` 를 안 붙였습니다 — 길이로 자르면 사람은 **무엇을 잃었는지 모른 채**
  * 다음 칸으로 갑니다(요약 칸이 같은 이유로 안 자릅니다, CLI 943 §1). 넘으면 **빨갛게 세고**, 카드를 만드는
@@ -33,7 +33,7 @@ interface CountedFieldProps {
 /**
  * 화면의 빈 칸(`""`)을 계약의 **없음**(`null`)으로 옮깁니다.
  *
- * 🔴 계약은 **빈 문자열을 값으로 치지 않습니다**(CLI 1029 §3). `""` 를 그대로 보내면 `refusal: "blank"` 가
+ * 🔴 계약은 **빈 문자열을 값으로 치지 않습니다**(docs/06_DECISIONS.md D-054). `""` 를 그대로 보내면 `refusal: "blank"` 가
  * 돌아오는데, 그건 **일부러** 그렇게 둔 것이고 바꿔야 할 곳은 여기입니다 — 파일에 구워진 뒤보다 **칸에서**
  * 바꾸는 편이 낫습니다.
  *

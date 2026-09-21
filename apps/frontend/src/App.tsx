@@ -65,13 +65,12 @@ type Screen =
   | { name: "videoLibrary" }
   | { name: "audioLibrary" }
   | { name: "photoCard" }
-  /** 명언 카드를 **만드는** 화면. 목록(`photoCard`)과 갈라져 있습니다 — 하나는 찾는 곳, 하나는 만드는 곳. */
-  /**
-   * 🔴 `from` 은 **어디서 왔나**입니다 — 캡틴D: 「뉴스 릴 만드는대 왜 갑자기 명언 카드로 날라가는거야.
-   * 명언 릴이랑 뉴스 릴은 엄연히 다른 거잖아.」 맞는 말입니다. 만드는 **화면**은 하나로 둡니다(둘이 되면
-   * 자막·음악·출처가 두 곳에서 갈립니다) — 대신 그 화면이 **자기가 지금 무엇을 만드는 중인지** 말합니다.
-   */
-  | { name: "photoCardCreate"; from?: "newsReel" }
+  /** 명언 카드를 **만드는** 화면. 목록(`photoCard`)과 갈라져 있습니다 — 하나는 찾는 곳, 하나는 만드는 곳.
+
+   🔴 `from` 을 없앴습니다. 뉴스 릴이 여기로 넘어오던 길이 사라졌는데 매개변수만 남으면,
+   주소창에 `?from=newsReel` 을 치는 것만으로 **「뉴스 릴 카드 만들기」라는 명언 카드 화면**이 열립니다 —
+   캡틴D가 헷갈리신 바로 그 모양입니다(CLI 1059 §3). */
+  | { name: "photoCardCreate" }
   /** 만들어 둔 **뉴스 릴 목록** — 사이드바의 「뉴스 릴」이 여는 곳. */
   | { name: "newsReel" }
   /** 기사에서 **네 줄을 뽑는** 화면. 목록(`newsReel`)과 갈라져 있습니다 — 하나는 찾는 곳, 하나는 쓰는 곳. */
@@ -118,7 +117,7 @@ type Screen =
 type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber" | "from";
 const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber", "from"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
-  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: ["from"], newsReel: [], newsReelWrite: [], newsReelCreate: [],
+  list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: [], newsReel: [], newsReelWrite: [], newsReelCreate: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -305,7 +304,7 @@ type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" 
  * `photoCardCreate` 줄을 지워도 짝 여든다섯이 전부 초록이라는 게 드러났습니다. 주석은 맞는데 아무도
  * 안 보는 줄이었고, 그런 줄은 「정리」 한 번에 조용히 사라집니다.
  */
-export function navSectionFor(name: Screen["name"], from?: "newsReel"): NavSection | null {
+export function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "assets") return "assets";
   if (name === "videoLibrary") return "videoLibrary";
   if (name === "audioLibrary") return "audioLibrary";
@@ -314,7 +313,7 @@ export function navSectionFor(name: Screen["name"], from?: "newsReel"): NavSecti
   if (name === "newsReel" || name === "newsReelWrite" || name === "newsReelCreate") return "newsReel";
   // 🔴 만들기 화면은 **어디서 왔느냐**로 갈립니다 — 뉴스 릴에서 왔으면 왼쪽도 뉴스 릴에 남습니다.
   // 여기서 「명언 카드」로 옮겨 버리면 사람이 하던 일에서 **쫓겨난 것처럼** 보입니다.
-  if (name === "photoCardCreate") return from === "newsReel" ? "newsReel" : "photoCard";
+  if (name === "photoCardCreate") return "photoCard";
   if (name === "instagramPost") return "instagramPost";
   if (name === "archive") return "archive";
   if (name === "workflowGuide") return "workflowGuide";
@@ -391,8 +390,8 @@ const NAV_GROUPS: { title: string; index: string; items: NavItem[] }[] = [
 ];
 
 /** Always visible so a section (이미지 보관함, API 설정, 장기 프로젝트) is never more than one click away, no matter how deep the current screen is. */
-function NavBar({ current, from, onNavigate }: { current: Screen["name"]; from?: "newsReel"; onNavigate: (screen: Screen) => void }) {
-  const section = navSectionFor(current, from);
+function NavBar({ current, onNavigate }: { current: Screen["name"]; onNavigate: (screen: Screen) => void }) {
+  const section = navSectionFor(current);
   return (
     <nav aria-label="주 메뉴" className="mt-8 flex flex-col gap-7">
       {NAV_GROUPS.map((group) => (
@@ -709,7 +708,7 @@ function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: 
           */}
         <span aria-hidden="true" className="mt-2 block h-0.5 w-10" style={{ background: "var(--spectrum)" }} />
       </div>
-      <NavBar current={screen.name} from={screen.name === "photoCardCreate" ? screen.from : undefined} onNavigate={onNavigate} />
+      <NavBar current={screen.name} onNavigate={onNavigate} />
       <LongWorkspaceNav screen={screen} onNavigate={onNavigate} />
     </aside>
   );
@@ -1029,15 +1028,14 @@ export function App() {
             )}
             {screen.name === "photoCardCreate" && (
               <PhotoCardScreen
-                fromNewsReel={screen.from === "newsReel"}
-                onBack={() => setScreen(screen.from === "newsReel" ? { name: "newsReel" } : { name: "photoCard" })}
+                onBack={() => setScreen({ name: "photoCard" })}
                 onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
                 onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
               />
             )}
-            {/* 뉴스 릴은 카드 한 장으로 끝납니다 — 그래서 자기 만들기 화면을 따로 두지 않고, 대조를 통과한
-                요약을 명언 카드 화면에 넘겨 줍니다. 릴을 만드는 길이 둘이 되면 자막·음악·출처가 두 곳에서
-                갈립니다. */}
+            {/* 🔴 뉴스 릴은 **자기 길로** 만들어집니다 — 네 줄 쓰기(`newsReelWrite`) → 그림·출처 고르기
+                (`newsReelCreate`). 예전에는 대조를 통과한 요약을 명언 카드 화면에 넘겼는데, 그러면 캡틴D가
+                만드신 릴이 **명언 카드로 만들어져** 명언 카드 목록에 실렸습니다(docs/06_DECISIONS.md D-052). */}
             {/* 🔴 **목록이 먼저입니다.** 릴은 단기 프로젝트에서도 명언 카드 목록에서도 빠지므로, 이 화면이
                 없으면 만든 릴이 아무 데도 안 실립니다. */}
             {screen.name === "newsReel" && (

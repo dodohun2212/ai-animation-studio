@@ -95,7 +95,7 @@ export function NewsReelCreateScreen({ text, onBack, onCreated }: Props) {
   const nameTaken = takenNames !== null && takenNames.has(trimmedId);
   const nameUsable = trimmedId.length > 0 && SAFE_NAME.test(trimmedId) && !nameTaken;
   /* 🔴 **서버와 같은 함수로 셉니다.** 화면이 통과시킨 카드가 서버에서 거절당하면, 사람은 **고칠 곳이 없는
-     거절**을 받습니다(CLI Round 1043 §1). */
+     거절**을 받습니다(서버가 같은 자리에서 거절합니다). */
   const refused = text === null
     ? []
     : NEWS_REEL_TEXT_FIELDS.map((one) => newsReelTextBox(one, one === "caption.line2" ? text.caption.line2
@@ -104,7 +104,7 @@ export function NewsReelCreateScreen({ text, onBack, onCreated }: Props) {
       : text.headline.line1)).filter((box) => box.refusal !== null);
   const trimmedCredit = creditText.trim();
   /* 🔴 **출처가 필요한데 문구가 비어 있으면 안 만듭니다.** 서버도 같은 자리에서 거절하는데, 여기서 막는 이유는
-     이 지점을 지나면 그림이 **사람이 올릴 수 있는 파일 안**으로 들어가기 때문입니다(CLI Round 1043 §1). */
+     이 지점을 지나면 그림이 **사람이 올릴 수 있는 파일 안**으로 들어가기 때문입니다(서버가 같은 자리에서 거절합니다). */
   const creditMissing = creditRequired && trimmedCredit.length === 0;
   const ready = text !== null && refused.length === 0 && assetIds.length > 0 && nameUsable && !creditMissing;
 
@@ -158,6 +158,11 @@ export function NewsReelCreateScreen({ text, onBack, onCreated }: Props) {
             {/* 🟠 여기서는 **고칠 수 없습니다** — 고치는 자리는 뉴스 릴 화면의 칸이고, 거기서 글자 수를 셉니다.
                 두 군데서 고칠 수 있으면 **어느 쪽이 구워진 글인지** 사람이 못 압니다. */}
             <dl className="mt-3 space-y-2 text-sm" data-testid="news-reel-create-card">
+              {/* 🔴 **띠에 박히는 이름**입니다 — 구워지는 값인데 여기 없으면, 무엇이 나갈지 모른 채 누르게 됩니다. */}
+              <div>
+                <dt className="text-xs text-slate-500">언론사 (위 띠)</dt>
+                <dd className="text-slate-100" data-testid="news-reel-create-publisher">{text.publisher}</dd>
+              </div>
               <div>
                 <dt className="text-xs text-slate-500">제목</dt>
                 <dd className="text-slate-100">{text.headline.line1}</dd>

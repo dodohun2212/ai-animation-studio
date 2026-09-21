@@ -216,7 +216,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
   const [caption1, setCaption1] = useState("");
   const [caption2, setCaption2] = useState("");
   /* 🔴 「글 뽑기」가 돌려준 **부스러기**입니다. 버리지 않고 그대로 보여 줍니다 — 돈이 나간 답이라,
-     못 읽은 줄과 두 번 온 칸은 **사람이 손으로 채울 근거**입니다(CLI Round 1035 §4). */
+     못 읽은 줄과 두 번 온 칸은 **사람이 손으로 채울 근거**입니다(docs/06_DECISIONS.md D-052). */
   const [drawing, setDrawing] = useState(false);
   const [drawError, setDrawError] = useState<string | null>(null);
   const [drawLeftovers, setDrawLeftovers] = useState<{ missing: NewsReelTextField[]; repeated: NewsReelTextField[]; ignored: string[] } | null>(null);
@@ -372,7 +372,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
     [feed, feedQuery],
   );
 
-  /* 🔴 **숫자를 여기 안 적습니다** — `newsReelTextBox` 가 계약의 한도를 들고 옵니다(CLI 1029 §2). */
+  /* 🔴 **숫자를 여기 안 적습니다** — `newsReelTextBox` 가 계약의 한도를 들고 옵니다(docs/06_DECISIONS.md D-053). */
   /* 🔴 **칸 이름도 여기 안 적습니다.** 넷을 배열에 손으로 늘어놓으면 `contract-value-sets` 가 잡습니다 —
      베낀 목록은 **계약이 늘어난 날 조용히 안 늘어나서**, 다섯째 칸이 생기면 이 화면이 아무 말 없이 넷만
      그립니다. 값은 칸 이름을 키로 한 표에 두고 순서는 계약에서 받습니다: 다섯째가 생기면 그날
@@ -395,7 +395,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
   /**
    * 🔴 **구워지는 글은 네 줄입니다 — 그래서 대조도 네 줄 위에서 돕니다.**
    *
-   * 요약만 대조하고 네 줄을 안 보면, **정작 파일에 박히는 글이 검사 밖**에 있습니다(CLI Round 1055 §2).
+   * 요약만 대조하고 네 줄을 안 보면, **정작 파일에 박히는 글이 검사 밖**에 있습니다(docs/06_DECISIONS.md D-052).
    * 🟠 요약 쪽 대조와 **둘이 되는 것이 맞습니다** — 칸이 둘이라서입니다. 이름으로 갈라 둡니다.
    *
    * 🟠 받은 `check` 를 그리지 않고 **다시 계산합니다.** 사람이 칸을 고치는 순간 받은 답은 낡습니다.
@@ -526,7 +526,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
                       {/*
                         * 🔴 **자리는 늘 잡고, 없으면 비워 둡니다.**
                         *
-                        * 여섯 중 셋이 그림을 아예 안 줍니다(CLI Round 1009 §0) — 백열 줄에서 **절반이 `null`**
+                        * 여섯 중 셋이 그림을 아예 안 줍니다(공급자 여섯 중 셋이 그림을 안 줍니다 — 실측) — 백열 줄에서 **절반이 `null`**
                         * 입니다. 🟠 자리를 안 잡으면 제목의 왼쪽 끝이 줄마다 흔들려서, 백열 줄을 훑는 일이
                         * 어려워집니다. 🔴 그렇다고 빈 자리에 테두리나 아이콘을 그리면 **「못 가져왔다」로 읽힙니다** —
                         * 그건 저쪽 편집 판단이지 이 화면이 실패한 게 아닙니다. **그래서 아무것도 안 그립니다.**
@@ -534,7 +534,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
                         * 🟠 **높이**: 줄은 **44 → 52px** 로 높아집니다(그림 40px + 패딩 12px, 전에는 글자 두 줄
                         * 32px + 12px). 🟢 그래도 **페이지는 안 길어집니다** — 상자가 `max-h-72` 로 고정이라
                         * 2132px 그대로이고, 대신 **보이는 줄이 6.5 → 5.5** 가 됩니다. 🔴 제가 처음에 「줄이 안
-                        * 높아진다」고 적었는데 **안 재고 쓴 말이었습니다**(Cowork Round 1012 §1) — 40 과 32 를
+                        * 높아진다」고 적었는데 **안 재고 쓴 말이었습니다**(안 재고 쓴 말이었습니다 — 그 뒤 실측) — 40 과 32 를
                         * 같다고 본 셈입니다. 숫자를 남겨 두니 다음 사람은 다시 안 재도 됩니다.
                         *
                         * 🟠 **32px 로 줄이지 않습니다.** 8px 을 아끼면 1280×720 짜리 사진이 32px 이 되어 **뭐가
@@ -789,7 +789,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
       {/*
         * 🔴 **릴에 박히는 네 줄.** 요약 칸과 다릅니다 — 요약은 **읽을 글**이고, 이 넷은 **화면에 박힐 글**입니다.
         * 그래서 한도가 「읽기 좋은 길이」가 아니라 **글자가 화면 폭에 들어가는 수**이고, 그 수는 계약이 들고
-        * 옵니다(굽는 글꼴 실측 × 0.63 — CLI 1021 §1).
+        * 옵니다(굽는 글꼴 실측 × 0.63 — D-053).
         */}
       <section className={cardSection} aria-label="릴 문구">
         <h2 className="text-sm font-semibold text-slate-100">릴에 들어갈 글</h2>
@@ -895,11 +895,9 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
           />
         </div>
 
-        {/* 🔴 **아직 보낼 길이 없습니다.** 계약은 들어왔지만 라우트·핸들러는 CLI 가 한 커밋으로 넣는 중입니다
-            (CLI 1029 §1). 회색 버튼을 만들어 두는 것보다 **없다고 적는 편**이 낫습니다 — 안 눌리는 버튼은
-            「곧 될 것」이 아니라 「내가 뭘 잘못했나」로 읽힙니다. */}
         {/* 🔴 **여기서 굽지 않습니다** — 그림을 고르는 자리가 다음 화면입니다. 이 버튼은 **글을 들고 넘어가는**
             것뿐이고, 돈은 어느 쪽에서도 안 나갑니다. */}
+        {/* 🟠 넘어간 뒤 이 칸의 글을 고치면, **넘어간 글은 안 따라갑니다** — 다시 눌러 주셔야 합니다. */}
         <div className="mt-4 space-y-2">
           <button
             type="button"
