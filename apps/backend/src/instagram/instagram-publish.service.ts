@@ -217,6 +217,23 @@ export class InstagramPublishService {
     if (!flat(caption).includes(flat(credit))) throw invalidInstagramRequest("This video's music requires a credit and the caption does not carry it.");
   }
 
+  /**
+   * Refuses a news reel whose picture requires a credit the caption does not carry.
+   *
+   * The same rule as the music's, one field over: the card's `creditRequired`/`creditText` (D-054) say the
+   * picture's licence asks for a line, and the post screen composes it into the caption and blocks while it is
+   * blank. 🔴 Until the screen read them the two fields were written and never read, so a reel on a CC BY
+   * picture could go out uncredited; a caller that skips the screen must not be able to do that either.
+   */
+  private assertPictureCreditCarried(loreContext: unknown, caption: string): void {
+    const card = isObject(loreContext) ? loreContext.news_reel_card : undefined;
+    if (!isObject(card) || card.creditRequired !== true) return;
+    const credit = typeof card.creditText === "string" ? card.creditText.trim() : "";
+    if (!credit) throw invalidInstagramRequest("This reel's picture requires a credit and none is recorded for it. Make the reel again with the picture's credit line.");
+    const flat = (value: string) => value.replace(/\s+/gu, " ").trim();
+    if (!flat(caption).includes(flat(credit))) throw invalidInstagramRequest("This reel's picture requires a credit and the caption does not carry it.");
+  }
+
   async publish(projectId: string, request: unknown): Promise<PublishToInstagramResponse> {
     const { caption, igUserId, thumbOffsetMs, acknowledgedUnknownAttempt } = this.parseRequest(request);
     const id = projectId.trim();
@@ -246,6 +263,7 @@ export class InstagramPublishService {
       const bytes = await fs.readFile(this.finalVideo(id)).catch(() => undefined);
       if (!bytes || bytes.length === 0) throw instagramVideoUnavailable();
       this.assertCreditCarried(current.used_audio, caption);
+      this.assertPictureCreditCarried(current.lore_context, caption);
 
       const { mediaId, publishedAt } = await this.sendToInstagram(token.accessToken, igUserId, caption, bytes, thumbOffsetMs, directory);
       const updated = {

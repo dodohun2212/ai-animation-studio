@@ -74,6 +74,7 @@ async function setup(options: {
   connected?: boolean; withVideo?: boolean; alreadyPublished?: boolean;
   fetchImpl?: typeof fetch; now?: () => number;
   usedAudio?: Record<string, unknown>;
+  newsReelCard?: Record<string, unknown>;
   lockTimeoutMs?: number;
 } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "instagram-publish-")); roots.push(root);
@@ -84,6 +85,7 @@ async function setup(options: {
     project.instagram_post = { media_id: "media-old", ig_user_id: IG_USER_ID, published_at: "2026-08-26T00:00:00.000Z", caption: "before" };
   }
   if (options.usedAudio) (project as unknown as Record<string, unknown>).used_audio = options.usedAudio;
+  if (options.newsReelCard) project.lore_context = { ...project.lore_context, news_reel_card: options.newsReelCard };
   await projects.create(project);
   if (options.withVideo !== false) {
     const finalDir = path.join(projectsRoot, "post_project", "videos", "final");
@@ -200,6 +202,37 @@ Music: Kevin
     // honest answer — the alternative is a public post missing the attribution its licence requires.
     const { service } = await setup({ usedAudio: { mode: "bgm", track_id: "t1", attribution_required: true, attribution_text: "" } });
     await expect(service.publish("post_project", approved)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  /**
+   * 🔴 뉴스 릴 그림의 출처도 음원과 **같은 규칙**입니다. 카드의 `creditRequired`/`creditText` 는 쓰이기만 하고
+   * 읽히지 않아, CC BY 사진으로 만든 릴이 출처 없이 나갈 수 있었습니다. 화면이 막아도, 화면을 건너뛴 호출은
+   * 서버가 막아야 합니다 — 올라간 뒤에는 되돌릴 수 없습니다.
+   */
+  it("refuses a news reel whose picture credit the caption does not carry, before anything reaches Meta", async () => {
+    const fetchImpl = graphFetch();
+    const card = { publisher: "연합뉴스", creditRequired: true, creditText: "사진: 홍길동 (CC BY 4.0)" };
+    const { service } = await setup({ fetchImpl, newsReelCard: card });
+
+    await expect(service.publish("post_project", { ...approved, caption: "오늘의 영상" }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect(fetchImpl.mock.calls.every(([url]) => String(url).includes("/me/accounts"))).toBe(true);
+
+    await expect(service.publish("post_project", { ...approved, caption: `오늘의 영상
+
+사진: 홍길동
+(CC BY 4.0)` }))
+      .resolves.toMatchObject({ mediaId: "media-1" });
+  });
+
+  it("refuses a news reel whose picture needs a credit that was never written", async () => {
+    const { service } = await setup({ newsReelCard: { publisher: "연합뉴스", creditRequired: true } });
+    await expect(service.publish("post_project", approved)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("leaves a news reel whose picture needs no credit alone", async () => {
+    const { service } = await setup({ newsReelCard: { publisher: "연합뉴스", creditRequired: false } });
+    await expect(service.publish("post_project", approved)).resolves.toMatchObject({ mediaId: "media-1" });
   });
 
   it("leaves a track that needs no credit alone", async () => {
