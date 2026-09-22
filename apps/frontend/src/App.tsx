@@ -14,7 +14,7 @@ import { PhotoCardScreen } from "./components/PhotoCardScreen.js";
 import { PhotoCardListScreen } from "./components/PhotoCardListScreen.js";
 import { NewsReelScreen } from "./components/NewsReelScreen.js";
 import { NewsReelListScreen } from "./components/NewsReelListScreen.js";
-import { NewsReelCreateScreen, type NewsReelCardText } from "./components/NewsReelCreateScreen.js";
+import { NewsReelCreateScreen, type NewsReelDraft } from "./components/NewsReelCreateScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
 import { MappingReviewScreen } from "./components/MappingReviewScreen.js";
@@ -733,8 +733,8 @@ export function App() {
    */
   /* 🔴 뉴스 요약을 **명언 카드로** 넘기던 길은 없앴습니다 — 캡틴D: 「이건 뉴스 릴로 만들었는데 왜 명언
      카드에 있는거야」. 릴은 이제 자기 길(`newsReelWrite` → `newsReelCreate`)로 만들어집니다. */
-  /* 🟠 뉴스 릴 글은 **주소가 아니라 상태**로 넘어갑니다 — 네 줄을 주소창에 실으면 되돌아온 주소가 무엇을 구울지 정하게 됩니다. */
-  const [reelText, setReelText] = useState<NewsReelCardText | null>(null);
+  /* 🟠 기사와 고른 그림은 **주소가 아니라 상태**로 넘어갑니다 — 주소창에 실으면 되돌아온 주소가 무엇을 구울지 정하게 됩니다. */
+  const [reelDraft, setReelDraft] = useState<NewsReelDraft | null>(null);
   const shortProjectShell = useShortProjectShell(screen);
   /**
    * A story-only screen opened on a 명언 카드.
@@ -1048,8 +1048,8 @@ export function App() {
             {screen.name === "newsReelWrite" && (
               <NewsReelScreen
                 onBack={() => setScreen({ name: "newsReel" })}
-                onUseCard={(text) => {
-                  setReelText(text);
+                onNext={(draft) => {
+                  setReelDraft(draft);
                   setScreen({ name: "newsReelCreate" });
                 }}
               />
@@ -1058,7 +1058,7 @@ export function App() {
                 무엇을 구울지 정하게 됩니다. 글 없이 열리면 그 화면이 「뉴스 릴에서 채워 오라」고 말합니다. */}
             {screen.name === "newsReelCreate" && (
               <NewsReelCreateScreen
-                text={reelText}
+                draft={reelDraft}
                 onBack={() => setScreen({ name: "newsReelWrite" })}
                 onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
               />

@@ -1,11 +1,11 @@
 import { DEFAULT_VIDEO_MODEL, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
-import type { CreateLongProjectRequest, CreateProjectRequest, LongProject, Project } from "@ai-animation-studio/shared";
+import type { Asset, CreateLongProjectRequest, CreateProjectRequest, LongProject, Project } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App.js";
-import { jsonResponse } from "./api/testUtils.js";
+import { jsonResponse, makeAsset } from "./api/testUtils.js";
 
 type FakeFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -470,9 +470,10 @@ describe("App", () => {
     createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z",
     aspectRatio: "9:16", narrationAvailable: false, photoCard: true, scenes: [], warnings: [], errors: [],
   });
-  const stubPhotoCard = (project: Project) => {
+  const stubPhotoCard = (project: Project, assets?: Asset[]) => {
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
       const url = String(input).split("?")[0]!;
+      if (assets && url === "/assets") return jsonResponse(200, { assets });
       if (url === "/projects") return jsonResponse(200, { projects: [project] });
       if (url === `/projects/${project.id}`) return jsonResponse(200, { project });
       /* 뉴스 릴 화면은 열리자마자 이걸 부릅니다. 404 로 두면 이 짝이 **목록을 못 불러온 경로**를 지나면서도
@@ -493,21 +494,22 @@ describe("App", () => {
    * 🟠 넘김이 끊기면 사람은 대조를 통과한 네 줄을 다음 화면에서 **다시 옮겨 적게** 되고, 옮겨 적는 순간
    * 대조는 아무 의미가 없어집니다.
    */
-  it("carries the four lines into the reel's own make screen, not the card screen", async () => {
-    stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
+  it("carries the article and the pictures into the reel's own make screen, not the card screen", async () => {
+    const picture = makeAsset({ assetId: "ASSET-GENERAL-000000000001", displayName: "국회 본회의장" });
+    stubPhotoCard(photoCardProject(WorkflowState.VideosApproved), [picture]);
     render(<App />);
     window.location.hash = "#/newsReelWrite";
     fireEvent(window, new HashChangeEvent("hashchange"));
 
-    fireEvent.change(await screen.findByTestId("news-reel-headline1"), { target: { value: "국회 본회의 통과" } });
-    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "후속 법률 51건" } });
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "재석 289명 중 180명 찬성" } });
+    fireEvent.change(await screen.findByTestId("news-article"), { target: { value: "재석 289명 중 180명이 찬성해 후속 법률 51건이 통과됐다." } });
     fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "서울경제" } });
+    fireEvent.click(await screen.findByTestId(`news-reel-picture-asset-${picture.assetId}`));
+    fireEvent.click(screen.getByTestId("news-reel-next"));
 
-    fireEvent.click(screen.getByTestId("news-reel-use"));
-
-    const card = await screen.findByTestId("news-reel-create-card");
-    expect(card.textContent).toContain("후속 법률 51건");
+    /* 고른 그림 한 장 = 장면 한 칸 — 그림이 다음 화면까지 갔다는 뜻입니다. */
+    expect(await screen.findByTestId("news-reel-scene-0")).toBeTruthy();
+    expect(screen.queryByTestId("news-reel-scene-1")).toBeNull();
+    expect(screen.getByTestId("news-reel-headline1")).toBeTruthy();
     expect(screen.queryByTestId("photo-card-quote")).toBeNull();
   });
 

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NEWS_REEL_TEXT_BOXES, type NewsReelTextField } from "@ai-animation-studio/shared";
-import { stubFetchByRoute } from "../api/testUtils.js";
+import { makeAsset, stubFetchByRoute } from "../api/testUtils.js";
 import { NewsReelScreen, feedItemIsFlash, feedItemTime } from "./NewsReelScreen.js";
 
 const PUBLISHERS = [
@@ -24,7 +24,8 @@ const SETUP = { publishers: PUBLISHERS, dailyCalls: { used: 2, limit: 10 } };
  * 내용에 따라 흔들리면 안 됩니다. 목록을 보는 짝은 자기 것을 실어서 옵니다.
  */
 function stubRoutes(extra: Record<string, unknown> = {}, setup: unknown = SETUP): ReturnType<typeof vi.fn> {
-  const routes: Record<string, unknown> = { "GET /news/setup": setup, "GET /news/feed": { items: [], unavailable: [] } };
+  /* 그림 고르개가 열리자마자 `/assets` 를 부릅니다 — 빼 두면 그 실패가 빨간 상자로 떠 다른 짝을 흐립니다. */
+  const routes: Record<string, unknown> = { "GET /news/setup": setup, "GET /news/feed": { items: [], unavailable: [] }, "GET /assets": { assets: [] } };
   const errors: Record<string, { status: number; body: unknown }> = {};
   for (const [key, value] of Object.entries(extra)) {
     if (value && typeof value === "object" && "status" in (value as object)) errors[key] = value as { status: number; body: unknown };
@@ -41,145 +42,30 @@ const ARTICLE = [
   "야당은 \"제대로 된 개혁이라 할 수 있느냐\"고 비판했다.",
 ].join("\n");
 
+/** 목록 한 줄 — 여러 짝이 같은 줄을 봅니다. */
+const FEED_ITEM = {
+  url: "https://www.yna.co.kr/view/AKR20260917000100001",
+  host: "yna.co.kr",
+  publisher: "연합뉴스",
+  title: "국회, 검찰청 폐지 후속 법률 51건 통과",
+  publishedAt: "2026-09-17T09:12:00.000Z",
+  imageUrl: null,
+};
+
 function renderScreen(): void {
-  render(<NewsReelScreen onBack={() => {}} onUseCard={vi.fn()} />);
+  render(<NewsReelScreen onBack={() => {}} onNext={vi.fn()} />);
 }
 
-/** 넘겨주는 쪽을 보는 짝은 **그 함수**를 돌려받아야 합니다 — 위 헬퍼는 요약 쪽을 돌려줍니다. */
-function renderScreenForCard(): ReturnType<typeof vi.fn> {
-  const onUseCard = vi.fn();
-  render(<NewsReelScreen onBack={() => {}} onUseCard={onUseCard} />);
-  return onUseCard;
-}
 
 async function typeUrlAndFetch(url: string): Promise<void> {
   fireEvent.change(screen.getByTestId("news-fetch-url"), { target: { value: url } });
   fireEvent.click(screen.getByTestId("news-fetch"));
 }
 
-function fill(article: string, summary: string, withSource = true): void {
-  fireEvent.change(screen.getByTestId("news-article"), { target: { value: article } });
-  fireEvent.change(screen.getByTestId("news-summary"), { target: { value: summary } });
-  if (withSource) {
-    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "서울경제" } });
-    fireEvent.change(screen.getByTestId("news-published"), { target: { value: "2026-09-17" } });
-    fireEvent.change(screen.getByTestId("news-url"), { target: { value: "https://example.test/a" } });
-  }
-}
-
 describe("NewsReelScreen", () => {
   beforeEach(() => { stubRoutes(); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  /**
-   * 🔴 이 화면의 존재 이유는 편의가 아니라 **막는 것**입니다. 요약 AI 는 원문에 없는 숫자·날짜·인용문을
-   * 그럴듯하게 지어내고, 뉴스에서는 그게 틀린 사실을 예쁘게 만들어 퍼뜨립니다. 그래서 짝의 첫 줄은
-   * 「대조가 걸리면 넘어갈 수 없다」입니다 — 경고만 띄우고 버튼을 살려 두면 사람은 버튼을 누릅니다.
-   */
-  it("will not hand the four lines on while anything in them is missing from the article", () => {
-    const onUseCard = renderScreenForCard();
-    fill(ARTICLE, "국회가 후속 법안 51건을 통과시켰다.");
-    /* 🔴 구워지는 것은 **네 줄**입니다 — 요약이 통과해도 네 줄이 지어내면 막혀야 합니다. */
-    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "후속 법안 53건" } });
-    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "국회 본회의 통과" } });
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "재석 289명 중 180명 찬성" } });
-
-    expect(screen.getByTestId("news-reel-check-failed").textContent).toContain("53건");
-    expect(screen.getByTestId("news-reel-use")).toBeDisabled();
-    expect(screen.getByTestId("news-reel-use-why").textContent).toContain("대조");
-    fireEvent.click(screen.getByTestId("news-reel-use"));
-    expect(onUseCard).not.toHaveBeenCalled();
-  });
-
-  it("names what it could not find, and what kind of thing it was", () => {
-    renderScreen();
-    fill(ARTICLE, '개정법은 10월 12일부터 시행된다. 여당은 "완벽한 개혁이다"라고 말했다.');
-
-    expect(screen.getByTestId("news-unverified-date").textContent).toContain("10월 12일");
-    expect(screen.getByTestId("news-unverified-quote").textContent).toContain("완벽한 개혁이다");
-  });
-
-  it("hands the four lines on once they check out against the article", () => {
-    const onUseCard = renderScreenForCard();
-    fill(ARTICLE, "국회가 2026년 9월 17일 후속 법안 51건을 통과시켰다.");
-    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "후속 법안 51건" } });
-    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "국회 본회의 통과" } });
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "10월 2일부터 시행" } });
-
-    expect(screen.queryByTestId("news-reel-check-failed")).toBeNull();
-    fireEvent.click(screen.getByTestId("news-reel-use"));
-
-    expect(onUseCard.mock.calls[0]?.[0].headline.line1).toContain("51건");
-  });
-
-  /**
-   * 🔴 「검사할 게 없었다」와 「통과했다」는 다른 사실입니다. 숫자도 날짜도 따옴표도 없는 요약은 이 검사가
-   * 아무것도 보지 못한 것이고, 초록으로 칠하면 **보지 않은 것을 봤다고 말하는 셈**입니다. 막지는 않되
-   * 초록이라고도 하지 않는 자리가 따로 있어야 합니다.
-   */
-  it("does not call an unchecked summary verified", () => {
-    renderScreen();
-    fill(ARTICLE, "국회가 검찰 제도를 크게 바꾸기로 했다.");
-
-    expect(screen.queryByTestId("news-check-passed")).toBeNull();
-    expect(screen.getByTestId("news-check-empty").textContent).toContain("확인된 것도 없습니다");
-  });
-
-  /* 🔴 대조할 것이 없는 네 줄도 **막지 않습니다** — 딱딱한 사실이 없다고 틀린 글은 아닙니다. */
-  it("does not block four lines that simply have nothing to check", () => {
-    renderScreenForCard();
-    fill(ARTICLE, "국회가 검찰 제도를 크게 바꾸기로 했다.");
-    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "검찰 제도 개편" } });
-    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "국회가 결정했다" } });
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "본회의 표결 뒤 회의장" } });
-
-    expect(screen.queryByTestId("news-reel-check-failed")).toBeNull();
-    expect(screen.getByTestId("news-reel-use")).not.toBeDisabled();
-  });
-
-  /**
-   * 🔴 초록 한 줄은 「사실 확인 끝」으로 읽힙니다. 이 검사는 기사에 **없는** 값만 잡고, 있는 값을 엉뚱한
-   * 곳에 붙였거나 뜻을 뒤집은 것은 못 잡습니다. 화면이 그걸 직접 말하지 않으면 이 화면은 자기가 막으려던
-   * 것보다 더 나쁜 오해를 만듭니다 — 그래서 한계 문구는 통과했을 때도 그대로 있어야 합니다.
-   */
-  it("says what the check cannot catch, even while it is green", () => {
-    renderScreen();
-    fill(ARTICLE, "국회가 후속 법안 51건을 통과시켰다.");
-
-    expect(screen.getByTestId("news-check-passed")).toBeTruthy();
-    const limit = screen.getByTestId("news-check-limit").textContent ?? "";
-    expect(limit).toContain("못 잡습니다");
-    expect(limit).toContain("기사와 한 번 읽어");
-  });
-
-  /**
-   * 🔴 출처 없이 남의 글로 무언가를 만드는 것은 이 기능이 하려던 일이 아닙니다.
-   *
-   * 🟠 넘기는 길이 바뀌면서 그 자리를 **언론사 칸**이 맡습니다 — 릴은 출처 한 줄이 아니라 **위 띠에 언론사
-   * 이름**을 박고, 계약이 `publisher` 를 필수로 받습니다. 「출처 없이는 안 넘어간다」는 규칙은 그대로입니다.
-   */
-  it("will not hand anything on without a publisher", () => {
-    const onUseCard = renderScreenForCard();
-    fill(ARTICLE, "국회가 후속 법안 51건을 통과시켰다.", false);
-    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "후속 법안 51건" } });
-    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "국회 본회의 통과" } });
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "표결 직후 본회의장" } });
-
-    expect(screen.getByTestId("news-reel-use")).toBeDisabled();
-    fireEvent.click(screen.getByTestId("news-reel-use"));
-    expect(onUseCard).not.toHaveBeenCalled();
-  });
-
-  /**
-   * 🔴 이 짝이 붙드는 것은 **화면이 문지기가 되지 않는 것**입니다.
-   *
-   * 언론사 목록이 화면에 오는 이유는 사람에게 **보여 주려고**지 화면이 판정하라고가 아닙니다. 정말로 중요한
-   * 호스트는 리다이렉트가 마지막에 떨어지는 곳이고 그건 서버만 봅니다(CLI Round 929 §2). 여기서 미리 걸러 주면
-   * 친절해 보이지만 **진짜 검사가 존재하는 이유인 바로 그 주소들에 대해 틀린** 두 번째 사본이 됩니다.
-   *
-   * 위험한 건 코드가 아니라 **나중에 들어올 선의**라, 그 선의가 닿는 자리에 짝을 놓습니다 — 누가
-   * `disabled` 에 목록 조건을 더하는 순간 이 줄이 웁니다.
-   */
   it("sends an address whose host is not on the list, instead of refusing it here", async () => {
     const mock = stubRoutes({
       "POST /news/article": { outcome: "refused", reason: "publisher_not_allowed", publishers: PUBLISHERS },
@@ -262,7 +148,8 @@ describe("NewsReelScreen", () => {
 
     await screen.findByTestId("news-fetch-ok");
     expect((screen.getByTestId("news-article") as HTMLTextAreaElement).value).toContain("51건");
-    expect(screen.getByTestId("news-source-line").textContent).toContain("https://sedaily.com/final");
+    /* 출처 줄은 없어졌지만, 다음 화면으로 넘기는 주소는 여전히 **본문이 실제로 온 주소**입니다. */
+    expect((screen.getByTestId("news-url") as HTMLInputElement).value).toBe("https://sedaily.com/final");
   });
 
   /**
@@ -376,134 +263,8 @@ describe("NewsReelScreen", () => {
     expect(screen.getByTestId("news-fetch")).not.toBeDisabled();
   });
 
-  /**
-   * 🔴 **940 의 짝이 여기서 제 역할을 끝냈습니다.** 그때는 「이 수를 깎는 버튼이 없으니 수도 안 보인다」를 붙들고
-   * 있었고, 그 버튼이 생기는 순간 울도록 짜 두었습니다. 울었고, 그래서 이 자리로 바뀌었습니다 — 주석이었으면
-   * 아무도 안 깨웠을 것입니다(CLI Round 937 §2).
-   */
-  it("shows the day's count beside the button that spends it", async () => {
-    renderScreen();
-
-    expect((await screen.findByTestId("news-daily-calls")).textContent).toContain("2 / 10");
-    expect(screen.getByTestId("news-summarize")).toBeTruthy();
-  });
-
-  /**
-   * 🔴 `dailyCalls: null` 은 **「여유 있음」이 아니라 「모르니까 안 부른다」**입니다. 숫자를 안 그리는 것만으로는
-   * 모자랍니다 — 아무 말이 없으면 사람은 **문제가 없다고** 읽고 버튼을 찾습니다. 그래서 세 줄이 함께 섭니다:
-   * 숫자는 없고, 이유는 있고, 버튼은 닫힙니다.
-   *
-   * 🟠 그리고 그 이유가 **어느 파일을 볼지** 말해야 합니다. 「이번 달 사용액」을 말하는 예산 쪽 문장을 그대로
-   * 썼다면 사람이 `api_budget_usage.json` 을 열어 보고 멀쩡한 걸 확인한 뒤 막힌 이유를 못 찾습니다(CLI 935 §1).
-   */
-  it("closes the button and says which file, when the ledger cannot be read", async () => {
-    stubRoutes({}, { publishers: PUBLISHERS, dailyCalls: null });
-    renderScreen();
-
-    const notice = await screen.findByTestId("news-calls-unknown");
-    expect(notice.textContent).toContain("news_call_usage.json");
-    expect(screen.queryByTestId("news-daily-calls")).toBeNull();
-    expect(screen.getByTestId("news-summarize")).toBeDisabled();
-  });
-
-  it("closes the button when today's allowance is already spent", async () => {
-    stubRoutes({}, { publishers: PUBLISHERS, dailyCalls: { used: 10, limit: 10 } });
-    renderScreen();
-
-    await screen.findByTestId("news-daily-calls");
-    expect(screen.getByTestId("news-summarize")).toBeDisabled();
-  });
-
-  /**
-   * 🔴 거절은 **새 건수를 싣고 오지 않습니다.** 그러면 화면이 들고 있는 수는 한 번 낡은 것이고, 그 낡은 수로
-   * 버튼을 열어 두면 다음 누름이 또 거절됩니다 — 서버가 방금 「다 썼다」고 말했는데도요.
-   */
-  it("closes the button when the server says the day is spent, even though the count it holds says otherwise", async () => {
-    stubRoutes({ "POST /news/summaries": { status: 409, body: { code: "NEWS_DAILY_LIMIT_REACHED", message: "" } } });
-    renderScreen();
-    await screen.findByTestId("news-daily-calls");
-    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
-
-    fireEvent.click(screen.getByTestId("news-summarize"));
-
-    expect((await screen.findByTestId("news-summary-error")).textContent).toContain("내일");
-    // 들고 있는 수는 2/10 이라 「8번 남음」인데도 닫혀 있어야 합니다.
-    expect(screen.getByTestId("news-summarize")).toBeDisabled();
-  });
-
-  it("fills the summary and moves the count on, then checks what came back", async () => {
-    stubRoutes({
-      "POST /news/summaries": {
-        summary: "국회가 후속 법안 51건을 통과시켰다.",
-        check: { claims: [], missing: [] },
-        dailyCalls: { used: 3, limit: 10 },
-      },
-    });
-    renderScreen();
-    await screen.findByTestId("news-daily-calls");
-    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
-
-    fireEvent.click(screen.getByTestId("news-summarize"));
-
-    await waitFor(() => expect((screen.getByTestId("news-summary") as HTMLTextAreaElement).value).toContain("51건"));
-    expect(screen.getByTestId("news-daily-calls").textContent).toContain("3 / 10");
-    /* 🔴 서버가 준 `check` 를 따로 그리지 않고, **화면의 살아 있는 대조**가 같은 결론을 냅니다. 둘을 다 그리면
-       사람이 문장을 고치는 순간 서버 것은 「옛 문장에 대한 판정」으로 굳어 남습니다. */
-    expect(screen.getByTestId("news-check-passed")).toBeTruthy();
-  });
-
-  /**
-   * 🔴 길다고 **자르지 않습니다.** 길이로 자르면 `4,000` 이 `4,0` 이 되고, 그러면 대조기가 **우리 편집을 보고**
-   * 「기사에 없는 숫자」라고 합니다 — 가드가 우리 때문에 우는 자리입니다(CLI 943 §1).
-   */
-  it("says a summary is too long without shortening it", async () => {
-    const long = "국회가 후속 법안 51건을 통과시켰다. " + "길어진 문장입니다. ".repeat(20);
-    stubRoutes({
-      "POST /news/summaries": {
-        summary: long,
-        check: { claims: [], missing: [] },
-        dailyCalls: { used: 3, limit: 10 },
-        tooLong: true,
-      },
-    });
-    renderScreen();
-    await screen.findByTestId("news-daily-calls");
-    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
-
-    fireEvent.click(screen.getByTestId("news-summarize"));
-
-    await screen.findByTestId("news-summary-too-long");
-    expect((screen.getByTestId("news-summary") as HTMLTextAreaElement).value).toBe(long);
-  });
-
-  it("waits for both halves before saying anything about the summary", () => {
-    renderScreen();
-    expect(screen.getByTestId("news-check-idle")).toBeTruthy();
-
-    fireEvent.change(screen.getByTestId("news-summary"), { target: { value: "요약만 있습니다." } });
-    // 기사 본문이 없으면 대조할 대상이 없습니다 — 그때 초록을 띄우면 아무 근거 없이 통과시킨 것입니다.
-    expect(screen.getByTestId("news-check-idle")).toBeTruthy();
-    expect(screen.queryByTestId("news-check-passed")).toBeNull();
-  });
 });
 
-const FEED_ITEM = {
-  title: "국회, 검찰청 폐지 후속 법률 51건 통과",
-  url: "https://www.yna.co.kr/view/AKR20260917000100001",
-  publisher: "연합뉴스",
-  host: "yna.co.kr",
-  publishedAt: "2026-09-17T09:12:00.000Z",
-  // 🟠 The contract carries a picture address and half the rows have none — 뉴시스, 경향, 한겨레 advertise
-  // no picture at all — so `null` is what an ordinary row looks like, not a missing field.
-  imageUrl: null,
-};
-
-/**
- * 🔴 캡틴D: *「뉴스 릴은 내가 직접 주소를 쳐야 하잖아. 그게 너무 귀찮은데」*
- *
- * 목록은 **주소를 치는 수고만** 없앱니다 — 본문은 여전히 같은 허용 목록과 같은 리다이렉트 검사를 지나
- * `POST /news/article` 로 갑니다. 「더 믿을 수 있는 길」이 아닙니다.
- */
 describe("NewsReelScreen 기사 목록", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -799,254 +560,7 @@ describe("NewsReelScreen 기사 칸 접기", () => {
     expect(screen.getByTestId("news-article-disclosure").textContent).toContain("채워져 있습니다");
   });
 
-  /**
-   * 🔴 본문만 못 찾은 것은 **실패가 아니라 남은 한 걸음이 사람 것**이라는 뜻이고, 그 한 걸음이 바로 이 칸
-   * 안에 있습니다. 접어 둔 채로 두면 **할 일을 감춘 채 하라고 하는 것**입니다.
-   */
-  it("opens itself when the body could not be found, because that is where the person's step is", async () => {
-    stubRoutes({
-      "POST /news/article": { outcome: "body_not_found", title: "태풍 북상", publisher: "MBC", publishedAt: "2026-09-17T09:12:00.000Z", sourceUrl: "https://imbc.com/news/1" },
-    });
-    renderScreen();
-    await screen.findByTestId("news-article-disclosure");
-
-    await typeUrlAndFetch("https://imbc.com/news/1");
-
-    await waitFor(() => {
-      expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open).toBe(true);
-    });
-  });
-});
-
-/**
- * 릴에 박히는 네 줄.
- *
- * 🔴 **짝이 15·20 을 직접 안 적습니다.** 계약에서 읽어 와서 그 길이로 글자를 만듭니다 — 숫자를 여기 적으면
- * 계약이 바뀌는 날 **짝이 옛 숫자를 지키게** 되고, 그때 빨개지는 건 화면이 아니라 짝입니다.
- */
-describe("NewsReelScreen 릴 문구", () => {
-  beforeEach(() => { stubRoutes(); });
-  afterEach(() => { vi.unstubAllGlobals(); });
-
-  const filler = (count: number): string => "가".repeat(count);
-  const limitOf = (field: NewsReelTextField): number => NEWS_REEL_TEXT_BOXES[field].limit;
-
-  it("counts against the contract's limit, not a number written into the screen", async () => {
-    renderScreen();
-    const limit = limitOf("headline.line1");
-
-    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: filler(limit) } });
-
-    /* 🟠 「limit/limit」 그대로입니다 — 꽉 찬 것은 넘은 것이 아닙니다. */
-    expect(screen.getByTestId("news-reel-headline1-count").textContent).toContain(`${limit}/${limit}`);
-    expect(screen.getByTestId("news-reel-headline1-count").textContent).not.toContain("넘었습니다");
-
-    /* 🔴 **한도가 다른 칸을 같이 칩니다.** 제목만 보면 화면이 15를 박아 넣어도 이 짝은 초록입니다 — 제목의
-       한도가 마침 15라서입니다. 실제로 주입해 보니 그랬습니다(CLI Round 1037 §1): 잡은 것은 이 짝이 아니라
-       자막을 치는 옆 짝이었고, 그건 우연이었습니다. **한 값만 치는 짝은 그 값이 맞는지만 압니다.** */
-    const captionLimit = limitOf("caption.line1");
-    expect(captionLimit, "두 칸의 한도가 달라야 이 짝이 뜻이 있습니다").not.toBe(limit);
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: filler(captionLimit) } });
-    expect(screen.getByTestId("news-reel-caption1-count").textContent).toContain(`${captionLimit}/${captionLimit}`);
-  });
-
-  it("says how far over, not just that it is over", async () => {
-    renderScreen();
-    const limit = limitOf("caption.line1");
-
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: filler(limit + 3) } });
-
-    /* 🔴 「넘었습니다」만 적으면 **얼마나 지울지**를 사람이 세어야 합니다. */
-    expect(screen.getByTestId("news-reel-caption1-count").textContent).toContain("3자 넘었습니다");
-  });
-
-  it("leaves an untouched box quiet — not yet written is not the same as wrong", async () => {
-    renderScreen();
-
-    for (const box of ["headline1", "headline2", "caption1", "caption2"]) {
-      expect(screen.getByTestId(`news-reel-${box}-count`).className).not.toContain("rose");
-    }
-  });
-
-  it("counts a box of only spaces as empty, so it never becomes an empty string in the card", async () => {
-    renderScreen();
-
-    fireEvent.change(screen.getByTestId("news-reel-caption2"), { target: { value: "   " } });
-
-    /* 🔴 `""` 는 계약이 값으로 안 칩니다(CLI 1029 §3). 공백만 친 칸도 **없는 것**이라야 `null` 로 넘어갑니다. */
-    expect(screen.getByTestId("news-reel-caption2-count").textContent).toContain("0/");
-  });
-
-});
-
-/**
- * 「기사에서 네 줄 뽑기」 — `POST /news/card-text`.
- *
- * 🔴 돈이 나간 답이라 **버리는 것이 없어야** 합니다. 칸은 받은 그대로 채우고(자르지 않음), 두 번 온 칸은
- * 고르지 않고 비워 두고, 못 넣은 줄은 보여 줍니다.
- */
-describe("NewsReelScreen 네 줄 뽑기", () => {
-  afterEach(() => { vi.unstubAllGlobals(); });
-
-  const answer = (overrides: Record<string, unknown> = {}) => ({
-    headline: {},
-    captions: [{}],
-    missing: [],
-    repeated: [],
-    ignored: [],
-    check: { claims: [], missing: [] },
-    dailyCalls: { used: 3, limit: 10 },
-    ...overrides,
-  });
-
-  async function drawWith(response: unknown): Promise<void> {
-    stubRoutes({ "POST /news/card-text": response });
-    renderScreen();
-    await screen.findByTestId("news-daily-calls");
-    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
-    fireEvent.click(screen.getByTestId("news-reel-draw"));
-  }
-
-  it("fills the boxes with what came back, without shortening any of them, and moves the count on", async () => {
-    const tooLong = "가".repeat(NEWS_REEL_TEXT_BOXES["headline.line1"].limit + 4);
-    await drawWith(answer({
-      headline: { line1: tooLong, line2: "검찰청 62년 만에 폐지" },
-      captions: [{ line1: "재석 289명 중 180명 찬성" }],
-      missing: [{ field: "caption.line2", scene: 0 }],
-    }));
-
-    await waitFor(() => expect((screen.getByTestId("news-reel-headline1") as HTMLInputElement).value).toBe(tooLong));
-    expect((screen.getByTestId("news-reel-headline2") as HTMLInputElement).value).toBe("검찰청 62년 만에 폐지");
-    expect((screen.getByTestId("news-reel-caption1") as HTMLInputElement).value).toBe("재석 289명 중 180명 찬성");
-    /* 🟠 잘라 주지 않고 칸이 넘었다고 셉니다 — 무엇을 지울지는 사람이 정합니다. */
-    expect(screen.getByTestId("news-reel-headline1-count").textContent).toContain("4자 넘었습니다");
-    expect(screen.getByTestId("news-daily-calls").textContent).toContain("3 / 10");
-    expect(screen.getByTestId("news-reel-draw-missing").textContent).toContain("자막 둘째 줄");
-  });
-
-  it("leaves a box that came back twice empty, and says so instead of choosing", async () => {
-    await drawWith(answer({
-      headline: { line1: "국회 본회의 통과", line2: "하나를 골랐다면 이것" },
-      repeated: [{ field: "headline.line2" }],
-      ignored: ["라벨 없이 온 줄"],
-    }));
-
-    await waitFor(() => expect((screen.getByTestId("news-reel-headline1") as HTMLInputElement).value).toBe("국회 본회의 통과"));
-    expect((screen.getByTestId("news-reel-headline2") as HTMLInputElement).value).toBe("");
-    expect(screen.getByTestId("news-reel-draw-repeated").textContent).toContain("제목 둘째 줄");
-    expect(screen.getByTestId("news-reel-draw-ignored").textContent).toContain("라벨 없이 온 줄");
-  });
-
-  /** 🔴 한 칸도 못 읽은 답도 **모양은 맞는 답**입니다 — 「서버 응답 이상」으로 버리면 무엇이 없었는지 못 봅니다. */
-  it("keeps an answer with no values, and names every box as missing", async () => {
-    await drawWith(answer({ missing: [{ field: "headline.line1" }, { field: "headline.line2" }, { field: "caption.line1", scene: 0 }] }));
-
-    const missing = await screen.findByTestId("news-reel-draw-missing");
-    expect(missing.textContent).toContain("제목 첫 줄");
-    expect(screen.queryByTestId("news-reel-draw-error")).toBeNull();
-  });
-
-  it("refuses an answer whose box names are not the contract's, rather than filling a box it does not have", async () => {
-    await drawWith(answer({ missing: [{ field: "headline.line3" }] }));
-
-    await screen.findByTestId("news-reel-draw-error");
-    expect((screen.getByTestId("news-reel-headline1") as HTMLInputElement).value).toBe("");
-  });
-
-  /**
-   * 🔴 서버는 그림 수를 들어야 자막을 그만큼 청합니다(캡틴D, 2026-09-22). 이 화면은 아직 자막을 하나만 쓰므로
-   * 하나를 청합니다 — 그림을 먼저 고르는 화면이 서면 그 수가 여기 실립니다.
-   */
-  it("says how many pictures it is asking captions for", async () => {
-    const mock = stubRoutes({ "POST /news/card-text": answer() });
-    renderScreen();
-    await screen.findByTestId("news-daily-calls");
-    fireEvent.change(screen.getByTestId("news-article"), { target: { value: ARTICLE } });
-    fireEvent.click(screen.getByTestId("news-reel-draw"));
-
-    await waitFor(() => expect(mock.mock.calls.some(([url]) => String(url).includes("/news/card-text"))).toBe(true));
-    const [, init] = mock.mock.calls.find(([url]) => String(url).includes("/news/card-text"))! as [string, RequestInit];
-    expect(JSON.parse(String(init.body)).sceneCount).toBe(1);
-  });
-
-  it("closes both buttons when the server says the day is spent", async () => {
-    await drawWith({ status: 409, body: { code: "NEWS_DAILY_LIMIT_REACHED", message: "" } });
-
-    await screen.findByTestId("news-reel-draw-error");
-    expect(screen.getByTestId("news-reel-draw")).toBeDisabled();
-    expect(screen.getByTestId("news-summarize")).toBeDisabled();
-  });
-});
-
-/**
- * 「이 글로 릴 만들기」 — **여기서 굽지 않습니다.** 글을 들고 넘어가는 것뿐입니다.
- */
-describe("NewsReelScreen 릴로 넘기기", () => {
-  beforeEach(() => { stubRoutes(); });
-  afterEach(() => { vi.unstubAllGlobals(); });
-
-  function fillFour(): void {
-    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "국회 본회의 통과" } });
-    fireEvent.change(screen.getByTestId("news-reel-headline2"), { target: { value: "검찰청 62년 만에 폐지" } });
-    fireEvent.change(screen.getByTestId("news-reel-caption1"), { target: { value: "재석 289명 중 180명 찬성" } });
-    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "연합뉴스" } });
-  }
-
-  it("hands over the four lines and the publisher, and nothing else", async () => {
-    const onUseCard = renderScreenForCard();
-    fillFour();
-
-    fireEvent.click(screen.getByTestId("news-reel-use"));
-
-    /* 🔴 출처 두 칸은 **안 넘깁니다** — 그림에 딸린 것이고 그림은 다음 화면에서 고릅니다. */
-    expect(onUseCard).toHaveBeenCalledWith({
-      publisher: "연합뉴스",
-      headline: { line1: "국회 본회의 통과", line2: "검찰청 62년 만에 폐지" },
-      captions: [{ line1: "재석 289명 중 180명 찬성", line2: null }],
-    });
-  });
-
-  it("sends an empty second caption line as null, never as an empty string", async () => {
-    const onUseCard = renderScreenForCard();
-    fillFour();
-    /* 공백만 친 칸도 없는 것입니다 — 계약은 빈 문자열을 값으로 치지 않습니다. */
-    fireEvent.change(screen.getByTestId("news-reel-caption2"), { target: { value: "   " } });
-
-    fireEvent.click(screen.getByTestId("news-reel-use"));
-
-    expect(onUseCard.mock.calls[0]?.[0].captions[0].line2).toBeNull();
-  });
-
-  it("will not hand over without a publisher — that name goes in the band", async () => {
-    const onUseCard = renderScreenForCard();
-    fillFour();
-    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "" } });
-
-    expect(screen.getByTestId("news-reel-use")).toBeDisabled();
-    expect(screen.getByTestId("news-reel-use-why").textContent).toContain("언론사");
-    fireEvent.click(screen.getByTestId("news-reel-use"));
-    expect(onUseCard).not.toHaveBeenCalled();
-  });
-
-  it("will not hand over a box that is over its limit", async () => {
-    const onUseCard = renderScreenForCard();
-    fillFour();
-    const limit = NEWS_REEL_TEXT_BOXES["headline.line1"].limit;
-    fireEvent.change(screen.getByTestId("news-reel-headline1"), { target: { value: "가".repeat(limit + 1) } });
-
-    expect(screen.getByTestId("news-reel-use")).toBeDisabled();
-    expect(screen.getByTestId("news-reel-use-why").textContent).toContain("글자 수");
-    fireEvent.click(screen.getByTestId("news-reel-use"));
-    expect(onUseCard).not.toHaveBeenCalled();
-  });
-});
-
-/**
- * 🔴 목록에서 줄을 누르면 **주소만** 채워집니다 — 붙여넣은 본문을 지우지 않으려고 그렇게 두었는데,
- * 그러면 화면이 **두 기사를 동시에** 들고 있게 됩니다. 캡틴D: *「다른 기사로 터치가 안 된다」* — 눌리긴
- * 눌렸고, 아래 칸이 안 바뀌어 안 눌린 것처럼 보였습니다.
- */
-describe("NewsReelScreen 주소와 본문이 어긋날 때", () => {
+  describe("NewsReelScreen 주소와 본문이 어긋날 때", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   const FEED = {
@@ -1099,6 +613,8 @@ describe("NewsReelScreen 주소와 본문이 어긋날 때", () => {
     /* 아래 칸이 비어 있으면 어긋날 것이 없습니다. */
     expect(screen.queryByTestId("news-fetch-stale")).toBeNull();
   });
+});
+
 });
 
 /**
@@ -1170,5 +686,83 @@ describe("NewsReelScreen 속보", () => {
 
     await screen.findByTestId("news-fetch-body-not-found");
     expect(screen.queryByTestId("news-fetch-flash-why")).toBeNull();
+  });
+});
+
+/**
+ * 🔴 **그림이 글보다 먼저입니다.** 자막이 장면마다 하나라, **몇 장을 골랐는지**가 다음 화면의 자막 칸 수를
+ * 정합니다 — 캡틴D: *「릴스가 몇 장면 몇 분인 줄 알고 이렇게 적음?」*
+ */
+describe("NewsReelScreen 그림 먼저", () => {
+  const ASSETS = [
+    makeAsset({ assetId: "ASSET-GENERAL-000000000001", displayName: "국회 본회의장" }),
+    makeAsset({ assetId: "ASSET-GENERAL-000000000002", displayName: "법원 앞" }),
+  ];
+
+  function stubWithAssets(extra: Record<string, unknown> = {}): void {
+    stubRoutes({ "GET /assets": { assets: ASSETS }, ...extra });
+  }
+
+  function renderForNext(): ReturnType<typeof vi.fn> {
+    const onNext = vi.fn();
+    render(<NewsReelScreen onBack={() => {}} onNext={onNext} />);
+    return onNext;
+  }
+
+  async function fetchArticle(): Promise<void> {
+    fireEvent.change(screen.getByTestId("news-fetch-url"), { target: { value: "https://www.yna.co.kr/view/1" } });
+    fireEvent.click(screen.getByTestId("news-fetch"));
+    await screen.findByTestId("news-fetch-ok");
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("will not go on without a picture, and says the pictures decide the caption boxes", async () => {
+    stubWithAssets({ "POST /news/article": { outcome: "article", article: { title: "첫 기사", body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: "https://www.yna.co.kr/view/1" } } });
+    renderForNext();
+    await fetchArticle();
+
+    expect(screen.getByTestId("news-reel-next")).toBeDisabled();
+    expect(screen.getByTestId("news-reel-next-why").textContent).toContain("그림");
+  });
+
+  it("hands the article and the pictures on, in the order they were pressed", async () => {
+    stubWithAssets({ "POST /news/article": { outcome: "article", article: { title: "첫 기사", body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: "https://www.yna.co.kr/view/1" } } });
+    const onNext = renderForNext();
+    await fetchArticle();
+
+    fireEvent.click(await screen.findByTestId(`news-reel-picture-asset-${ASSETS[1]!.assetId}`));
+    fireEvent.click(screen.getByTestId(`news-reel-picture-asset-${ASSETS[0]!.assetId}`));
+    fireEvent.click(screen.getByTestId("news-reel-next"));
+
+    const draft = onNext.mock.calls[0]?.[0];
+    /* 🔴 고른 순서가 곧 장면 순서입니다. */
+    expect(draft.assetIds).toEqual([ASSETS[1]!.assetId, ASSETS[0]!.assetId]);
+    expect(draft.article.body).toContain("검찰청");
+    expect(draft.article.publisher).toBe("연합뉴스");
+    expect(draft.clipDurationSeconds).toBe(5);
+  });
+
+  it("says how many pictures the next screen will ask captions for", async () => {
+    stubWithAssets({ "POST /news/article": { outcome: "article", article: { title: "첫 기사", body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: "https://www.yna.co.kr/view/1" } } });
+    renderForNext();
+    await fetchArticle();
+
+    fireEvent.click(await screen.findByTestId(`news-reel-picture-asset-${ASSETS[0]!.assetId}`));
+
+    expect(screen.getByTestId("news-reel-next").textContent).toContain("1장");
+  });
+
+  it("will not go on without the publisher — that name goes in the band", async () => {
+    stubWithAssets({ "POST /news/article": { outcome: "article", article: { title: "첫 기사", body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: "https://www.yna.co.kr/view/1" } } });
+    const onNext = renderForNext();
+    await fetchArticle();
+    fireEvent.click(await screen.findByTestId(`news-reel-picture-asset-${ASSETS[0]!.assetId}`));
+    fireEvent.change(screen.getByTestId("news-outlet"), { target: { value: "" } });
+
+    expect(screen.getByTestId("news-reel-next")).toBeDisabled();
+    expect(screen.getByTestId("news-reel-next-why").textContent).toContain("언론사");
+    fireEvent.click(screen.getByTestId("news-reel-next"));
+    expect(onNext).not.toHaveBeenCalled();
   });
 });

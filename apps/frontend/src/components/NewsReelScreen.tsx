@@ -7,35 +7,25 @@ import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { Spinner } from "./Spinner.js";
 import { cardSectionRoomy as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 import { CountedField, newsReelFieldValue } from "./ui/CountedField.js";
-import type { NewsReelCardText } from "./NewsReelCreateScreen.js";
+import type { NewsReelDraft } from "./NewsReelCreateScreen.js";
+import { PicturePicker } from "./ui/PicturePicker.js";
+import { PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_PICTURES, type Asset, type PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
+import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 
 interface Props {
   onBack: () => void;
   /**
-   * Hands the verified summary and its source line to the card flow.
+   * 기사와 **고른 그림들**을 글 쓰는 화면으로 넘깁니다.
    *
-   * 🔴 Only ever called with a summary that passed the check. The button that calls it is disabled otherwise,
-   * and that is deliberate rather than a warning: a person who is told "this might be wrong" and given a
-   * working button presses the button.
+   * 🔴 **그림이 먼저인 이유**: 자막이 장면마다 하나라, **몇 장을 골랐는지 알아야** 자막 칸을 몇 개 열지 압니다.
+   * 「글 뽑기」도 모델에게 장면 수를 말해 줘야 그만큼 받아 옵니다(CLI 1067 §1). 글을 먼저 쓰면 그 수를
+   * 모르는 채로 쓰게 됩니다 — 캡틴D: *「릴스가 몇 장면 몇 분인 줄 알고 이렇게 적음?」*
    */
-  /**
-   * 채운 네 줄과 언론사를 **뉴스 릴 만들기 화면**으로 넘깁니다.
-   *
-   * 🔴 출처 두 칸은 안 넘깁니다 — 그건 **그림에 딸린 것**이고 그림은 저쪽에서 고릅니다(D-054).
-   */
-  onUseCard: (text: NewsReelCardText) => void;
+  onNext: (draft: NewsReelDraft) => void;
 }
 
 const field = "w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600";
 const label = "block text-sm text-slate-300";
-
-/** 칸 이름을 사람이 보는 말로. 🟠 계약이 부르는 이름(`headline.line1`)을 화면에 그대로 보여 주면, 고칠 자리를 못 찾습니다. */
-export const REEL_FIELD_LABEL: Record<NewsReelTextField, string> = {
-  "headline.line1": "제목 첫 줄",
-  "headline.line2": "제목 둘째 줄",
-  "caption.line1": "자막 첫 줄",
-  "caption.line2": "자막 둘째 줄",
-};
 
 /** 화면이 못 찾은 것을 무엇이라 부를지 — 사람이 고칠 자리를 가리키는 말로. */
 const CLAIM_LABEL: Record<NewsClaimCheck["kind"], string> = {
@@ -194,7 +184,7 @@ const PUBLISHER_GROUPS: Record<NewsPublisherBody, { title: string; note: string;
  */
 const PUBLISHER_GROUP_ORDER: NewsPublisherBody[] = ["address", "varies", "unknown", "paste"];
 
-export function NewsReelScreen({ onBack, onUseCard }: Props) {
+export function NewsReelScreen({ onBack, onNext }: Props) {
   const [setup, setSetup] = useState<Setup>({ status: "loading" });
   const [feed, setFeed] = useState<Feed>({ status: "loading" });
   const [url, setUrl] = useState("");
@@ -214,7 +204,6 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
   const [outlet, setOutlet] = useState("");
   const [publishedAt, setPublishedAt] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
-  const [summary, setSummary] = useState("");
 
   /* 🔴 이제 이 수를 깎는 버튼이 생겼으니 그립니다(940 까지는 일부러 안 그렸습니다 — 아무것도 안 깎는 잔량을
      보여 주는 셈이었으니까요). `null` 은 **「예산 있음」이 아니라 「모르니까 안 부른다」**입니다. */
@@ -222,28 +211,19 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
   /* 🟠 서버가 「오늘 다 썼다」고 말한 순간을 따로 듭니다. 거절은 예외 경로라 새 건수를 안 싣고 오는데, 그때
      제가 들고 있는 수는 **한 번 낡은 것**입니다 — 그 낡은 수로 버튼을 열어 두면 다음 누름이 또 거절됩니다. */
   const [limitReached, setLimitReached] = useState(false);
-  const [summarizing, setSummarizing] = useState(false);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [tooLong, setTooLong] = useState(false);
   /* 🔴 비어 있는 칸 다섯이 1440×900 에서 **392px** 을 먹습니다(실측). 칸을 없애는 게 아니라 **안 볼 때 접습니다** —
      가져오면 저절로 열리고, 붙여넣어야 하는 언론사(MBC·YTN)에서만 사람이 엽니다. */
   const [articleOpen, setArticleOpen] = useState(false);
   /* 🔴 백열 줄이 여섯 줄짜리 창으로 들어옵니다(실측 110줄 · 보이는 창 327px · 한 줄 52px). 훑어서 찾는 게
      아니라 **걸러서 찾는** 자리입니다. */
   const [feedQuery, setFeedQuery] = useState("");
+  /* 🔴 **그림이 먼저입니다.** 몇 장을 고르느냐가 **자막 칸을 몇 개 열지**를 정합니다 — 글을 먼저 쓰면
+     그 수를 모르는 채로 씁니다(CLI 1067 §1). */
+  const [assets, setAssets] = useState<Asset[] | null>(null);
+  const [assetsError, setAssetsError] = useState<{ code: string; message: string } | null>(null);
+  const [assetIds, setAssetIds] = useState<string[]>([]);
+  const [seconds, setSeconds] = useState<PhotoCardDurationSeconds>(PHOTO_CARD_DURATIONS[0]);
 
-  /* 🔴 릴에 박히는 네 줄입니다. 한 덩어리 글이 아니라 **칸 넷**인 이유는 계약에 적혀 있습니다 — 제목 두 줄은
-     색이 갈리고(흰색·노란색), 그 끊는 자리는 활자가 아니라 **내용**이라서 감는 쪽이 정하면 안 됩니다.
-     🟠 자막 둘째 줄만 없어도 됩니다. 빈 칸은 `""` 가 아니라 `null` 로 계약에 넘어갑니다. */
-  const [headline1, setHeadline1] = useState("");
-  const [headline2, setHeadline2] = useState("");
-  const [caption1, setCaption1] = useState("");
-  const [caption2, setCaption2] = useState("");
-  /* 🔴 「글 뽑기」가 돌려준 **부스러기**입니다. 버리지 않고 그대로 보여 줍니다 — 돈이 나간 답이라,
-     못 읽은 줄과 두 번 온 칸은 **사람이 손으로 채울 근거**입니다(docs/06_DECISIONS.md D-052). */
-  const [drawing, setDrawing] = useState(false);
-  const [drawError, setDrawError] = useState<string | null>(null);
-  const [drawLeftovers, setDrawLeftovers] = useState<{ missing: NewsReelTextField[]; repeated: NewsReelTextField[]; ignored: string[] } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -266,6 +246,23 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
       .catch(() => { if (live) setFeed({ status: "error" }); });
     return () => { live = false; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listAssets()
+      .then((response) => { if (!cancelled) setAssets(response.assets.filter((asset) => !asset.isFolder && asset.imageAvailable)); })
+      .catch((caught: unknown) => { if (!cancelled) setAssetsError(toAssetDisplayError(caught)); });
+    return () => { cancelled = true; };
+  }, []);
+
+  /* 🔴 **상한에 닿아도 빼는 것은 늘 열려 있습니다** — 잘못 고른 한 장을 못 바꾸면 사람이 갇힙니다. */
+  function togglePicture(id: string): void {
+    setAssetIds((current) => {
+      if (current.includes(id)) return current.filter((one) => one !== id);
+      if (current.length >= PHOTO_CARD_MAX_PICTURES) return current;
+      return [...current, id];
+    });
+  }
 
   async function load(): Promise<void> {
     const typed = url.trim();
@@ -308,102 +305,7 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
     }
   }
 
-  /**
-   * 🔴 **이 화면에서 오늘 쓸 수 있는 횟수를 깎는 유일한 버튼입니다.** 기사 가져오기는 공짜고 이것만 셉니다 —
-   * 두 버튼을 같은 모양으로 그리면 사람은 가져오기를 몇 번 눌러 보다가 하루치를 태운 줄 알게 됩니다(927 §4).
-   *
-   * 🔴 받은 `check` 를 **일부러** 그리지 않습니다. 이유는 「같은 함수라 결과가 같아서」가 아닙니다 — 그건
-   * 도착한 그 순간에만 참입니다(CLI 945 §1 이 여섯 모양으로 재 봤고 전부 같았습니다). 사람이 본문 칸을 한 글자라도
-   * 손대는 순간 둘은 갈라지고, 그때 **맞는 쪽은 화면입니다**: 화면의 대조는 **지금 화면에 있는 글**에 대한 답이고,
-   * 서버의 `check` 는 **그때 보낸 글**에 대한 답입니다. 실측(945 §1) — 사람이 본문을 줄이면 서버는 `missing: []`
-   * (초록)인데 화면은 없어진 날짜를 집어냅니다. 둘 다 그렸으면 그 초록 한 줄이 남아서 **방금 짧아진 본문을 보증**합니다.
-   *
-   * 그래서 계약이 `check` 를 계속 돌려주는 것도 맞습니다 — 다시 계산하지 않는 클라이언트에는 그게 유일한 근거고,
-   * **호출 시점에 참이었던 것의 기록**이기도 합니다. 이 화면은 다시 계산하는 쪽이라 살아 있는 것만 그립니다.
-   */
-  async function summarise(): Promise<void> {
-    if (summarizing || !canSummarise) return;
-    setSummarizing(true);
-    setSummaryError(null);
-    setTooLong(false);
-    try {
-      const response = await createNewsSummary({
-        title: title.trim(),
-        body: trimmedArticle,
-        publisher: outlet.trim(),
-        publishedAt: publishedAt.trim(),
-        sourceUrl: sourceUrl.trim(),
-      });
-      setSummary(response.summary);
-      setDailyCalls(response.dailyCalls);
-      setTooLong(response.tooLong === true);
-    } catch (caught) {
-      setSummaryError(messageOf(caught));
-      /* 🔴 서버가 한도를 말했으면 제가 들고 있는 수와 관계없이 닫습니다 — 거절은 새 건수를 안 싣고 옵니다. */
-      if (caught instanceof NewsApiError && caught.code === "NEWS_DAILY_LIMIT_REACHED") setLimitReached(true);
-    } finally {
-      setSummarizing(false);
-    }
-  }
 
-  /**
-   * 기사 하나로 **칸 넷**을 받아 채웁니다. 🔴 **요약과 같은 장부에서 한 번 씁니다.**
-   *
-   * 🔴 **받은 값을 안 자릅니다.** 긴 줄은 긴 채로 칸에 들어가고 칸이 빨갛게 셉니다 — 화면이 잘라 주면
-   * 사람은 **무엇을 잃었는지 모른 채** 굽습니다.
-   *
-   * 🔴 **두 번 온 칸(`repeated`)은 채우지 않습니다.** 계약이 고르지 않는 이유가 여기서도 같습니다 — 무엇을
-   * 뜻했는지 **여기서는 알 수 없고**, 고르면 그건 구워진 뒤에야 드러나는 결정입니다. 대신 말해 줍니다.
-   */
-  async function drawCardText(): Promise<void> {
-    if (drawing || !canSummarise) return;
-    setDrawing(true);
-    setDrawError(null);
-    setDrawLeftovers(null);
-    try {
-      const response = await createNewsReelCardText({
-        title: title.trim(),
-        body: trimmedArticle,
-        publisher: outlet.trim(),
-        publishedAt: publishedAt.trim(),
-        sourceUrl: sourceUrl.trim(),
-      /* 🟠 CLI 의 다리: 이 화면은 아직 자막을 하나만 쓰므로 그림 하나 분을 청합니다. 그림을 먼저 고르는 화면이
-         서면 그 그림 수를 넘깁니다. */
-      }, 1);
-      const repeatedFields = new Set(response.repeated.map((slot) => slot.field));
-      const received: Record<NewsReelTextField, string | undefined> = {
-        "headline.line1": response.headline.line1,
-        "headline.line2": response.headline.line2,
-        "caption.line1": response.captions[0]?.line1,
-        "caption.line2": response.captions[0]?.line2,
-      };
-      const setters: Record<NewsReelTextField, (value: string) => void> = {
-        "headline.line1": setHeadline1,
-        "headline.line2": setHeadline2,
-        "caption.line1": setCaption1,
-        "caption.line2": setCaption2,
-      };
-      for (const field of NEWS_REEL_TEXT_FIELDS) {
-        const value = received[field];
-        if (value !== undefined && !repeatedFields.has(field)) setters[field](value);
-      }
-      setDailyCalls(response.dailyCalls);
-      setDrawLeftovers({
-        missing: response.missing.map((slot) => slot.field),
-        repeated: [...repeatedFields],
-        ignored: response.ignored,
-      });
-      /* 🟠 대조는 **네 줄 위에서** 돌아옵니다. 화면은 요약 칸의 것을 다시 계산하는 쪽이라, 여기서는
-         받은 `check` 를 그리지 않고 **칸을 채우는 일만** 합니다 — 같은 이유로 `news-summary` 도 안 건드립니다. */
-    } catch (caught) {
-      setDrawError(messageOf(caught));
-      if (caught instanceof NewsApiError && caught.code === "NEWS_DAILY_LIMIT_REACHED") setLimitReached(true);
-    } finally {
-      setDrawing(false);
-    }
-  }
-
-  const trimmedSummary = summary.trim();
   /* 🟠 `useMemo` 인 이유는 백열 줄이라서입니다 — 글자 한 자 칠 때마다 백열 번 도는 건 괜찮지만, 이 화면은
      타이핑 중에도 다시 그려지는 곳이 많습니다. */
   const shownFeedItems = useMemo(
@@ -411,53 +313,17 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
     [feed, feedQuery],
   );
 
-  /* 🔴 **숫자를 여기 안 적습니다** — `newsReelTextBox` 가 계약의 한도를 들고 옵니다(docs/06_DECISIONS.md D-053). */
-  /* 🔴 **칸 이름도 여기 안 적습니다.** 넷을 배열에 손으로 늘어놓으면 `contract-value-sets` 가 잡습니다 —
-     베낀 목록은 **계약이 늘어난 날 조용히 안 늘어나서**, 다섯째 칸이 생기면 이 화면이 아무 말 없이 넷만
-     그립니다. 값은 칸 이름을 키로 한 표에 두고 순서는 계약에서 받습니다: 다섯째가 생기면 그날
-     **이 표에서 컴파일 에러**가 납니다(docs/06_DECISIONS.md D-052). */
-  const reelValues: Record<NewsReelTextField, string> = {
-    "headline.line1": headline1,
-    "headline.line2": headline2,
-    "caption.line1": caption1,
-    "caption.line2": caption2,
-  };
-  const reelBoxes = NEWS_REEL_TEXT_FIELDS.map((field) => newsReelTextBox(field, newsReelFieldValue(reelValues[field])));
-  const reelRefused = reelBoxes.filter((box) => box.refusal !== null);
   /* 🔴 **언론사도 있어야 합니다** — 위 띠에 들어가는 이름이고, 계약이 `publisher` 를 필수로 받습니다.
      🟠 글자 수를 안 세는 이유는 계약의 표에 그 칸이 없어서입니다 — 띠는 폭에 맞춰 그려집니다. */
 
   const trimmedArticle = articleText.trim();
   /** 🟠 접힌 칸이 **비었는지 채워졌는지**를 접힌 채로 말해 줍니다 — 안 그러면 사람이 열어 봐야 압니다. */
   const articleFilled = trimmedArticle !== "" || title.trim() !== "";
+  /* 🔴 셋이 다 있어야 다음 화면이 설 수 있습니다: **본문**(대조할 것), **언론사**(띠), **그림**(자막 칸 수). */
+  const nextReady = trimmedArticle.length > 0 && outlet.trim().length > 0 && assetIds.length > 0;
   /* 🔴 주소는 바뀌었는데 아래 글은 안 바뀐 상태. **둘이 다른 기사**라는 것을 화면이 말해야 합니다. */
   const articleStale = articleFilled && url.trim().length > 0 && url.trim() !== fetchedUrl;
 
-  /**
-   * 🔴 **구워지는 글은 네 줄입니다 — 그래서 대조도 네 줄 위에서 돕니다.**
-   *
-   * 요약만 대조하고 네 줄을 안 보면, **정작 파일에 박히는 글이 검사 밖**에 있습니다(docs/06_DECISIONS.md D-052).
-   * 🟠 요약 쪽 대조와 **둘이 되는 것이 맞습니다** — 칸이 둘이라서입니다. 이름으로 갈라 둡니다.
-   *
-   * 🟠 받은 `check` 를 그리지 않고 **다시 계산합니다.** 사람이 칸을 고치는 순간 받은 답은 낡습니다.
-   */
-  const reelJoined = [headline1, headline2, caption1, caption2].map((one) => one.trim()).filter((one) => one.length > 0).join(" ");
-  const reelCheck = useMemo(
-    () => (reelJoined.length > 0 && trimmedArticle.length > 0 ? checkNewsSummary(reelJoined, trimmedArticle) : { claims: [], missing: [] }),
-    [reelJoined, trimmedArticle],
-  );
-  const reelBlocked = reelCheck.missing.length > 0;
-  const reelReady = reelRefused.length === 0 && outlet.trim().length > 0 && !reelBlocked;
-  const ready = trimmedSummary.length > 0 && trimmedArticle.length > 0;
-
-  /* 글자를 칠 때마다 다시 봅니다 — 순수 함수라 서버도 돈도 안 듭니다. 「확인」 버튼을 따로 두면 사람이
-     누르지 않은 채로 넘어갈 수 있고, 그러면 막는 장치가 있으나 마나입니다. */
-  const check = useMemo(
-    () => (ready ? checkNewsSummary(trimmedSummary, trimmedArticle) : { claims: [], missing: [] }),
-    [ready, trimmedSummary, trimmedArticle],
-  );
-
-  const blocked = check.missing.length > 0;
   const sourceLine = [outlet.trim(), publishedAt.trim(), sourceUrl.trim()].filter((part) => part.length > 0).join(" · ");
 
   /* 🔴 `dailyCalls === null` 은 **막힘**입니다 — 「모르니까 안 부른다」이지 「여유 있음」이 아닙니다. 남은 수가
@@ -790,264 +656,75 @@ export function NewsReelScreen({ onBack, onUseCard }: Props) {
         </details>
       </section>
 
-      <section className={cardSection} aria-label="요약">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-100">요약</h2>
-          {dailyCalls && (
-            <span className="text-xs tabular-nums text-slate-500" data-testid="news-daily-calls">
-              오늘 쓴 요약 {dailyCalls.used} / {dailyCalls.limit}
-            </span>
-          )}
-        </div>
-        <p className="mt-1 text-xs text-slate-500">릴에 들어갈 문장입니다. 첫 줄이 제목처럼 크게 들어갑니다. 직접 쓰셔도 되고, 아래 버튼으로 뽑으셔도 됩니다.</p>
-
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <button
-            type="button"
-            data-testid="news-summarize"
-            className={outlineButton}
-            disabled={summarizing || !canSummarise}
-            onClick={() => void summarise()}
-          >
-            {summarizing ? "요약을 받는 중..." : "AI로 요약 뽑기"}
-          </button>
-          {/* 🔴 값을 버튼 옆에 적습니다. 위 「기사 가져오기」는 공짜라 아무 말도 안 하는데, 둘이 같은 모양이면
-              사람은 **어느 쪽이 깎는지 모른 채** 누릅니다(927 §4). */}
-          <span className="text-xs text-slate-500">
-            {dailyCalls ? `누를 때마다 하나씩 씁니다 — 오늘 ${callsLeft}번 남았습니다.` : "누를 때마다 오늘 쓸 수 있는 횟수를 하나 씁니다."}
-          </span>
-        </div>
-
-        {/* 🔴 「모르니까 안 부른다」입니다. 숫자 자리를 비워 두거나 0 으로 그리면 「여유 있음」으로 읽힙니다. */}
-        {dailyCalls === null && setup.status === "ready" && (
-          <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300" data-testid="news-calls-unknown">
-            {NEWS_LEDGER_UNREADABLE_MESSAGE}
-          </p>
-        )}
-
-        {summaryError && (
-          <p role="alert" className="mt-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" data-testid="news-summary-error">
-            {summaryError}
-          </p>
-        )}
-
-        {/* 🟠 자르지 않고 알립니다. 길이로 자르면 `4,000` 이 `4,0` 이 되고, 그러면 **대조기가 우리 편집을 보고
-            「지어냈다」**고 합니다 — 어느 문장을 버릴지는 읽은 사람이 정할 일입니다(CLI 943 §1). */}
-        {tooLong && (
-          <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300" data-testid="news-summary-too-long">
-            요약이 카드에 들어가기엔 깁니다. 그대로 두었으니 <strong>뺄 문장을 직접 골라</strong> 줄여 주세요 — 저희가 잘라내면 숫자가 반토막 나서 아래 대조가 엉뚱하게 걸립니다.
-          </p>
-        )}
-
-        <textarea
-          data-testid="news-summary"
-          rows={5}
-          className={`${field} mt-3`}
-          value={summary}
-          onChange={(event) => setSummary(event.target.value)}
-          placeholder="기사가 말하는 것만 적어 주세요."
-        />
-      </section>
-
       {/*
-        * 🔴 **릴에 박히는 네 줄.** 요약 칸과 다릅니다 — 요약은 **읽을 글**이고, 이 넷은 **화면에 박힐 글**입니다.
-        * 그래서 한도가 「읽기 좋은 길이」가 아니라 **글자가 화면 폭에 들어가는 수**이고, 그 수는 계약이 들고
-        * 옵니다(굽는 글꼴 실측 × 0.63 — D-053).
+        * 🔴 **그림이 글보다 먼저인 자리.** 자막은 **장면마다 하나**라, 몇 장을 고르셨는지가 다음 화면의
+        * 자막 칸 수를 정합니다. 캡틴D: *「릴스가 몇 장면 몇 분인 줄 알고 이렇게 적음?」* — 그래서 뒤집었습니다.
         */}
-      <section className={cardSection} aria-label="릴 문구">
-        <h2 className="text-sm font-semibold text-slate-100">릴에 들어갈 글</h2>
+      <section className={cardSection} aria-label="그림과 길이">
+        <h2 className="text-sm font-semibold text-slate-100">그림 고르기</h2>
         <p className="mt-1 text-xs text-slate-500">
-          제목 두 줄은 <strong className="text-slate-300">색이 갈립니다</strong> — 첫 줄은 흰색, 둘째 줄은 노란색입니다. 어디서 끊을지는 사람이 정합니다.
+          고른 <strong className="text-slate-300">순서대로 한 장씩</strong> 이어 붙고, <strong className="text-slate-300">그림마다 자막이 하나</strong>씩 붙습니다. 여기서도 돈이 나가지 않습니다.
         </p>
 
-        {/* 🔴 **이 버튼이 오늘 쓸 수 있는 횟수를 한 번 씁니다** — 위 「AI로 요약 뽑기」와 같은 장부입니다.
-            둘 다 같은 모양으로 그려 두면 사람은 **어느 쪽이 깎는지 모른 채** 누릅니다. */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <button
-            type="button"
-            data-testid="news-reel-draw"
-            className={outlineButton}
-            disabled={drawing || !canSummarise}
-            onClick={() => void drawCardText()}
+        <div className="mt-3">
+          <PicturePicker
+            assets={assets}
+            listError={assetsError}
+            assetIds={assetIds}
+            onToggle={togglePicture}
+            max={PHOTO_CARD_MAX_PICTURES}
+            seconds={seconds}
+            testIdPrefix="news-reel-picture"
+          />
+        </div>
+
+        <label className="mt-4 block text-sm text-slate-300">
+          한 장당 길이
+          <select
+            data-testid="news-reel-seconds"
+            className={`${field} mt-1`}
+            value={seconds}
+            onChange={(event) => setSeconds(Number(event.target.value) as PhotoCardDurationSeconds)}
           >
-            {drawing ? "글을 받는 중..." : "기사에서 네 줄 뽑기"}
-          </button>
-          <span className="text-xs text-slate-500">
-            {dailyCalls ? `누를 때마다 하나씩 씁니다 — 오늘 ${callsLeft}번 남았습니다.` : "누를 때마다 오늘 쓸 수 있는 횟수를 하나 씁니다."}
-          </span>
-        </div>
+            {PHOTO_CARD_DURATIONS.map((value) => <option key={value} value={value}>{value}초</option>)}
+          </select>
+        </label>
 
-        {drawError && (
-          <p role="alert" className="mt-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" data-testid="news-reel-draw-error">
-            {drawError}
-          </p>
-        )}
-
-        {/* 🔴 **못 채운 것을 말해 줍니다.** 세 가지가 서로 다른 일을 시킵니다 — 안 온 칸은 **쓰라**는 것이고,
-            두 번 온 칸은 **둘 중 하나를 고르라**는 것이고, 라벨 없이 온 줄은 **쓸 만하면 옮겨 적으라**는 것입니다.
-            하나로 뭉개면 사람이 어디를 봐야 할지 모릅니다. */}
-        {/* 🔴 **네 줄 대조** — 요약 대조와 다른 글을 봅니다. 구워지는 것이 이 넷이라, 여기서 걸리면 못 넘어갑니다. */}
-        {reelBlocked && (
-          <div role="alert" className="mt-3 space-y-1 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" data-testid="news-reel-check-failed">
-            <p>이 네 줄에 <strong>기사에서 못 찾은 것</strong>이 있습니다 — 고쳐야 넘어갈 수 있습니다.</p>
-            <ul className="list-disc space-y-0.5 pl-5 text-xs">
-              {reelCheck.missing.map((claim) => (
-                <li key={`${claim.kind}-${claim.text}`} data-testid={`news-reel-check-missing-${claim.text}`}>
-                  {CLAIM_LABEL[claim.kind]} 「{claim.text}」
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {drawLeftovers && (drawLeftovers.missing.length > 0 || drawLeftovers.repeated.length > 0 || drawLeftovers.ignored.length > 0) && (
-          <div className="mt-3 space-y-1 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-300" data-testid="news-reel-draw-leftovers">
-            {drawLeftovers.missing.length > 0 && (
-              <p data-testid="news-reel-draw-missing">안 온 칸이 있습니다: {drawLeftovers.missing.map((field) => REEL_FIELD_LABEL[field]).join(" · ")} — 직접 써 주세요.</p>
-            )}
-            {drawLeftovers.repeated.length > 0 && (
-              <p data-testid="news-reel-draw-repeated">
-                {drawLeftovers.repeated.map((field) => REEL_FIELD_LABEL[field]).join(" · ")}이(가) 두 번 왔습니다. 어느 쪽을 뜻했는지 알 수 없어 <strong>채우지 않았습니다</strong> — 직접 써 주세요.
-              </p>
-            )}
-            {drawLeftovers.ignored.length > 0 && (
-              <p data-testid="news-reel-draw-ignored">
-                칸에 못 넣은 줄 {drawLeftovers.ignored.length}개: {drawLeftovers.ignored.map((line) => `「${line}」`).join(" ")}
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="mt-4 space-y-3">
-          <CountedField
-            id="news-reel-headline1"
-            data-testid="news-reel-headline1"
-            field="headline.line1"
-            label="제목 첫 줄 (흰색)"
-            value={headline1}
-            onChange={setHeadline1}
-            placeholder="무슨 일인지"
-          />
-          <CountedField
-            id="news-reel-headline2"
-            data-testid="news-reel-headline2"
-            field="headline.line2"
-            label="제목 둘째 줄 (노란색)"
-            value={headline2}
-            onChange={setHeadline2}
-            placeholder="그래서 어떻게 됐는지"
-          />
-          <CountedField
-            id="news-reel-caption1"
-            data-testid="news-reel-caption1"
-            field="caption.line1"
-            label="자막 첫 줄"
-            value={caption1}
-            onChange={setCaption1}
-            placeholder="그림에 보이는 것을 말로"
-          />
-          <CountedField
-            id="news-reel-caption2"
-            data-testid="news-reel-caption2"
-            field="caption.line2"
-            label="자막 둘째 줄"
-            value={caption2}
-            onChange={setCaption2}
-            placeholder="없어도 됩니다"
-            hint="비워 두면 한 줄짜리 자막입니다 — 빈 줄이 들어가는 게 아닙니다."
-          />
-        </div>
-
-        {/* 🔴 **여기서 굽지 않습니다** — 그림을 고르는 자리가 다음 화면입니다. 이 버튼은 **글을 들고 넘어가는**
-            것뿐이고, 돈은 어느 쪽에서도 안 나갑니다. */}
-        {/* 🟠 넘어간 뒤 이 칸의 글을 고치면, **넘어간 글은 안 따라갑니다** — 다시 눌러 주셔야 합니다. */}
+        {/* 🔴 여기서 굽지 않습니다 — 다음 화면에서 **그림마다 자막**을 쓰고 만듭니다. 돈은 어느 쪽에서도 안 나갑니다. */}
         <div className="mt-4 space-y-2">
           <button
             type="button"
-            data-testid="news-reel-use"
+            data-testid="news-reel-next"
             className={primaryButton}
-            disabled={!reelReady}
+            disabled={!nextReady}
             onClick={() => {
-              if (!reelReady) return;
-              onUseCard({
-                publisher: outlet.trim(),
-                headline: { line1: headline1.trim(), line2: headline2.trim() },
-                /* 🔴 빈 둘째 줄은 `""` 가 아니라 `null` — 계약이 빈 문자열을 값으로 안 칩니다(D-054). */
-                /* 🟠 CLI 의 다리: 계약은 이제 그림마다 자막이 하나(`captions`)입니다. 이 화면은 아직 자막을 하나만
-                   쓰므로 하나를 넘기고, 만들기 화면이 그것을 그림마다 깝니다 — 예전과 같은 릴입니다. */
-                captions: [{ line1: caption1.trim(), line2: newsReelFieldValue(caption2) }],
+              if (!nextReady) return;
+              onNext({
+                article: {
+                  title: title.trim(),
+                  body: trimmedArticle,
+                  publisher: outlet.trim(),
+                  publishedAt: publishedAt.trim(),
+                  sourceUrl: sourceUrl.trim(),
+                },
+                assetIds,
+                clipDurationSeconds: seconds,
               });
             }}
           >
-            이 글로 릴 만들기
+            {assetIds.length > 0 ? `그림 ${assetIds.length}장으로 글 쓰기` : "글 쓰러 가기"}
           </button>
-          {/* 🟠 못 누르는 이유를 **이유별로** 말합니다 — 닫힌 버튼만 두면 화면이 고장 난 것으로 읽힙니다. */}
-          {!reelReady && (
-            <p className="text-xs text-slate-500" data-testid="news-reel-use-why">
-              {reelRefused.length > 0
-                ? "글자 수가 맞지 않는 칸이 있습니다."
-                : reelBlocked
-                  ? "대조에서 걸린 것을 고쳐야 넘어갈 수 있습니다."
-                  : "언론사 칸이 비어 있습니다 — 띠에 들어갈 이름입니다."}
+          {/* 🟠 못 누르는 이유를 **이유별로** — 닫힌 버튼만 두면 화면이 고장 난 것으로 읽힙니다. */}
+          {!nextReady && (
+            <p className="text-xs text-slate-500" data-testid="news-reel-next-why">
+              {trimmedArticle.length === 0
+                ? "기사 본문이 있어야 합니다 — 위에서 가져오시거나 붙여넣어 주세요."
+                : outlet.trim().length === 0
+                  ? "언론사 칸이 비어 있습니다 — 위 띠에 들어갈 이름입니다."
+                  : "그림을 한 장 이상 골라 주세요. 그림 수만큼 자막 칸이 열립니다."}
             </p>
           )}
         </div>
-      </section>
-
-      <section className={cardSection} aria-label="원문 대조">
-        <h2 className="text-sm font-semibold text-slate-100">원문 대조</h2>
-
-        {!ready && (
-          <p className="mt-2 text-sm text-slate-400" data-testid="news-check-idle">
-            기사 본문과 요약을 채우면 여기서 대조합니다.
-          </p>
-        )}
-
-        {ready && blocked && (
-          <div className="mt-3 space-y-2 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3" data-testid="news-check-failed">
-            <p className="text-sm font-semibold text-rose-200">
-              요약에 기사에서 찾을 수 없는 것이 {check.missing.length}개 있습니다.
-            </p>
-            <ul className="space-y-1">
-              {check.missing.map((claim) => (
-                <li key={`${claim.kind}:${claim.text}`} className="text-sm text-rose-200" data-testid={`news-unverified-${claim.kind}`}>
-                  {CLAIM_LABEL[claim.kind]} <strong className="font-semibold">{claim.text}</strong> — 기사 본문에 없습니다.
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-slate-300">
-              지어낸 값일 수도 있고, 기사에 있는데 다르게 적으신 것일 수도 있습니다. 기사에 적힌 그대로 고치거나, 그 문장을 빼 주세요.
-            </p>
-          </div>
-        )}
-
-        {ready && !blocked && check.claims.length > 0 && (
-          <p className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300" data-testid="news-check-passed">
-            요약의 숫자·날짜·인용문 {check.claims.length}개를 기사 본문에서 찾았습니다.
-          </p>
-        )}
-
-        {/* 🔴 「검사할 게 없었다」와 「통과했다」는 다른 사실입니다. 숫자도 날짜도 따옴표도 없는 요약은 이
-            검사가 아무것도 보지 못한 것이고, 초록으로 칠하면 보지 않은 것을 봤다고 말하는 셈입니다. */}
-        {ready && !blocked && check.claims.length === 0 && (
-          <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300" data-testid="news-check-empty">
-            이 요약에는 대조할 숫자·날짜·인용문이 없습니다. 막지는 않지만, <strong>확인된 것도 없습니다.</strong>
-          </p>
-        )}
-
-        {/* 🔴 이 검사의 한계를 화면이 직접 말합니다. 안 적으면 초록 한 줄이 「사실 확인 끝」으로 읽히고,
-            그건 이 화면이 막으려던 것보다 더 나쁜 오해입니다. */}
-        <p className="mt-3 text-xs text-slate-500" data-testid="news-check-limit">
-          {NEWS_CHECK_SCOPE_NOTICE}
-        </p>
-      </section>
-
-      <section className={cardSection} aria-label="출처">
-        <h2 className="text-sm font-semibold text-slate-100">출처</h2>
-        <p className="mt-1 text-xs text-slate-500">화면과 캡션에 이 줄이 같이 들어갑니다. 요약은 기사의 것이지 우리 것이 아닙니다.</p>
-        <p className="mt-3 break-all text-sm text-slate-300" data-testid="news-source-line">
-          {sourceLine || "언론사·발행일·링크를 채워 주세요."}
-        </p>
       </section>
 
     </div>
