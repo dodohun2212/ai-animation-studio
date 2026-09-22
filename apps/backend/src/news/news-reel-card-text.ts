@@ -102,6 +102,12 @@ export function newsReelCardPrompt(article: NewsArticleInput, pictures: readonly
  * the article may not; the prompt says names are not a source of facts, and `checkNewsSummary` still runs against
  * the article alone, so a figure borrowed from a name is refused like any other invented one.
  *
+ * 🔴 **Showing the pictures lets the captions lean** (Cowork 1082): every line can be in the article and the reel
+ * still follow the pictures rather than the story — the check catches invented lines, not chosen ones. The
+ * headline, fixed and largest, is told to ignore the pictures, and the captions not to drift from the article's
+ * centre. 🟠 This is words in one prompt, not a wall; a second call would split it properly and costs double.
+ * The boxes are where a person corrects it.
+ *
  * 🟠 **Unknown stays unknown.** A picture with no name is listed as having none rather than given a stand-in word
  * the model would write towards; with no names at all nothing is added and the prompt is the count-only one.
  * 🟠 A name is one line in the prompt — its own line breaks are folded, so it cannot become a line of its own.
@@ -114,6 +120,7 @@ function pictureLines(pictures: readonly string[]): string[] {
     "그림은 이 순서로 나갑니다. **자막N 은 N번째 그림이 떠 있는 동안 깔리니, 그 그림에 보이는 것과 맞는 사실**을 기사에서 골라 써 주세요.",
     ...names.map((name, scene) => `- 그림${scene + 1}: ${name === "" ? "(이름 없음 — 기사 흐름에 맞게)" : name}`),
     "그림 이름은 **그림에 무엇이 보이는지**만 알려 줍니다. 사실의 출처가 아닙니다 — 이름에만 있고 기사에 없는 숫자·날짜·장소는 쓰지 않습니다.",
+    "**제목 두 줄은 그림을 보지 않고 기사의 핵심으로 씁니다.** 자막도 그림에 맞는 사실을 고르되, 기사의 핵심에서 벗어난 쪽으로 몰리지 않게 합니다.",
   ];
 }
 

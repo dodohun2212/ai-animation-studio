@@ -88,6 +88,16 @@ describe("news reel card prompt", () => {
   });
 
   /**
+   * 🔴 Cowork 1082 · 캡틴D 「기사 내용이 변질될 수도」 — 문장은 다 기사에 있어도 **그림에 맞는 것만 고르면** 릴이
+   * 그림을 따라간다. 대조는 이걸 못 잡으니, 고정되고 가장 큰 제목은 그림을 안 보고 기사의 핵심으로 쓰라고 한다.
+   */
+  it("keeps the headline on the article's centre, not on the pictures", () => {
+    const prompt = newsReelCardPrompt(ARTICLE, ["시위 현장"]);
+    expect(prompt).toContain("제목 두 줄은 그림을 보지 않고 기사의 핵심으로");
+    expect(prompt).toContain("기사의 핵심에서 벗어난 쪽으로 몰리지 않게");
+  });
+
+  /**
    * 🟠 빈 이름은 빈 채로 — 「그림」 같은 말로 채우면 모델이 그 가짜 말에 맞춰 쓴다. 이름이 하나도 없으면
    * **그림 수만 알던 때와 같은 프롬프트**다.
    */
