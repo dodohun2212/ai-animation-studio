@@ -218,9 +218,14 @@ function isCreateNewsReelCardTextResponse(value: unknown): value is CreateNewsRe
  * 자르면 사람은 **무엇을 잃었는지 모른 채** 굽습니다(돈이 나간 답이라 그대로 옵니다).
  *
  * 🟠 **대조는 네 줄 위에서** 돌아옵니다 — 요약이 아니라. 구워지는 게 그 줄이라서입니다.
+ *
+ * 🔴 **`pictures` 는 고른 순서 그대로의 그림 이름입니다** — 장면 수는 그 길이에서 납니다(옛 `sceneCount` 는
+ * 계약에서 빠졌고, 보내면 부르기 전에 거절당합니다). 자막N 이 N번째 그림 아래 깔리니 모델이 그 그림이
+ * 무엇인지 알아야 맞는 사실을 고릅니다 — 숫자만 보내던 때는 셋째 자막이 셋째 그림과 **우연히** 맞았습니다
+ * (캡틴D, 2026-09-22 · D-057).
  */
-export function createNewsReelCardText(article: NewsArticleInput, sceneCount: number): Promise<CreateNewsReelCardTextResponse> {
-  const request: CreateNewsReelCardTextRequest = { article, sceneCount };
+export function createNewsReelCardText(article: NewsArticleInput, pictures: string[]): Promise<CreateNewsReelCardTextResponse> {
+  const request: CreateNewsReelCardTextRequest = { article, pictures };
   return read(API_ROUTES.newsReelCardText, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -101,7 +101,12 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
     setDrawError(null);
     setDrawNote(null);
     try {
-      const response = await createNewsReelCardText(draft.article, sceneCount);
+      /* 🔴 **고른 순서 그대로의 그림 이름**을 같이 보냅니다 — 장면 수는 그 길이에서 납니다(D-057).
+         🔴 **이름을 못 읽었으면 빈 채로 보냅니다.** 「그림」 같은 말로 채우면 모델이 그 가짜 말에 맞춰
+         씁니다. 목록 길이는 고른 그림 수 그대로라, 이름이 하나도 없어도 자막 수는 어긋나지 않습니다
+         (그 경우 숫자만 보내던 때와 같은 결과가 나올 뿐입니다). */
+      const pictures = draft.assetIds.map((id) => assets?.find((one) => one.assetId === id)?.displayName ?? "");
+      const response = await createNewsReelCardText(draft.article, pictures);
       if (response.headline.line1 !== undefined) setHeadline1(response.headline.line1);
       if (response.headline.line2 !== undefined) setHeadline2(response.headline.line2);
       setCaptions((current) => current.map((one, index) => ({

@@ -123,9 +123,34 @@ describe("NewsReelCreateScreen 장면마다 자막", () => {
     fireEvent.click(screen.getByTestId("news-reel-draw"));
 
     await waitFor(() => {
-      expect(sentBody(mock, "/news/card-text").sceneCount).toBe(2);
+      /* 🔴 숫자가 아니라 **고른 순서의 이름**이 갑니다 — 이게 자막과 그림을 묶는 유일한 끈입니다(D-057). */
+      expect(sentBody(mock, "/news/card-text").pictures).toEqual(["국회 본회의장", "법원 앞"]);
+      expect(sentBody(mock, "/news/card-text").sceneCount).toBeUndefined();
       expect((screen.getByTestId("news-reel-caption1-0") as HTMLInputElement).value).toBe("본회의장 표결 직후");
       expect((screen.getByTestId("news-reel-caption1-1") as HTMLInputElement).value).toBe("공소청으로 간판 교체");
+    });
+  });
+
+  /**
+   * 🔴 **이름을 못 읽었을 때 지어내지 않습니다.** 「그림」 같은 말을 채워 보내면 모델이 **그 가짜 말에 맞춰**
+   * 씁니다 — 그림에 없는 것이 자막에 깔립니다. 빈 이름은 빈 채로 보내고, 서버는 그것을 받습니다(1081 §3).
+   * 🟠 목록 길이는 고른 그림 수 그대로라 **자막 칸 수는 어긋나지 않습니다.**
+   */
+  it("sends the names empty rather than made up when the picture list could not be read", async () => {
+    const mock = stubRoutes({
+      "POST /news/card-text": {
+        headline: { line1: "후속 법안 51건", line2: "국회 본회의 통과" },
+        captions: [{ line1: "하나" }, { line1: "둘" }],
+        missing: [], repeated: [], ignored: [], check: { claims: [], missing: [] }, dailyCalls: { used: 3, limit: 30 },
+      },
+    }, { "GET /assets": { status: 500, body: { code: "ASSET_STORAGE_ERROR", message: "raw" } } });
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId("news-reel-draw")).toBeEnabled());
+
+    fireEvent.click(screen.getByTestId("news-reel-draw"));
+
+    await waitFor(() => {
+      expect(sentBody(mock, "/news/card-text").pictures).toEqual(["", ""]);
     });
   });
 
