@@ -211,3 +211,48 @@ describe("the headline is not the body's first line", () => {
     expect(extracted.body!.startsWith("[서울=뉴시스]")).toBe(true);
   });
 });
+
+/**
+ * 🔴 Cowork 1084 — 연합뉴스 본문 끝에 **다른 날의 사실**이 붙어 왔다. 30편을 재 보니 전부 저작권 줄에서 기사가 끝나고,
+ * 그 뒤로 송고 줄 · 사진 설명(제 날짜·제 장소) · 좋아요/공유 단추 글자가 온다. 사진 설명의 「2026.8.30」이 본문에
+ * 남으면 대조가 그걸 **이 기사의 사실**로 본다. 모양은 실물에서 재고, 글은 여기서 지어 썼다.
+ */
+describe("the publisher's tail is not the article", () => {
+  const tail = (caption: string) => [
+    "<p>제보는 카카오톡 okjebo</p>",
+    "<p>&lt;저작권자(c) 연합뉴스, 무단 전재-재배포, AI 학습 및 활용 금지&gt;</p>",
+    "<p>2026/09/22 19:19 송고</p><p>2026년09월22일 19시19분 송고</p>",
+    `<p>${caption}</p>`,
+    "<p>좋아요</p><p>공유하기</p>",
+  ].join("");
+  const CAPTION = "(서울=연합뉴스) 서대연 기자 = 대법원 전경. 사진은 30일 서울 서초구 대법원의 모습. 2026.8.30 dwise@yna.co.kr";
+
+  it("ends the body at the copyright line, so a photo caption's date is not the article's", () => {
+    const body = extractArticle(page(`<article><p>${filler("재제청")}</p><p>대법원장은 22일 요구를 거부했다.</p>${tail(CAPTION)}</article>`)).body!;
+
+    expect(body.endsWith("대법원장은 22일 요구를 거부했다.")).toBe(true);
+    for (const gone of ["송고", "저작권자", "okjebo", "2026.8.30", "dwise@yna.co.kr", "공유하기"]) expect(body, gone).not.toContain(gone);
+    // 🔴 이게 이 줄의 이유다: 사진 설명에만 있던 날짜가 대조를 통과하지 못한다.
+    expect(checkNewsSummary("사진은 2026.8.30 모습", body).missing.length).toBeGreaterThan(0);
+  });
+
+  /** 🟠 400자를 **꼬리 덕분에** 넘기던 단신은 이제 못 넘는다 — 대조할 거리가 모자라다는 원래 규칙 그대로다. */
+  it("measures the body without the tail, so a short brief is not made long enough by it", () => {
+    const brief = "(서울=연합뉴스) 셀리드는 30억원 유상증자를 결정했다고 22일 공시했다. ".repeat(3);
+    const longCaption = `${CAPTION} `.repeat(8);
+    expect(brief.length).toBeLessThan(ARTICLE_MIN_BODY_CHARS);
+
+    expect(extractArticle(page(`<article><p>${brief}</p>${tail(longCaption)}</article>`)).body).toBeUndefined();
+  });
+
+  it("drops a reporter's address left alone on the last line", () => {
+    const body = extractArticle(page(`<article><p>${filler("영화제")}</p><p>young@yna.co.kr</p></article>`)).body!;
+    expect(body).not.toContain("young@yna.co.kr");
+    expect(body).toContain("영화제");
+  });
+
+  it("changes nothing on a page with no copyright line", () => {
+    const body = extractArticle(page(`<article><p>${filler("물가")}</p><p>통계청은 3.2%라고 밝혔다.</p></article>`)).body!;
+    expect(body.endsWith("통계청은 3.2%라고 밝혔다.")).toBe(true);
+  });
+});

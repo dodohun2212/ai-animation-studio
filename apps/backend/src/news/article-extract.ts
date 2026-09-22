@@ -140,8 +140,11 @@ function decodeEntities(text: string): string {
 const PROSE_MIN_PARAGRAPH_CHARS = 40;
 
 function proseParagraphs(html: string): string {
-  return [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
-    .map((match) => match[1] ?? "")
+  const paragraphs = [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map((match) => match[1] ?? "");
+  // 🔴 Stop at the copyright line **before** the length filter: at 38 characters it is not "prose", so filtering
+  // first threw away the one mark that says where the article ends and let the photo captions after it through.
+  const end = paragraphs.findIndex((inner) => COPYRIGHT_LINE.test(stripTags(inner)));
+  return (end < 0 ? paragraphs : paragraphs.slice(0, end))
     .filter((inner) => textLengthOf(inner) >= PROSE_MIN_PARAGRAPH_CHARS)
     .map((inner) => stripTags(inner))
     .join("\n");
@@ -207,6 +210,41 @@ function withoutRepeatedTitle(body: string, title: string): string {
 }
 
 /**
+ * 🔴 **Everything from the publisher's own copyright line down is not the article** (Cowork 1084).
+ *
+ * Measured on 30 연합뉴스 articles the same evening (2026-09-22): every one ends 「제보는 카카오톡 okjebo」 →
+ * 「<저작권자(c) 연합뉴스, 무단 전재-재배포, AI 학습 및 활용 금지>」, and **after** that line come the filing lines
+ * (「2026/09/22 19:19 송고」), the photo captions — each with **its own date and place** (「사진은 30일 … 2026.8.30
+ * dwise@yna.co.kr」 under a 9/22 story) — and the page's 좋아요·공유·폰트 buttons. In none of the 30 did article
+ * text come after it.
+ *
+ * The captions are the dangerous part: `checkNewsSummary` treats the body as the article's facts, so 「8월 30일」
+ * from a photo caption passes as if the story said it. That is not invented and not cherry-picked — the body
+ * arrived already carrying another day's facts, and no prompt can fix that.
+ *
+ * 🟠 **Only the marker, nothing guessed.** Cutting too much makes good captions go red; the copyright line is
+ * the publisher saying where its article ends, so cutting there takes nothing of the story. 🟠 It runs before
+ * the length check, so a short brief that only reached 400 characters **because of** that tail no longer does —
+ * the tail was what made it look long enough to check against.
+ */
+const COPYRIGHT_LINE = /^<?\s*저작권자\s*[(ⓒ©]/;
+const TIP_LINE = /^제보는 카카오톡/;
+/** A reporter's sign-off: the last line, an address and nothing else. */
+const EMAIL_ONLY_LINE = /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/;
+
+function withoutPublisherTail(body: string): string {
+  const lines = body.split("\n");
+  const end = lines.findIndex((line) => COPYRIGHT_LINE.test(line));
+  const kept = end < 0 ? lines : lines.slice(0, end);
+  const furniture = (line: string): boolean => {
+    const trimmed = line.trim();
+    return trimmed === "" || TIP_LINE.test(trimmed) || EMAIL_ONLY_LINE.test(trimmed);
+  };
+  while (kept.length > 0 && furniture(kept[kept.length - 1]!)) kept.pop();
+  return kept.join("\n");
+}
+
+/**
  * Whatever could be read from the page, with `body` present only when it could be read **confidently**.
  *
  * No body is not an error. The server did its job: it knocked, it got a page, it could not tell which part was
@@ -223,7 +261,7 @@ export function extractArticle(html: string): ExtractedArticle {
     if (!container) continue;
     const stripped = STRIP_PATTERNS.reduce((text, strip) => text.replace(strip, " "), container);
     // Names first, then structure — two independent defences, because the first one's failures are silent.
-    const body = withoutRepeatedTitle(stripTags(dropLinkOnlyBlocks(stripped)), found.title);
+    const body = withoutPublisherTail(withoutRepeatedTitle(stripTags(dropLinkOnlyBlocks(stripped)), found.title));
     if (body.length < ARTICLE_MIN_BODY_CHARS) continue;
     return { ...found, body };
   }
@@ -232,7 +270,7 @@ export function extractArticle(html: string): ExtractedArticle {
   // structural question — and put the whole page through the same link filter first, so a page of headlines
   // cannot become a body.
   const prose = proseParagraphs(dropLinkOnlyBlocks(STRIP_PATTERNS.reduce((text, strip) => text.replace(strip, " "), html)));
-  const trimmed = withoutRepeatedTitle(prose, found.title);
+  const trimmed = withoutPublisherTail(withoutRepeatedTitle(prose, found.title));
   if (trimmed.length >= ARTICLE_MIN_BODY_CHARS) return { ...found, body: trimmed };
   return found;
 }
