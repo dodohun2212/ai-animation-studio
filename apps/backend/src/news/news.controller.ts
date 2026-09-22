@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post } from "@nestjs/common";
 import {
   API_ROUTES,
+  NEWS_REEL_PICTURE_NAME_LIMIT,
   NEWS_SUMMARY_MAX_CHARS,
   PHOTO_CARD_MAX_PICTURES,
   assertNewsSummaryCheck,
@@ -271,11 +272,8 @@ export class NewsController {
   @Post(API_ROUTES.newsReelCardText)
   async cardText(@Body() body: unknown): Promise<CreateNewsReelCardTextResponse> {
     const article = validArticle(body);
-    // Before the key and the quota, like the article: a count we cannot use must not cost a call.
-    const sceneCount = (body as { sceneCount?: unknown }).sceneCount;
-    if (typeof sceneCount !== "number" || !Number.isInteger(sceneCount) || sceneCount < 1 || sceneCount > PHOTO_CARD_MAX_PICTURES) {
-      throw newsSummaryArticleInvalid(`그림 수는 1장부터 ${PHOTO_CARD_MAX_PICTURES}장까지입니다.`);
-    }
+    // Before the key and the quota, like the article: pictures we cannot use must not cost a call.
+    const pictures = validPictures(body);
 
     const apiKey = (await this.settings.read("gemini"))?.trim();
     if (!apiKey) throw newsSummaryKeyMissing();
@@ -290,14 +288,14 @@ export class NewsController {
 
     let answer: string;
     try {
-      answer = await this.callCardProvider(article, sceneCount, apiKey);
+      answer = await this.callCardProvider(article, pictures, apiKey);
     } catch (error) {
       await this.quota.record(false, undefined, failureOf(error)).catch(() => undefined);
       throw newsSummaryFailed();
     }
     await this.quota.record(true);
 
-    const parsed = parseNewsReelCardText(answer, sceneCount);
+    const parsed = parseNewsReelCardText(answer, pictures.length);
     // 🟠 Every line joined, because the checker looks inside one text — and a figure invented in the third
     // picture's caption is no better than one invented in the headline.
     const lines = [...Object.values(parsed.headline), ...parsed.captions.flatMap((caption) => Object.values(caption))];
@@ -323,6 +321,26 @@ export class NewsController {
  * makes every claim in the summary "missing" — or, worse, makes a two-line stub produce a summary that passes.
  * Neither is something to spend a call discovering.
  */
+/**
+ * The reel's pictures by name, in order (docs/06_DECISIONS.md D-057). 🔴 `sceneCount` is refused by name rather than
+ * ignored: a client still sending the count would otherwise be told only that `pictures` is missing, and the
+ * count is exactly what this field replaced. 🟠 An empty name is allowed — it is what an unnamed picture is.
+ */
+function validPictures(body: unknown): string[] {
+  const candidate = body as { pictures?: unknown; sceneCount?: unknown };
+  if (candidate.sceneCount !== undefined) {
+    throw newsSummaryArticleInvalid("그림 수(sceneCount) 대신 그림 이름 목록(pictures)을 보내야 합니다.");
+  }
+  const pictures = candidate.pictures;
+  if (!Array.isArray(pictures) || pictures.length < 1 || pictures.length > PHOTO_CARD_MAX_PICTURES) {
+    throw newsSummaryArticleInvalid(`그림은 1장부터 ${PHOTO_CARD_MAX_PICTURES}장까지입니다.`);
+  }
+  if (!pictures.every((name): name is string => typeof name === "string" && name.trim().length <= NEWS_REEL_PICTURE_NAME_LIMIT)) {
+    throw newsSummaryArticleInvalid(`그림 이름은 글자이고 ${NEWS_REEL_PICTURE_NAME_LIMIT}자 이내여야 합니다.`);
+  }
+  return pictures;
+}
+
 /** What the ledger keeps about a failed call: the adapter's reason, or that something else threw. */
 function failureOf(error: unknown): string {
   return error instanceof NewsSummaryProviderError ? error.failure : "unexpected";

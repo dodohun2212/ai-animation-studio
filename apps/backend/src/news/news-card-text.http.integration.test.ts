@@ -64,7 +64,7 @@ describe("asking for a card's lines over HTTP", () => {
   it("answers at the address the client builds, with the boxes and the day's count", async () => {
     const { base } = await start("test-key", ANSWER);
 
-    const response = await post(base, { article: ARTICLE, sceneCount: 1 });
+    const response = await post(base, { article: ARTICLE, pictures: ["통계청 브리핑실"] });
 
     expect(response.status).toBe(201);
     const body = await response.json() as { headline?: Record<string, string>; captions?: unknown[]; dailyCalls?: { used: number } };
@@ -80,7 +80,7 @@ describe("asking for a card's lines over HTTP", () => {
   it("says the key is missing as a 400 with its code, having spent nothing", async () => {
     const { base } = await start(null, ANSWER);
 
-    const response = await post(base, { article: ARTICLE, sceneCount: 1 });
+    const response = await post(base, { article: ARTICLE, pictures: ["통계청 브리핑실"] });
 
     expect(response.status).toBe(400);
     expect((await response.json() as { code?: string }).code).toBe("NEWS_SUMMARY_KEY_MISSING");

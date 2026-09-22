@@ -2946,11 +2946,26 @@ export type NewsReelTextRefusal = "too_long" | "missing" | "blank";
 export interface CreateNewsReelCardTextRequest {
   article: NewsArticleInput;
   /**
-   * How many pictures the reel has — one caption is asked for each (`NewsReelCard.captions`). A whole number from
-   * 1 to `PHOTO_CARD_MAX_PICTURES`; anything else is refused before the call is made, so it costs nothing.
+   * The reel's pictures in the order they play, each by the name a person gave it (`Asset.displayName`) — one
+   * caption is asked for each (`NewsReelCard.captions`), and the model is told what that picture shows. 1 to
+   * `PHOTO_CARD_MAX_PICTURES` entries, each at most `NEWS_REEL_PICTURE_NAME_LIMIT` characters; anything else is
+   * refused before the call is made, so it costs nothing.
+   *
+   * 🔴 **This replaced `sceneCount: number`** (캡틴D, 2026-09-22: 「글이랑 사진이랑 매칭을 잘 못하는 것 같음」). The
+   * count alone told the model how many captions to write and nothing about what they sat under, so the third
+   * caption matched the third picture only by luck. The count is now `pictures.length` — one fact instead of
+   * two that could disagree (docs/06_DECISIONS.md D-057).
+   *
+   * 🟠 **An empty name is sent as `""`, never filled in.** A stand-in word like 「그림」 would be something for the
+   * model to write towards. With no names at all the prompt is the one that knew only the count.
+   * 🟠 **Names only** — not `description` or `tags`. Tags are categories (「정치」), which say nothing a caption
+   * can use; a description would lengthen the prompt before anyone has shown a name is not enough.
    */
-  sceneCount: number;
+  pictures: string[];
 }
+
+/** The longest picture name a card-text request carries — the same limit an asset's `displayName` has. */
+export const NEWS_REEL_PICTURE_NAME_LIMIT = 200;
 
 /**
  * One box in the answer: a headline line, or a caption line of one picture (`scene`, from 0). The same address
@@ -2965,7 +2980,7 @@ export interface CreateNewsReelCardTextResponse {
   /** The headline lines a label arrived for, as the provider wrote them — never trimmed to fit. */
   headline: Partial<NewsReelHeadline>;
   /**
-   * One entry per picture, `sceneCount` long, each holding the caption lines a label arrived for. An entry can be
+   * One entry per picture, `pictures.length` long, each holding the caption lines a label arrived for. An entry can be
    * empty: a picture the model wrote nothing for is still a picture, and its slot keeps the order.
    */
   captions: Partial<{ line1: string; line2: string }>[];

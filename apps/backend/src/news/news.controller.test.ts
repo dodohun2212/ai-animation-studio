@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NEWS_SUMMARY_MAX_CHARS, isCreateNewsSummaryResponse, isNewsFetchArticleResponse, isNewsReelSetupResponse } from "@ai-animation-studio/shared";
+import { NEWS_REEL_PICTURE_NAME_LIMIT, NEWS_SUMMARY_MAX_CHARS, PHOTO_CARD_MAX_PICTURES, isCreateNewsSummaryResponse, isNewsFetchArticleResponse, isNewsReelSetupResponse } from "@ai-animation-studio/shared";
 
 import { NEWS_SOURCE_HOSTS } from "./news-source.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
@@ -216,7 +216,7 @@ describe("news summary route", () => {
     await expect(news.summarise({ article: ARTICLE })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
 
     news.callCardProvider = async () => { throw new Error("not the adapter's"); };
-    await expect(news.cardText({ article: ARTICLE, sceneCount: 1 })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
+    await expect(news.cardText({ article: ARTICLE, pictures: [""] })).rejects.toMatchObject({ response: { code: "NEWS_SUMMARY_FAILED" } });
 
     news.callProvider = async () => "통계청은 3.2%라고 밝혔다.";
     await news.summarise({ article: ARTICLE });
@@ -372,7 +372,7 @@ describe("news reel card text route", () => {
     const { controller: news } = await summariser();
     news.callCardProvider = async () => ANSWER;
 
-    const result = await news.cardText({ article: ARTICLE, sceneCount: 1 });
+    const result = await news.cardText({ article: ARTICLE, pictures: [""] });
 
     expect(result.headline.line1).toBe("물가 오름세 한풀 꺾여");
     expect(result.headline.line2).toBe("3.2%로 둔화");
@@ -388,7 +388,7 @@ describe("news reel card text route", () => {
     const { controller: news } = await summariser();
     news.callCardProvider = async () => "제목1: 물가 오름세 한풀 꺾여\n제목2: 3.2%로 둔화\n자막1-1: 지난해는 7.8%였다";
 
-    const result = await news.cardText({ article: ARTICLE, sceneCount: 1 });
+    const result = await news.cardText({ article: ARTICLE, pictures: [""] });
 
     expect(result.check.missing.map((claim) => claim.text)).toContain("7.8%");
     expect(result.captions[0]!.line1, "지어낸 줄도 돌려줍니다 — 감추면 고칠 수가 없습니다").toContain("7.8%");
@@ -399,7 +399,7 @@ describe("news reel card text route", () => {
     const { controller: news } = await summariser();
     news.callCardProvider = async () => "물론입니다!\n제목1: 물가 오름세 한풀 꺾여\n자막1-1: 통계청 9월 발표";
 
-    const result = await news.cardText({ article: ARTICLE, sceneCount: 1 });
+    const result = await news.cardText({ article: ARTICLE, pictures: [""] });
 
     expect(result.missing).toEqual([{ field: "headline.line2" }]);
     expect(result.ignored, "못 읽은 줄도 버렸다고 말합니다").toEqual(["물론입니다!"]);
@@ -412,7 +412,7 @@ describe("news reel card text route", () => {
     const long = "가".repeat(40);
     news.callCardProvider = async () => `제목1: ${long}\n제목2: 3.2%로 둔화\n자막1-1: 통계청 9월 발표`;
 
-    const result = await news.cardText({ article: ARTICLE, sceneCount: 1 });
+    const result = await news.cardText({ article: ARTICLE, pictures: [""] });
 
     expect(result.headline.line1).toBe(long);
   });
@@ -421,7 +421,7 @@ describe("news reel card text route", () => {
     const { controller: news } = await summariser();
     news.callCardProvider = async () => { throw new Error("provider down"); };
 
-    await expect(news.cardText({ article: ARTICLE, sceneCount: 1 })).rejects.toThrow();
+    await expect(news.cardText({ article: ARTICLE, pictures: [""] })).rejects.toThrow();
     const after = await summariserUsed(news);
     expect(after, "부른 것은 부른 것입니다").toBe(1);
   });
@@ -432,30 +432,57 @@ describe("news reel card text route", () => {
    */
   it("asks for a caption per picture and checks every one of them", async () => {
     const { controller: news } = await summariser();
-    let asked: number | undefined;
-    news.callCardProvider = async (_article, sceneCount) => {
-      asked = sceneCount;
+    let asked: readonly string[] | undefined;
+    news.callCardProvider = async (_article, pictures) => {
+      asked = pictures;
       return ["제목1: 물가 오름세 한풀 꺾여", "제목2: 3.2%로 둔화", "자막1-1: 통계청 9월 발표", "자막2-1: 지난해는 7.8%였다"].join(String.fromCharCode(10));
     };
 
-    const result = await news.cardText({ article: ARTICLE, sceneCount: 2 });
+    const result = await news.cardText({ article: ARTICLE, pictures: ["통계청 브리핑실", "장바구니"] });
 
-    expect(asked).toBe(2);
+    expect(asked, "고른 순서 그대로 모델에 갑니다").toEqual(["통계청 브리핑실", "장바구니"]);
     expect(result.captions).toEqual([{ line1: "통계청 9월 발표" }, { line1: "지난해는 7.8%였다" }]);
     expect(result.check.missing.map((claim) => claim.text)).toContain("7.8%");
   });
 
   /** 🟠 쓸 수 없는 그림 수는 부르기 **전에** 거절합니다 — 돈도, 하루 횟수도 안 씁니다. */
-  it("refuses a picture count it cannot use before anything is spent", async () => {
-    for (const sceneCount of [0, 13, 1.5, undefined, "2"]) {
+  it("refuses pictures it cannot use before anything is spent", async () => {
+    const tooMany = Array.from({ length: PHOTO_CARD_MAX_PICTURES + 1 }, () => "");
+    const cases: Record<string, unknown> = {
+      "그림 없음": { pictures: [] },
+      "너무 많음": { pictures: tooMany },
+      "목록이 아님": { pictures: "국회" },
+      "빠짐": {},
+      "이름이 글자가 아님": { pictures: ["국회", 3] },
+      "이름이 너무 김": { pictures: ["가".repeat(NEWS_REEL_PICTURE_NAME_LIMIT + 1)] },
+      // 🔴 옛 모양. 「pictures 가 없다」가 아니라 무엇이 바뀌었는지를 말한다(D-057).
+      "옛 sceneCount": { sceneCount: 2 },
+      "둘 다": { sceneCount: 1, pictures: [""] },
+    };
+    for (const [name, extra] of Object.entries(cases)) {
       const { controller: news } = await summariser();
       let called = false;
       news.callCardProvider = async () => { called = true; return ANSWER; };
 
-      await expect(news.cardText({ article: ARTICLE, sceneCount }), String(sceneCount)).rejects.toMatchObject({ response: { code: "NEWS_ARTICLE_INVALID" } });
-      expect(called, String(sceneCount)).toBe(false);
-      expect(await summariserUsed(news), String(sceneCount)).toBe(0);
+      await expect(news.cardText({ article: ARTICLE, ...(extra as object) }), name).rejects.toMatchObject({ response: { code: "NEWS_ARTICLE_INVALID" } });
+      expect(called, name).toBe(false);
+      expect(await summariserUsed(news), name).toBe(0);
     }
+  });
+
+  it("names what replaced the old picture count when a client still sends it", async () => {
+    const { controller: news } = await summariser();
+    await expect(news.cardText({ article: ARTICLE, sceneCount: 1 })).rejects.toMatchObject({ response: { message: expect.stringContaining("pictures") } });
+  });
+
+  /** 🟠 이름 없는 그림도 그림이다 — 빈 이름은 거절이 아니고, 장면 수는 목록 길이에서 나온다. */
+  it("takes unnamed pictures and counts the scenes from the list", async () => {
+    const { controller: news } = await summariser();
+    news.callCardProvider = async () => ["제목1: 물가 오름세 한풀 꺾여", "제목2: 3.2%로 둔화", "자막1-1: 통계청 9월 발표"].join(String.fromCharCode(10));
+
+    const result = await news.cardText({ article: ARTICLE, pictures: ["", "", ""] });
+
+    expect(result.captions).toHaveLength(3);
   });
 
   /** 🔴 키가 없으면 나간 요청이 없습니다 — 안 나간 요청을 하루에서 깎으면 사람이 손해를 봅니다. */
@@ -464,7 +491,7 @@ describe("news reel card text route", () => {
     let called = false;
     news.callCardProvider = async () => { called = true; return ANSWER; };
 
-    await expect(news.cardText({ article: ARTICLE, sceneCount: 1 })).rejects.toThrow();
+    await expect(news.cardText({ article: ARTICLE, pictures: [""] })).rejects.toThrow();
     expect(called).toBe(false);
     expect(await summariserUsed(news)).toBe(0);
   });
@@ -475,7 +502,7 @@ describe("news reel card text route", () => {
     let called = false;
     news.callCardProvider = async () => { called = true; return ANSWER; };
 
-    await expect(news.cardText({ article: { ...ARTICLE, body: "짧다." }, sceneCount: 1 })).rejects.toThrow();
+    await expect(news.cardText({ article: { ...ARTICLE, body: "짧다." }, pictures: [""] })).rejects.toThrow();
     expect(called).toBe(false);
   });
 });

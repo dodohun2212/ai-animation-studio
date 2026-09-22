@@ -56,7 +56,8 @@ const limitOf = (field: NewsReelTextField): number => NEWS_REEL_TEXT_BOXES[field
  * so the model is told how many pictures there are and asked for that many captions, each saying something the
  * others do not, in the order the article tells it.
  */
-export function newsReelCardPrompt(article: NewsArticleInput, sceneCount: number): string {
+export function newsReelCardPrompt(article: NewsArticleInput, pictures: readonly string[]): string {
+  const sceneCount = pictures.length;
   const scenes = Array.from({ length: sceneCount }, (_, scene) => scene);
   return [
     "아래 기사로 **짧은 뉴스 릴 카드**에 얹을 글을 써 주세요.",
@@ -70,6 +71,7 @@ export function newsReelCardPrompt(article: NewsArticleInput, sceneCount: number
     ...(sceneCount > 1
       ? ["- 자막은 **그림마다 다른 사실**을 씁니다. 같은 말을 되풀이하지 않고, 기사가 전하는 순서대로 이어지게 씁니다."]
       : []),
+    ...pictureLines(pictures),
     "",
     "**말은 새로 지어 주세요.** 기사의 문장을 그대로 옮기지 않습니다 — 통신사 문체가 그대로 따라옵니다.",
     "- 직함을 길게 붙이지 않습니다. 「…라고 밝혔다」, 「…한 것으로 전해졌다」 같은 끝맺음을 쓰지 않습니다.",
@@ -89,6 +91,30 @@ export function newsReelCardPrompt(article: NewsArticleInput, sceneCount: number
     "본문:",
     article.body,
   ].join("\n");
+}
+
+/**
+ * 🔴 캡틴D, 2026-09-22: 「글이랑 사진이랑 매칭을 잘 못하는 것 같음」 — the model knew how many pictures there were
+ * and not what any of them showed, so a caption matched its picture only by luck. Each picture now goes by the
+ * name a person gave it (docs/06_DECISIONS.md D-057).
+ *
+ * 🔴 **A name says what is in the picture, never what happened.** A name like 「9월 국회 본회의장」 carries a date
+ * the article may not; the prompt says names are not a source of facts, and `checkNewsSummary` still runs against
+ * the article alone, so a figure borrowed from a name is refused like any other invented one.
+ *
+ * 🟠 **Unknown stays unknown.** A picture with no name is listed as having none rather than given a stand-in word
+ * the model would write towards; with no names at all nothing is added and the prompt is the count-only one.
+ * 🟠 A name is one line in the prompt — its own line breaks are folded, so it cannot become a line of its own.
+ */
+function pictureLines(pictures: readonly string[]): string[] {
+  const names = pictures.map((name) => name.replace(/\s+/g, " ").trim());
+  if (names.every((name) => name === "")) return [];
+  return [
+    "",
+    "그림은 이 순서로 나갑니다. **자막N 은 N번째 그림이 떠 있는 동안 깔리니, 그 그림에 보이는 것과 맞는 사실**을 기사에서 골라 써 주세요.",
+    ...names.map((name, scene) => `- 그림${scene + 1}: ${name === "" ? "(이름 없음 — 기사 흐름에 맞게)" : name}`),
+    "그림 이름은 **그림에 무엇이 보이는지**만 알려 줍니다. 사실의 출처가 아닙니다 — 이름에만 있고 기사에 없는 숫자·날짜·장소는 쓰지 않습니다.",
+  ];
 }
 
 export interface NewsReelCardTextParse {
