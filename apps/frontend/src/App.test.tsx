@@ -545,6 +545,35 @@ describe("App", () => {
     expect(window.location.hash).not.toContain("detail");
   });
 
+  /**
+   * 🔴 **「어디서 왔나」는 목록 화면에 설 때마다 다시 적힙니다.** 여는 곳마다 적던 판은 **새 프로젝트를 만들어
+   * 들어가는 길**에서 낡았습니다 — 앞서 본 뉴스 릴 목록으로 튀었습니다(CLI 1075 §3).
+   */
+  it("forgets the card list once the person has moved to 단기 프로젝트", async () => {
+    stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
+    render(<App />);
+    /* 🔴 카드 목록에서 **카드를 열어** 들어갑니다 — 여는 곳마다 적던 판은 여기서 「카드 목록」을 적고, 그 뒤로
+       목록 화면에 서도 **안 지웠습니다**. 목록을 보기만 해서는 옛 판이 아무것도 안 적어 이 짝이 옛 판에서도 초록이었습니다. */
+    window.location.hash = "#/photoCard";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    fireEvent.click(await screen.findByTestId("photo-card-open-명언_카드"));
+    await screen.findByTestId("photo-card-pipeline");
+
+    /* 그다음 단기 프로젝트 목록으로 갔다가 카드 상세로 들어갑니다. */
+    window.location.hash = "#/list";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    await screen.findByTestId("project-count");
+    window.location.hash = "#/detail?projectId=%EB%AA%85%EC%96%B8_%EC%B9%B4%EB%93%9C";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    await screen.findByTestId("photo-card-pipeline");
+
+    fireEvent.click(screen.getByRole("button", { name: /목록으로/ }));
+
+    /* 🔴 앞서 연 카드 목록이 아니라 **마지막으로 선 목록**으로 돌아갑니다. */
+    await waitFor(() => expect(window.location.hash).toContain("list"));
+    expect(window.location.hash).not.toContain("photoCard");
+  });
+
   it("gives a 명언 카드 its own two steps instead of the story pipeline", async () => {
     stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
     render(<App />);

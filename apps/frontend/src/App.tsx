@@ -745,6 +745,12 @@ export function App() {
    * 릴도 카드도 거기 저장된 프로젝트라 **틀린 말은 아닙니다.**
    */
   const [homeList, setHomeList] = useState<Screen>({ name: "list" });
+
+  /* 🔴 **목록 화면에 설 때마다 적습니다** — 여는 곳마다 적으면 빠뜨린 길이 생깁니다(CLI 1075 §3: 새 프로젝트를
+     만들어 들어가면 앞서 본 뉴스 릴 목록으로 튀었습니다). 화면이 목록이 되는 순간이 **유일한 사실**입니다. */
+  useEffect(() => {
+    if (screen.name === "list" || screen.name === "photoCard" || screen.name === "newsReel") setHomeList(screen);
+  }, [screen]);
   const shortProjectShell = useShortProjectShell(screen);
   /**
    * A story-only screen opened on a 명언 카드.
@@ -871,7 +877,7 @@ export function App() {
             {screen.name === "list" && (
               <ProjectList
                 refreshToken={listRefreshToken}
-                onOpenProject={(projectId) => { setHomeList({ name: "list" }); setScreen({ name: "detail", projectId }); }}
+                onOpenProject={(projectId) => setScreen({ name: "detail", projectId })}
                 onCreateNew={() => setScreen({ name: "create" })}
               />
             )}
@@ -1033,14 +1039,14 @@ export function App() {
               <PhotoCardListScreen
                 onBack={() => setScreen({ name: "list" })}
                 onCreateNew={() => setScreen({ name: "photoCardCreate" })}
-                onOpenCard={(projectId) => { setHomeList({ name: "photoCard" }); setScreen({ name: "detail", projectId }); }}
+                onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
               />
             )}
             {screen.name === "photoCardCreate" && (
               <PhotoCardScreen
                 onBack={() => setScreen({ name: "photoCard" })}
-                onCreated={(projectId) => { setHomeList({ name: "photoCard" }); setScreen({ name: "videoMerge", projectId }); }}
-                onOpenCard={(projectId) => { setHomeList({ name: "photoCard" }); setScreen({ name: "detail", projectId }); }}
+                onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
+                onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
               />
             )}
             {/* 🔴 뉴스 릴은 **자기 길로** 만들어집니다 — 네 줄 쓰기(`newsReelWrite`) → 그림·출처 고르기
@@ -1052,7 +1058,7 @@ export function App() {
               <NewsReelListScreen
                 onBack={() => setScreen({ name: "list" })}
                 onCreateNew={() => setScreen({ name: "newsReelWrite" })}
-                onOpenReel={(projectId) => { setHomeList({ name: "newsReel" }); setScreen({ name: "detail", projectId }); }}
+                onOpenReel={(projectId) => setScreen({ name: "detail", projectId })}
               />
             )}
             {screen.name === "newsReelWrite" && (
@@ -1070,7 +1076,7 @@ export function App() {
               <NewsReelCreateScreen
                 draft={reelDraft}
                 onBack={() => setScreen({ name: "newsReelWrite" })}
-                onCreated={(projectId) => { setHomeList({ name: "newsReel" }); setScreen({ name: "videoMerge", projectId }); }}
+                onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
               />
             )}
             {screen.name === "instagramPost" && <InstagramPostScreen initialProjectId={screen.initialProjectId} initialEpisodeNumber={screen.initialEpisodeNumber} onBack={() => setScreen({ name: "list" })} />}
