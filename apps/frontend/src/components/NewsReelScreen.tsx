@@ -324,7 +324,6 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
   /* 🔴 주소는 바뀌었는데 아래 글은 안 바뀐 상태. **둘이 다른 기사**라는 것을 화면이 말해야 합니다. */
   const articleStale = articleFilled && url.trim().length > 0 && url.trim() !== fetchedUrl;
 
-  const sourceLine = [outlet.trim(), publishedAt.trim(), sourceUrl.trim()].filter((part) => part.length > 0).join(" · ");
 
   /* 🔴 `dailyCalls === null` 은 **막힘**입니다 — 「모르니까 안 부른다」이지 「여유 있음」이 아닙니다. 남은 수가
      0 이어도, 서버가 한도를 말한 뒤에도 닫힙니다. 그리고 본문이 없으면 애초에 요약할 것이 없습니다. */

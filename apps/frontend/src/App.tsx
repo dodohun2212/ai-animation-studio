@@ -735,6 +735,16 @@ export function App() {
      카드에 있는거야」. 릴은 이제 자기 길(`newsReelWrite` → `newsReelCreate`)로 만들어집니다. */
   /* 🟠 기사와 고른 그림은 **주소가 아니라 상태**로 넘어갑니다 — 주소창에 실으면 되돌아온 주소가 무엇을 구울지 정하게 됩니다. */
   const [reelDraft, setReelDraft] = useState<NewsReelDraft | null>(null);
+  /**
+   * 🔴 **어느 목록에서 왔는지.** 프로젝트 상세는 **원래 단기 프로젝트의 화면**이고 뉴스 릴·명언 카드가 그것을
+   * 빌려 쓰는데, 돌아가는 길만 단기 프로젝트로 나 있었습니다 — 캡틴D: *「왜 뉴스 릴 만들다가 단기 프로젝트로
+   * 이동됨?」*
+   *
+   * 🟠 **주소에 안 싣습니다.** 「어디서 왔나」는 **이 방문의 사실**이지 그 프로젝트의 사실이 아닙니다 — 주소에
+   * 실으면 되돌아온 주소가 **가 보지도 않은 목록**을 가리킵니다. 새로고침하면 단기 프로젝트로 돌아가는데,
+   * 릴도 카드도 거기 저장된 프로젝트라 **틀린 말은 아닙니다.**
+   */
+  const [homeList, setHomeList] = useState<Screen>({ name: "list" });
   const shortProjectShell = useShortProjectShell(screen);
   /**
    * A story-only screen opened on a 명언 카드.
@@ -861,7 +871,7 @@ export function App() {
             {screen.name === "list" && (
               <ProjectList
                 refreshToken={listRefreshToken}
-                onOpenProject={(projectId) => setScreen({ name: "detail", projectId })}
+                onOpenProject={(projectId) => { setHomeList({ name: "list" }); setScreen({ name: "detail", projectId }); }}
                 onCreateNew={() => setScreen({ name: "create" })}
               />
             )}
@@ -936,7 +946,7 @@ export function App() {
             {screen.name === "detail" && (
               <ProjectDetail
                 projectId={screen.projectId}
-                onBack={() => setScreen({ name: "list" })}
+                onBack={() => setScreen(homeList)}
                 onOpenMappingReview={(projectId) => setScreen({ name: "mappingReview", projectId })}
                 onOpenSettings={(projectId) => setScreen({ name: "settings", projectId })}
                 onOpenStoryPrompt={(projectId) => setScreen({ name: "storyPrompt", projectId })}
@@ -1023,14 +1033,14 @@ export function App() {
               <PhotoCardListScreen
                 onBack={() => setScreen({ name: "list" })}
                 onCreateNew={() => setScreen({ name: "photoCardCreate" })}
-                onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
+                onOpenCard={(projectId) => { setHomeList({ name: "photoCard" }); setScreen({ name: "detail", projectId }); }}
               />
             )}
             {screen.name === "photoCardCreate" && (
               <PhotoCardScreen
                 onBack={() => setScreen({ name: "photoCard" })}
-                onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
-                onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
+                onCreated={(projectId) => { setHomeList({ name: "photoCard" }); setScreen({ name: "videoMerge", projectId }); }}
+                onOpenCard={(projectId) => { setHomeList({ name: "photoCard" }); setScreen({ name: "detail", projectId }); }}
               />
             )}
             {/* 🔴 뉴스 릴은 **자기 길로** 만들어집니다 — 네 줄 쓰기(`newsReelWrite`) → 그림·출처 고르기
@@ -1042,7 +1052,7 @@ export function App() {
               <NewsReelListScreen
                 onBack={() => setScreen({ name: "list" })}
                 onCreateNew={() => setScreen({ name: "newsReelWrite" })}
-                onOpenReel={(projectId) => setScreen({ name: "detail", projectId })}
+                onOpenReel={(projectId) => { setHomeList({ name: "newsReel" }); setScreen({ name: "detail", projectId }); }}
               />
             )}
             {screen.name === "newsReelWrite" && (
@@ -1060,7 +1070,7 @@ export function App() {
               <NewsReelCreateScreen
                 draft={reelDraft}
                 onBack={() => setScreen({ name: "newsReelWrite" })}
-                onCreated={(projectId) => setScreen({ name: "videoMerge", projectId })}
+                onCreated={(projectId) => { setHomeList({ name: "newsReel" }); setScreen({ name: "videoMerge", projectId }); }}
               />
             )}
             {screen.name === "instagramPost" && <InstagramPostScreen initialProjectId={screen.initialProjectId} initialEpisodeNumber={screen.initialEpisodeNumber} onBack={() => setScreen({ name: "list" })} />}

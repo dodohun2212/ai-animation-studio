@@ -525,6 +525,26 @@ describe("App", () => {
     expect(screen.queryByTestId("news-reel-headline1")).toBeNull();
   });
 
+  /**
+   * 🔴 캡틴D: *「왜 뉴스 릴 만들다가 단기 프로젝트로 이동됨?」* — 프로젝트 상세는 **단기 프로젝트의 화면**이고
+   * 릴과 카드가 그것을 빌려 쓰는데, **돌아가는 길만** 단기 프로젝트로 나 있었습니다.
+   */
+  it("sends a card back to the card list it was opened from, not to 단기 프로젝트", async () => {
+    stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
+    render(<App />);
+    window.location.hash = "#/photoCard";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    fireEvent.click(await screen.findByTestId("photo-card-open-명언_카드"));
+    /* 🔴 다 불러온 뒤에 누릅니다 — 불러오는 중의 「목록으로」는 곧 사라지는 버튼이라, 그걸 잡으면 누른 것이
+       아무 데도 닿지 않아 짝이 화면 대신 타이밍을 잽니다. */
+    await screen.findByTestId("photo-card-pipeline");
+
+    fireEvent.click(screen.getByRole("button", { name: /목록으로/ }));
+
+    await waitFor(() => expect(window.location.hash).toContain("photoCard"));
+    expect(window.location.hash).not.toContain("detail");
+  });
+
   it("gives a 명언 카드 its own two steps instead of the story pipeline", async () => {
     stubPhotoCard(photoCardProject(WorkflowState.VideosApproved));
     render(<App />);
