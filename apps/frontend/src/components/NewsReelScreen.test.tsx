@@ -2,8 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NEWS_REEL_TEXT_BOXES, type NewsReelTextField } from "@ai-animation-studio/shared";
-import { makeAsset, stubFetchByRoute } from "../api/testUtils.js";
-import { NewsReelScreen, feedItemIsFlash, feedItemTime } from "./NewsReelScreen.js";
+import { makeAsset, makeAssetFolder, stubFetchByRoute } from "../api/testUtils.js";
+import { NewsReelScreen, feedItemIsFlash, feedItemTime, newsArticleLead } from "./NewsReelScreen.js";
 
 const PUBLISHERS = [
   /* 🔴 Three answers, not two rows — the screen has to draw "주소만으로 됨", "늘 붙여넣기" and
@@ -545,7 +545,14 @@ describe("NewsReelScreen 기사 칸 접기", () => {
     expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open, "여전히 접힌 채입니다").toBe(false);
   });
 
-  it("opens itself when a fetch fills the boxes, because now there is something to look at", async () => {
+  /**
+   * 🔴 **뒤집었습니다(1084).** 이 짝은 원래 「채워졌으니 펼칩니다」였습니다 — 그때는 본문을 펴 주는 것이
+   * **무슨 기사인지 알 수 있는 유일한 길**이었기 때문입니다. 이제 그 일을 위의 **리드**가 합니다.
+   *
+   * 🟠 열 줄짜리 본문 칸은 볼 것을 주는 대신 **그림 격자를 화면 밖으로 밉니다** — 그리고 그림을 고르는 것이
+   * 이 화면에서 다음에 할 일입니다. 접힌 줄이 「채워져 있습니다」라고 말하므로, 고칠 때만 열면 됩니다.
+   */
+  it("stays folded when a fetch fills the boxes, and says so from the outside", async () => {
     stubRoutes({
       "POST /news/article": { outcome: "article", article: { title: "국회, 검찰청 폐지 후속 법률 51건 통과", body: ARTICLE, publisher: "연합뉴스", publishedAt: "2026-09-17T09:12:00.000Z", sourceUrl: "https://www.yna.co.kr/view/AKR1" } },
     });
@@ -554,10 +561,28 @@ describe("NewsReelScreen 기사 칸 접기", () => {
 
     await typeUrlAndFetch("https://www.yna.co.kr/view/AKR1");
 
-    await waitFor(() => {
-      expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open, "채워졌으니 펼칩니다").toBe(true);
+    await waitFor(() => expect(screen.getByTestId("news-article-disclosure").textContent).toContain("채워져 있습니다"));
+    expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open, "리드가 대신 보여 주므로 접힌 채로 둡니다").toBe(false);
+    /* 🟢 대신 리드가 떠 있습니다 — 접어 두는 것이 「아무것도 안 보인다」가 되지 않는 이유입니다. */
+    expect(screen.getByTestId("news-reel-article-lead").textContent).toContain("검찰청");
+  });
+
+  /**
+   * 🔴 **본문을 못 찾았을 때는 여전히 폅니다 — 그리고 이 둘은 다릅니다.** 그쪽은 볼 것이 아니라 **할 일**이
+   * 생긴 것이고, 사람이 본문을 붙여넣어야 다음으로 갑니다. 접어 두면 할 일이 접힌 칸 안에 숨습니다.
+   */
+  it("still opens itself when the body could not be found, because now there is something to do", async () => {
+    stubRoutes({
+      "POST /news/article": { outcome: "body_not_found", title: "국회, 검찰청 폐지 후속 법률 51건 통과", publisher: "연합뉴스", publishedAt: "2026-09-17T09:12:00.000Z", sourceUrl: "https://www.yna.co.kr/view/AKR1" },
     });
-    expect(screen.getByTestId("news-article-disclosure").textContent).toContain("채워져 있습니다");
+    renderScreen();
+    await screen.findByTestId("news-article-disclosure");
+
+    await typeUrlAndFetch("https://www.yna.co.kr/view/AKR1");
+
+    await waitFor(() => {
+      expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open, "붙여넣을 칸을 열어 둡니다").toBe(true);
+    });
   });
 
   describe("NewsReelScreen 주소와 본문이 어긋날 때", () => {
@@ -764,5 +789,107 @@ describe("NewsReelScreen 그림 먼저", () => {
     expect(screen.getByTestId("news-reel-next-why").textContent).toContain("언론사");
     fireEvent.click(screen.getByTestId("news-reel-next"));
     expect(onNext).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 🔴 캡틴D, 2026-09-22: *「난 기사 내용을 모르는데 사진을 골라도 됨?」* · *「스포츠를 넣어야 할지 주식인지
+ * 국회인지 몰라」* — 그림을 고르는 자리에서 **기사가 안 보였습니다.** 제목은 사람·기관 이름을 빼고 쓰는 일이
+ * 많아 읽어도 무슨 일인지 모르고, 본문은 접힌 칸 안에 있었습니다.
+ */
+describe("NewsReelScreen 무엇에 대한 기사인지", () => {
+  const 국회 = makeAsset({ assetId: "ASSET-GENERAL-000000000001", displayName: "국회 본회의장", parentFolderId: "FOLDER-NEWS" });
+  const 법원 = makeAsset({ assetId: "ASSET-GENERAL-000000000002", displayName: "법원 앞", parentFolderId: "FOLDER-NEWS" });
+  const 주식 = makeAsset({ assetId: "ASSET-GENERAL-000000000003", displayName: "전광판", parentFolderId: "FOLDER-ECON" });
+  const 떠도는것 = makeAsset({ assetId: "ASSET-GENERAL-000000000004", displayName: "폴더 밖 그림", parentFolderId: "" });
+  const 뉴스폴더 = makeAssetFolder({ assetId: "FOLDER-NEWS", displayName: "뉴스릴스", childAssetIds: [국회.assetId, 법원.assetId] });
+  const 경제폴더 = makeAssetFolder({ assetId: "FOLDER-ECON", displayName: "경제", childAssetIds: [주식.assetId] });
+  /* 🟠 그림이 한 장도 없는 폴더 — 줄이 되면 안 됩니다(고르면 빈 격자가 나옵니다). */
+  const 빈폴더 = makeAssetFolder({ assetId: "FOLDER-EMPTY", displayName: "스포츠릴스", childAssetIds: [] });
+  /* 🔴 프로젝트가 스스로 만든 폴더 — 캡틴D 보관함에 **열여섯 개**가 있고, 전부 주제가 아니라 작업 부산물입니다. */
+  const 부산물 = makeAsset({ assetId: "ASSET-GENERAL-000000000005", displayName: "회차 그림", parentFolderId: "FOLDER-EP01", sourceProjectId: "12" });
+  const 부산물폴더 = makeAssetFolder({ assetId: "FOLDER-EP01", displayName: "12/Episode01 generated images", sourceProjectId: "12", childAssetIds: [부산물.assetId] });
+
+  const ARTICLE_WITH_TAILS = [
+    "(서울=연합뉴스) 김유아 기자 = 조희대 대법원장이 청와대의 재제청 요구를 거부했다.",
+    "법원 내부에서는 사법부 독립을 지킨 판단이라는 평가가 나온다.",
+    "반면 여권에서는 자기 정치라는 비판도 제기된다.",
+    "네 번째 문장은 리드에 안 들어간다.",
+    "2026/09/22 19:19 송고",
+  ].join("\n");
+
+  function stubWithFolders(): void {
+    stubRoutes({
+      "GET /assets": { assets: [뉴스폴더, 경제폴더, 빈폴더, 부산물폴더, 국회, 법원, 주식, 떠도는것, 부산물] },
+      "POST /news/article": { outcome: "article", article: { title: "\"대법원장 자기 정치\" vs \"법리적 판단\"", body: ARTICLE_WITH_TAILS, publisher: "연합뉴스", publishedAt: "2026-09-22", sourceUrl: "https://www.yna.co.kr/view/1" } },
+    });
+  }
+
+  async function open(): Promise<void> {
+    render(<NewsReelScreen onBack={() => {}} onNext={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("news-fetch-url"), { target: { value: "https://www.yna.co.kr/view/1" } });
+    fireEvent.click(screen.getByTestId("news-fetch"));
+    await screen.findByTestId("news-fetch-ok");
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("reads a lead out of the body: no dateline, no filing line, first sentences only", () => {
+    const lead = newsArticleLead(ARTICLE_WITH_TAILS);
+
+    expect(lead).toContain("조희대 대법원장이 청와대의 재제청 요구를 거부했다");
+    /* 어느 기사에나 붙는 머리표와 꼬리표는 읽을 것이 없습니다. */
+    expect(lead).not.toContain("기자 =");
+    expect(lead).not.toContain("송고");
+    /* 🟠 리드는 **앞 세 문장**입니다 — 본문 전체를 옮기면 접힌 칸을 편 것과 같아집니다. */
+    expect(lead).not.toContain("네 번째 문장");
+  });
+
+  it("shows that lead beside the pictures, without the article box being opened", async () => {
+    stubWithFolders();
+    await open();
+
+    expect(screen.getByTestId("news-reel-article-lead").textContent).toContain("재제청 요구를 거부했다");
+    /* 🔴 접힌 칸은 접힌 그대로입니다 — 리드는 그것을 펴지 않고도 보이라고 있는 것입니다. */
+    expect((screen.getByTestId("news-article-disclosure") as HTMLDetailsElement).open).toBe(false);
+  });
+
+  /**
+   * 🔴 캡틴D, 2026-09-22: *「폴더 보기가 너무 힘들어」* — 폴더 스물셋을 단추로 늘어놓으니 여섯 줄이 됐고,
+   * 그 중 열여섯이 **프로젝트가 스스로 만든 폴더**였습니다. 주제가 아니라 작업 부산물입니다.
+   */
+  it("offers only the folders a person made, with counts, and skips one that holds no picture", async () => {
+    stubWithFolders();
+    await open();
+
+    await screen.findByTestId(`news-reel-picture-asset-${국회.assetId}`);
+    const topics = screen.getByTestId("news-reel-picture-folder") as HTMLSelectElement;
+    const labels = [...topics.options].map((option) => option.textContent ?? "");
+
+    /* 🟠 장수를 같이 적습니다 — 2장인지 20장인지 모르고 고르면 고른 뒤에야 빈 격자를 봅니다. */
+    expect(labels.some((one) => one.includes("뉴스릴스") && one.includes("2장"))).toBe(true);
+    expect(labels.some((one) => one.includes("경제") && one.includes("1장"))).toBe(true);
+    expect(labels.some((one) => one.includes("전체"))).toBe(true);
+    /* 그림 없는 폴더도, 프로젝트가 만든 폴더도 주제가 아닙니다. */
+    expect(labels.some((one) => one.includes("스포츠릴스"))).toBe(false);
+    expect(labels.some((one) => one.includes("generated images"))).toBe(false);
+  });
+
+  it("narrows the grid to one topic, and keeps what was already picked", async () => {
+    stubWithFolders();
+    await open();
+
+    fireEvent.click(await screen.findByTestId(`news-reel-picture-asset-${국회.assetId}`));
+    fireEvent.change(screen.getByTestId("news-reel-picture-folder"), { target: { value: "FOLDER-ECON" } });
+
+    expect(screen.getByTestId(`news-reel-picture-asset-${주식.assetId}`)).toBeTruthy();
+    expect(screen.queryByTestId(`news-reel-picture-asset-${국회.assetId}`)).toBeNull();
+    /* 🔴 안 보이는 것과 안 골라진 것은 다릅니다 — 고른 수는 그대로고, 몇 장이 숨었는지 말합니다. */
+    expect(screen.getByTestId("news-reel-picture-length").textContent).toContain("1장");
+    expect(screen.getByTestId("news-reel-picture-folder-hidden").textContent).toContain("1장");
+
+    fireEvent.change(screen.getByTestId("news-reel-picture-folder"), { target: { value: "__all__" } });
+    expect(screen.getByTestId(`news-reel-picture-asset-${국회.assetId}`)).toBeTruthy();
+    expect(screen.queryByTestId("news-reel-picture-folder-hidden")).toBeNull();
   });
 });

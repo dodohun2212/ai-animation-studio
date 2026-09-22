@@ -70,7 +70,7 @@ const splitList = (value: string) => value.split(",").map((item) => item.trim())
  * "_asset_library_manual" for anything registered by hand (assets.repository.ts) and the real project id for
  * anything a project produced. No new asset type is needed — the distinction is already in the data.
  */
-const MANUAL_SOURCE_PROJECT_ID = "_asset_library_manual";
+export const MANUAL_SOURCE_PROJECT_ID = "_asset_library_manual";
 
 /**
  * 🔴 폴더 하나였던 자리를 둘로 가릅니다 — **서른 개 중 열다섯이 사람이 안 만든 폴더**입니다.

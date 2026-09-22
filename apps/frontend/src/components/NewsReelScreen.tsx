@@ -11,6 +11,7 @@ import type { NewsReelDraft } from "./NewsReelCreateScreen.js";
 import { PicturePicker } from "./ui/PicturePicker.js";
 import { PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_PICTURES, type Asset, type PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
+import { MANUAL_SOURCE_PROJECT_ID } from "./AssetLibraryScreen.js";
 
 interface Props {
   onBack: () => void;
@@ -105,6 +106,35 @@ export function matchesFeedQuery(item: NewsFeedItem, query: string): boolean {
  * 🟠 제목 맨 앞의 대괄호만 봅니다. 「[속보]」와 「[1보]」는 같은 것이고, 「[종합]」은 본문이 있는 기사라
  * 여기 안 넣습니다.
  */
+/**
+ * 기사 앞머리 몇 문장 — **그림을 고르기 전에 읽는 것**.
+ *
+ * 🔴 캡틴D, 2026-09-22: *「난 기사 내용을 모르는데 사진을 골라도 됨?」* · *「스포츠를 넣어야 할지 주식인지
+ * 국회인지 몰라」*. 이 화면은 제목 한 줄만 크게 보여주고 본문은 접힌 칸 안에 넣어 두었는데, 뉴스 제목은
+ * 사람·기관 이름을 빼고 쓰는 일이 많아 **읽어도 무슨 일인지 모릅니다.** 뉴스는 앞 두세 문장에 핵심이
+ * 다 들어 있습니다.
+ *
+ * 🔴 **보여주기만 합니다 — 보내는 것도 굽는 것도 아닙니다.** 여기서 자른 글은 어디에도 안 실립니다.
+ * 모델에게 가는 것은 늘 본문 전체입니다(잘라 보내면 대조가 볼 것이 줄어듭니다).
+ * 🟠 그래서 여기서 걷어내는 줄은 **읽는 데 방해되는 것**일 뿐, 본문을 고치는 것이 아닙니다 — 본문에 섞여
+ * 오는 송고 줄·사진 설명은 서버가 볼 문제로 따로 올려 두었습니다.
+ */
+export function newsArticleLead(body: string, sentences = 3, limit = 220): string {
+  const usable = body
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    /* 송고 줄(「2026/09/22 19:19 송고」)과 이메일만 있는 줄은 문장이 아니라 꼬리표입니다. */
+    .filter((line) => line !== "" && !/송고\s*$/u.test(line) && !/^[\w.+-]+@[\w.-]+$/u.test(line))
+    .join(" ")
+    /* 「(서울=연합뉴스) 이진욱 기자 = 」 — 어느 기사에나 붙는 머리표라 읽을 것이 없습니다. */
+    .replace(/^\([^)]*\)\s*[^=]{0,30}기자\s*=\s*/u, "")
+    .trim();
+  if (usable === "") return "";
+  const picked = usable.split(/(?<=[.!?])\s+/u).slice(0, sentences).join(" ").trim();
+  const lead = picked === "" ? usable : picked;
+  return lead.length <= limit ? lead : `${lead.slice(0, limit).trimEnd()}…`;
+}
+
 export function feedItemIsFlash(title: string): boolean {
   return /^\s*\[\s*(?:속보|1보|긴급)\s*\]/.test(title);
 }
@@ -221,6 +251,7 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
      그 수를 모르는 채로 씁니다(CLI 1067 §1). */
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [assetsError, setAssetsError] = useState<{ code: string; message: string } | null>(null);
+  const [folders, setFolders] = useState<{ assetId: string; displayName: string }[]>([]);
   const [assetIds, setAssetIds] = useState<string[]>([]);
   const [seconds, setSeconds] = useState<PhotoCardDurationSeconds>(PHOTO_CARD_DURATIONS[0]);
 
@@ -250,7 +281,21 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
   useEffect(() => {
     let cancelled = false;
     listAssets()
-      .then((response) => { if (!cancelled) setAssets(response.assets.filter((asset) => !asset.isFolder && asset.imageAvailable)); })
+      .then((response) => {
+        if (cancelled) return;
+        setAssets(response.assets.filter((asset) => !asset.isFolder && asset.imageAvailable));
+        /*
+         * 🟠 폴더는 고를 수 있는 그림이 아니라 **주제의 이름**입니다 — 격자에는 안 들어갑니다.
+         *
+         * 🔴 캡틴D, 2026-09-22: *「폴더 보기가 너무 힘들어」* — 보관함의 폴더 23개 중 **16개가 프로젝트가
+         * 스스로 만든 폴더**(`12/Episode01 generated images` 같은 것)입니다. 그것들은 주제가 아니라 **작업
+         * 부산물**이고, 뉴스 릴에 쓸 그림이 들어 있지도 않습니다. 사람이 손으로 만든 폴더만 남깁니다 —
+         * 보관함 화면이 「내 폴더 / 프로젝트가 만든 폴더」로 가르는 그 기준(`sourceProjectId`) 그대로입니다.
+         */
+        setFolders(response.assets
+          .filter((asset) => asset.isFolder && asset.sourceProjectId === MANUAL_SOURCE_PROJECT_ID)
+          .map((asset) => ({ assetId: asset.assetId, displayName: asset.displayName })));
+      })
       .catch((caught: unknown) => { if (!cancelled) setAssetsError(toAssetDisplayError(caught)); });
     return () => { cancelled = true; };
   }, []);
@@ -280,7 +325,14 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
         setSourceUrl(article.sourceUrl);
         setNotice({ kind: "fetched", publisher: article.publisher });
         setFetchedUrl(typed);
-        setArticleOpen(true);
+        /*
+         * 🔴 **가져와도 안 폅니다**(1084 부터). 폈던 이유는 「채워졌으니 볼 것이 생겼다」였는데, 이제 그 일을
+         * 위의 **리드**가 합니다 — 열 줄짜리 본문 칸은 볼 것을 주는 대신 **그림 격자를 화면 밖으로 밉니다.**
+         * 접힌 줄은 「채워져 있습니다」라고 말하고 있어서, 고쳐야 할 때만 열면 됩니다.
+         *
+         * 🟠 **아래 `body_not_found` 는 여전히 폅니다** — 그쪽은 볼 것이 아니라 **할 일**이 생긴 것이고,
+         * 사람이 본문을 붙여넣어야 다음으로 갑니다.
+         */
       } else if (response.outcome === "body_not_found") {
         /* 🔴 실패가 아닙니다. 서버는 문을 두드렸고 페이지를 받았고 어느 부분이 기사인지 못 갈랐습니다 — 남은 한
            걸음이 사람의 것일 뿐입니다. 그래서 채울 수 있는 건 전부 채워 두고 본문 칸만 비웁니다. */
@@ -317,6 +369,7 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
      🟠 글자 수를 안 세는 이유는 계약의 표에 그 칸이 없어서입니다 — 띠는 폭에 맞춰 그려집니다. */
 
   const trimmedArticle = articleText.trim();
+  const articleLead = newsArticleLead(trimmedArticle);
   /** 🟠 접힌 칸이 **비었는지 채워졌는지**를 접힌 채로 말해 줍니다 — 안 그러면 사람이 열어 봐야 압니다. */
   const articleFilled = trimmedArticle !== "" || title.trim() !== "";
   /* 🔴 셋이 다 있어야 다음 화면이 설 수 있습니다: **본문**(대조할 것), **언론사**(띠), **그림**(자막 칸 수). */
@@ -665,6 +718,14 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
           고른 <strong className="text-slate-300">순서대로 한 장씩</strong> 이어 붙고, <strong className="text-slate-300">그림마다 자막이 하나</strong>씩 붙습니다. 여기서도 돈이 나가지 않습니다.
         </p>
 
+        {/* 🔴 무엇에 대한 기사인지 모른 채로 그림을 고르는 자리였습니다 — 접힌 칸을 열지 않아도 앞머리는
+            보입니다. 🟠 **보여주기만 하는 글입니다**(`newsArticleLead` 의 설명 참고). */}
+        {articleLead !== "" && (
+          <p data-testid="news-reel-article-lead" className="mt-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-sm leading-relaxed text-slate-300">
+            {articleLead}
+          </p>
+        )}
+
         <div className="mt-3">
           <PicturePicker
             assets={assets}
@@ -674,6 +735,7 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
             max={PHOTO_CARD_MAX_PICTURES}
             seconds={seconds}
             testIdPrefix="news-reel-picture"
+            folders={folders}
           />
         </div>
 
