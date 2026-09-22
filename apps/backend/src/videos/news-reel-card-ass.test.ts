@@ -86,6 +86,19 @@ describe("news reel card overlay", () => {
     expect(styleRow(ass(), "Caption")).toContain(`,${g.captionSize},`);
   });
 
+  /**
+   * 🔴 한도가 20 → 18 로 줄기 전에 만든 릴(`오늘의_뉴스` 는 여섯 자막이 전부 19~20자)을 다시 병합해도, 자막이
+   * 폭을 넘어 띠 밖으로 접히지 않습니다. 크기는 릴 전체의 가장 긴 줄에서 — 그림마다 달라지지 않습니다.
+   */
+  it("sizes an older reel's captions by its longest line, the same on every picture", () => {
+    const old: NewsReelCard = { ...CARD, captions: [{ line1: "가".repeat(20), line2: null }, { line1: "짧은 자막", line2: null }] };
+    const expected = newsReelCardGeometry(WIDTH, HEIGHT, 1, 20).captionSize;
+
+    expect(expected).toBeLessThan(newsReelCardGeometry(WIDTH, HEIGHT, 1).captionSize);
+    expect(styleRow(newsReelCardAss(old, 0, 10, WIDTH, HEIGHT), "Caption")).toContain(`,${expected},`);
+    expect(styleRow(newsReelCardAss(old, 1, 10, WIDTH, HEIGHT), "Caption"), "짧은 자막의 그림도 같은 크기").toContain(`,${expected},`);
+  });
+
   /** 🟠 띠가 자막 글자 위에 오면 자막이 안 보인다. 층이 낮은 쪽이 먼저 깔린다. */
   it("draws both bands under everything else", () => {
     const drawn = events(ass()).filter((line) => line.includes(String.raw`\p1`));

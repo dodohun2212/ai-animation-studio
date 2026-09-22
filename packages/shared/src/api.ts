@@ -2907,11 +2907,15 @@ export type NewsReelTextField = typeof NEWS_REEL_TEXT_FIELDS[number];
  * 🔴 **The limits are measured widths, not preferences.** Burned at 1080×1920 with a 6% side margin the usable
  * width is 950px, and in the font that actually burns (`fonts/NotoSansKR-*.ttf`, through ffmpeg) one Hangul
  * syllable takes `font size × 0.63` — the same ratio at five sizes, and bold does not widen it by more than
- * 0.1px (docs/06_DECISIONS.md D-053). 15 syllables is one line at 96px; 20 is one line at 72px. 🟠 Two earlier
+ * 0.1px (docs/06_DECISIONS.md D-053). 15 syllables is one line at 100px; 18 is one line at 83px. 🟠 Two earlier
  * numbers for this were wrong and both were guesses — ×1.00 assumed, ×0.77 measured in the browser's preview
  * font rather than the burning one.
  *
  * 🟠 15 leaves three syllables over MBC's longest measured headline line (12), on purpose.
+ *
+ * 🟠 Captions were 20 (75px, three quarters of the headline); 캡틴D asked for them "아주 약간만" larger after the
+ * first real reel, and 18 is that step — 16 would bring them level with the headline, which then stops reading
+ * as the headline (2026-09-22).
  *
  * 🔴 **A table keyed by the union, so adding a box is a compile error here** rather than a box nothing counts.
  * It is the only place these numbers are written: the screen reads them through `newsReelTextBox` instead of
@@ -2920,8 +2924,8 @@ export type NewsReelTextField = typeof NEWS_REEL_TEXT_FIELDS[number];
 export const NEWS_REEL_TEXT_BOXES: Readonly<Record<NewsReelTextField, { readonly limit: number; readonly required: boolean }>> = {
   "headline.line1": { limit: 15, required: true },
   "headline.line2": { limit: 15, required: true },
-  "caption.line1": { limit: 20, required: true },
-  "caption.line2": { limit: 20, required: false },
+  "caption.line1": { limit: 18, required: true },
+  "caption.line2": { limit: 18, required: false },
 };
 
 /** Why one box cannot be used as it stands. `too_long` carries how far over in `remaining`. */

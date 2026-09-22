@@ -1,4 +1,4 @@
-import { newsReelCardGeometry, type NewsReelCard } from "@ai-animation-studio/shared";
+import { countNewsReelText, newsReelCardGeometry, type NewsReelCard } from "@ai-animation-studio/shared";
 
 import { assColour, type Rgb } from "./card-palette.js";
 import { FONT_FAMILY, escapeDialogueText, timestamp } from "./subtitle-file.js";
@@ -66,7 +66,9 @@ export function newsReelCardAss(card: NewsReelCard, scene: number, durationSecon
   if (caption === undefined) throw new Error(`News reel card has no caption for picture ${scene + 1} of ${card.captions.length}.`);
   // The caption band takes its height from this picture's own lines; the headline does not move with it.
   const captionLineCount = caption.line2 === null ? 1 : 2;
-  const g = newsReelCardGeometry(width, height, captionLineCount);
+  // The whole reel's longest caption line, so a card made under the older 20-syllable limit still fits.
+  const longestCaption = Math.max(...card.captions.flatMap((one) => [one.line1, one.line2 ?? ""]).map(countNewsReelText));
+  const g = newsReelCardGeometry(width, height, captionLineCount, longestCaption);
 
   /**
    * 🔴 `MarginL`/`MarginR` are the frame's own margins, so a line that somehow runs long wraps **inside the

@@ -150,6 +150,21 @@ describe("news reel card geometry", () => {
     expect(widthOf(NEWS_REEL_TEXT_BOXES["caption.line1"].limit + 1, captionSize)).toBeGreaterThan(usableWidth);
   });
 
+  /**
+   * 🔴 자막 한도가 20 → 18 로 줄었다(캡틴D: 「아주 약간만」 크게). 그 전에 만든 릴은 20자 자막을 들고 있어서, 새
+   * 크기로 다시 병합하면 **폭을 넘어 띠 밖으로 접힌다.** 한도 안의 카드는 그대로, 긴 옛 카드만 제 크기로.
+   */
+  it("keeps an older reel's longer captions inside the frame, and leaves a card within the limit alone", () => {
+    const limit = NEWS_REEL_TEXT_BOXES["caption.line1"].limit;
+    const widthOf = (count: number, size: number) => count * size * HANGUL_WIDTH_RATIO;
+
+    expect(newsReelCardGeometry(1080, 1920, 2, limit - 3).captionSize, "한도 안이면 그대로입니다").toBe(g().captionSize);
+    const old = newsReelCardGeometry(1080, 1920, 2, 20);
+    expect(widthOf(20, g().captionSize), "새 크기로는 20자가 넘칩니다").toBeGreaterThan(g().usableWidth);
+    expect(widthOf(20, old.captionSize), "옛 릴은 제 크기로 들어갑니다").toBeLessThanOrEqual(old.usableWidth);
+    expect(old.headlineSize, "제목은 안 바뀝니다").toBe(g().headlineSize);
+  });
+
   /** 🟠 제목이 자막보다 커야 한다 — 제목은 낚고 자막은 설명한다. 한도가 좁을수록 글자가 커지므로 저절로 그렇다. */
   it("makes the headline bigger than the caption, because the narrower box gets the bigger letters", () => {
     expect(g().headlineSize).toBeGreaterThan(g().captionSize);

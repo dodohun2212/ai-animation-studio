@@ -172,14 +172,20 @@ export interface NewsReelCardGeometry {
  * the two headline lines were picked to look like the reels 캡틴D pointed at (docs/06_DECISIONS.md D-052), not measured
  * off a frame — what *is* pinned is that nothing overlaps, nothing leaves the frame, and nothing crosses
  * {@link BOTTOM_SAFE_RATIO}. Cowork measures the real vertical positions once the screen draws them.
+ *
+ * 🔴 **`longestCaption` is for reels made under an older, longer limit.** The caption limit went 20 → 18
+ * (2026-09-22), and a card saved before that can hold 20-syllable captions; merged again at the 18-syllable size
+ * they would run ~100px past the usable width and wrap out of their band. So the caption size is taken from the
+ * limit **or** the reel's longest caption line, whichever is longer — a card within the limit is unchanged, and an
+ * old one keeps the size it was made for. The size is one for the whole reel, so it does not change per picture.
  */
-export function newsReelCardGeometry(width: number, height: number, captionLineCount: 1 | 2): NewsReelCardGeometry {
+export function newsReelCardGeometry(width: number, height: number, captionLineCount: 1 | 2, longestCaption = 0): NewsReelCardGeometry {
   const margin = Math.round(width * SIDE_MARGIN_RATIO);
   const usableWidth = width - margin * 2;
   const sizeFor = (limit: number): number => Math.floor(usableWidth / (limit * HANGUL_WIDTH_RATIO));
 
   const headlineSize = sizeFor(NEWS_REEL_TEXT_BOXES["headline.line1"].limit);
-  const captionSize = sizeFor(NEWS_REEL_TEXT_BOXES["caption.line1"].limit);
+  const captionSize = sizeFor(Math.max(NEWS_REEL_TEXT_BOXES["caption.line1"].limit, longestCaption));
   // 🟠 The publisher is a label, not a line of the card — it reads at a little under half the headline.
   const publisherSize = Math.round(headlineSize * 0.45);
 
