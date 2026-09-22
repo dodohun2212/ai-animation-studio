@@ -8,6 +8,40 @@ import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSection, dangerOutlineButton, outlineButton, primaryButton, scrollList, smallDangerOutlineButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props { onBack: () => void; initialQuery?: string }
+
+/** What is being looked at full size, or `null` for nothing. */
+interface ZoomedImage { url: string; name: string }
+
+/**
+ * A thumbnail that opens the picture full size.
+ *
+ * 🔴 캡틴D, 2026-09-22: 「여기서 사진 누르면은 사진 크게 보여주면 안되나」 — a 40px square is enough to tell two
+ * pictures apart and not enough to tell what is in one, and naming a picture (which is what the row beside it
+ * is for) means looking at it first.
+ *
+ * A `button` rather than a click handler on the `img`, so it is reachable by keyboard and announces itself as
+ * something that does something. The alt text says what pressing it does, because that is what a screen reader
+ * user is choosing between — the picture itself is described by the name in the row.
+ */
+function ZoomThumb({ url, name, imageClassName, testId, onZoom }: {
+  url: string;
+  name: string;
+  imageClassName: string;
+  testId: string;
+  onZoom: (image: ZoomedImage) => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      title="크게 보기"
+      onClick={() => onZoom({ url, name })}
+      className="shrink-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+    >
+      <img src={url} alt={`${name} 크게 보기`} className={imageClassName} />
+    </button>
+  );
+}
 /**
  * Kept word-for-word in step with the Story Bible's tab labels — see that file's own note. A folder type
  * named differently in the two places is a translation table the user has to hold in their head.
@@ -217,6 +251,18 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   // Per-child "개별 특징" drafts, keyed by child assetId; a key exists only while the draft differs from
   // the saved value. Cleared whenever the selected folder changes.
   const [childDescriptionDrafts, setChildDescriptionDrafts] = useState<Record<string, string>>({});
+  /* 🟠 One at a time, and never more than one: the overlay is the whole screen, so a second one would sit on
+     top of the first with no way back to it. */
+  const [zoomed, setZoomed] = useState<ZoomedImage | null>(null);
+  /* 🟠 Escape closes it. The overlay covers everything, so a person who opened it by accident has no visible
+     target to press until they find 닫기 — and the habit they already have is Escape. */
+  useEffect(() => {
+    if (zoomed === null) return undefined;
+    const onKey = (event: KeyboardEvent): void => { if (event.key === "Escape") setZoomed(null); };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, [zoomed]);
+
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const auditRequest = useRef(0);
@@ -1039,7 +1085,13 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
             {selected.asset.displayName}
           </h3>
           {selected.asset.imageAvailable && selected.asset.contentUrl && (
-            <img src={selected.asset.contentUrl} alt={`${selected.asset.displayName} 미리보기`} className="max-h-64 rounded-xl object-contain" />
+            <ZoomThumb
+              url={selected.asset.contentUrl}
+              name={selected.asset.displayName}
+              imageClassName="max-h-64 rounded-xl object-contain"
+              testId="asset-detail-zoom"
+              onZoom={setZoomed}
+            />
           )}
           <p className="text-sm text-slate-300">소유권: {selected.ownership}</p>
           <p className="text-sm text-slate-300">사용 프로젝트: {selected.usageProjectIds.length ? selected.usageProjectIds.join(", ") : "없음"}</p>
@@ -1108,7 +1160,15 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   {folderChildren.map((child, index) => (
                     <li key={child.assetId} className="space-y-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5 text-sm text-slate-300">
                       <div className="flex flex-wrap items-center gap-2">
-                        {child.imageAvailable && child.contentUrl && <img src={child.contentUrl} alt="" className="h-10 w-10 rounded-xl object-cover" />}
+                        {child.imageAvailable && child.contentUrl && (
+                          <ZoomThumb
+                            url={child.contentUrl}
+                            name={child.displayName}
+                            imageClassName="h-10 w-10 rounded-xl object-cover"
+                            testId={`folder-child-zoom-${child.assetId}`}
+                            onZoom={setZoomed}
+                          />
+                        )}
                         <span className="flex-1">
                           {index + 1}. {child.displayName}
                           {selected.asset.thumbnailAssetId === child.assetId ? " (대표 이미지)" : ""}
@@ -1276,7 +1336,15 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                       .filter((asset) => !asset.isFolder && asset.assetId !== selected.asset.assetId && !selected.asset.childAssetIds.includes(asset.assetId))
                       .map((asset) => (
                         <li key={asset.assetId} className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-2.5">
-                          {asset.imageAvailable && asset.contentUrl && <img src={asset.contentUrl} alt="" className="h-8 w-8 rounded-md object-cover" />}
+                          {asset.imageAvailable && asset.contentUrl && (
+                            <ZoomThumb
+                              url={asset.contentUrl}
+                              name={asset.displayName}
+                              imageClassName="h-8 w-8 rounded-md object-cover"
+                              testId={`folder-link-zoom-${asset.assetId}`}
+                              onZoom={setZoomed}
+                            />
+                          )}
                           <span className="flex-1 text-sm text-slate-300">{asset.displayName}</span>
                           <button type="button" className={smallAddButton} disabled={folderMutationPending} onClick={() => void linkAssetToFolder(asset.assetId)}>
                             폴더에 넣기
@@ -1497,6 +1565,32 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       )}
       </div>
       </div>
+
+      {/* 🟠 The picture itself does NOT close it — a person looking closely at a picture clicks on the picture,
+          and losing it on that click is the thing that makes a viewer annoying. The ground, 닫기 and Escape do. */}
+      {zoomed && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${zoomed.name} 크게 보기`}
+          data-testid="asset-zoom"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-6"
+          onClick={() => setZoomed(null)}
+        >
+          <figure className="flex max-h-full max-w-full flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
+            <img src={zoomed.url} alt={zoomed.name} className="max-h-[80vh] max-w-full rounded-xl object-contain" />
+            <figcaption className="text-sm text-slate-300">{zoomed.name}</figcaption>
+          </figure>
+          <button
+            type="button"
+            data-testid="asset-zoom-close"
+            className={`absolute right-5 top-5 ${smallOutlineButton}`}
+            onClick={() => setZoomed(null)}
+          >
+            닫기
+          </button>
+        </div>
+      )}
     </section>
   );
 }

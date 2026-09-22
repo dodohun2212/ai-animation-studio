@@ -276,6 +276,46 @@ describe("AssetLibraryScreen", () => {
     expect(within(detail).getByText("사용 프로젝트: project_a, project_b")).toBeTruthy();
   });
 
+  /**
+   * 🔴 캡틴D, 2026-09-22: *「여기서 사진 누르면은 사진 크게 보여주면 안되나」* — 40px 사각형으로는 두 그림을
+   * 구별할 수는 있어도 **무엇이 찍혔는지는 알 수 없습니다.** 그림에 이름을 붙이려면 먼저 봐야 합니다.
+   */
+  it("opens a picture full size from the folder list, and closes it without losing the screen", async () => {
+    const child = makeAsset({ assetId: "CHILD-1", displayName: "국회 본회의장", parentFolderId: "FOLDER-NEWS", sortOrder: 0, contentUrl: "/assets/CHILD-1/content" });
+    const folder = makeAssetFolder({ assetId: "FOLDER-NEWS", displayName: "뉴스릴스", childAssetIds: ["CHILD-1"], thumbnailAssetId: "CHILD-1" });
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": { assets: [folder, child] },
+      "GET /assets/FOLDER-NEWS": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "GET /assets/CHILD-1": { asset: child, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+    });
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("뉴스릴스"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const set = within(detail).getByRole("region", { name: "폴더 구성" });
+
+    expect(screen.queryByTestId("asset-zoom")).toBeNull();
+    fireEvent.click(await within(set).findByTestId("folder-child-zoom-CHILD-1"));
+
+    /* 이름이 같이 떠야 「어느 그림을 보고 있나」가 남습니다 — 크게 보는 이유가 이름을 붙이려는 것이라서. */
+    const zoom = screen.getByTestId("asset-zoom");
+    expect(within(zoom).getByText("국회 본회의장")).toBeTruthy();
+    expect(zoom.querySelector("img")?.getAttribute("src")).toBe("/assets/CHILD-1/content");
+
+    /* 🔴 그림을 눌러도 안 닫힙니다 — 자세히 보려고 그림을 누르는데 그때 사라지면 볼 수가 없습니다. */
+    fireEvent.click(zoom.querySelector("img") as HTMLImageElement);
+    expect(screen.getByTestId("asset-zoom")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("asset-zoom-close"));
+    await waitFor(() => expect(screen.queryByTestId("asset-zoom")).toBeNull());
+    /* 화면은 그대로 서 있습니다 — 크게 보기는 보기만 할 뿐, 고르던 것을 버리지 않습니다. */
+    expect(screen.getByRole("region", { name: "에셋 상세" })).toBeTruthy();
+    /* 🟠 보는 데 돈도 요청도 안 듭니다 — 이미 받아 둔 주소를 그대로 씁니다. */
+    for (const [calledUrl] of fetchMock.mock.calls as Array<[string]>) expect(calledUrl).toMatch(/^\/assets/);
+  });
+
   it("reorders character-folder reference children and can change the representative without any provider request", async () => {
     const first = makeAsset({ assetId: "CHAR-1", assetType: "character", displayName: "Front", parentFolderId: "FOLDER-CHAR", sortOrder: 0 });
     const second = makeAsset({ assetId: "CHAR-2", assetType: "character", displayName: "Side", parentFolderId: "FOLDER-CHAR", sortOrder: 1 });
