@@ -17,6 +17,20 @@ function scene(number: number, narration: string): Scene {
   };
 }
 
+/**
+ * A news reel card on a project, `creditRequired: true` by default because that is the state the publish
+ * screen has to do something about — a card that needs no credit is the case where nothing happens.
+ */
+function newsReelCard(overrides: Record<string, unknown> = {}) {
+  return {
+    publisher: "연합뉴스",
+    headline: { line1: "첫째 줄", line2: "둘째 줄" },
+    captions: [{ line1: "자막 한 줄", line2: null }],
+    creditRequired: true,
+    ...overrides,
+  };
+}
+
 const LIBRARY_URL = "/videos/library";
 /** What the backend stamps on a project it has just rotated — later than `makeProject`'s own `updatedAt`. */
 const ROTATED_AT = "2026-09-01T00:00:00.000Z";
@@ -725,6 +739,54 @@ describe("InstagramPostScreen", () => {
 
     expect(screen.queryByTestId("post-credit")).toBeNull();
     expect(screen.queryByTestId("post-credit-missing")).toBeNull();
+  });
+
+  /**
+   * The picture's licence, which is not the audio's.
+   *
+   * 🔴 CLI Round 1055 §1 — 위키미디어 CC BY 사진으로 만든 릴이 사진 출처 없이 게시로 가고 있었다. The two boxes
+   * on the 만들기 화면 (D-054) were written and then read by nobody, which is the same open end D-003 closed on
+   * the audio side. These four tests are what makes the picture side noticeable the next time it moves.
+   */
+  it("puts the picture's required credit into the caption by itself", async () => {
+    renderScreen({ project: { newsReelCard: newsReelCard({ creditText: "사진: 홍길동 / CC BY 4.0" }) } });
+    await pickProject();
+
+    expect(screen.getByTestId("post-picture-credit").textContent).toContain("사진: 홍길동 / CC BY 4.0");
+    expect(screen.getByTestId("post-caption-preview").textContent).toContain("사진: 홍길동 / CC BY 4.0");
+  });
+
+  it("refuses to hand over a caption when the picture's credit is required but blank", async () => {
+    renderScreen({ project: { newsReelCard: newsReelCard() } });
+    await pickProject();
+
+    fireEvent.change(screen.getByTestId("post-body"), { target: { value: "본문" } });
+    expect(screen.getByTestId("post-picture-credit-missing").textContent).toContain("그림 출처");
+    expect(screen.getByTestId("post-copy")).toBeDisabled();
+  });
+
+  it("says nothing about the picture for a reel whose picture never required credit", async () => {
+    renderScreen({ project: { newsReelCard: newsReelCard({ creditRequired: false }) } });
+    await pickProject();
+
+    expect(screen.queryByTestId("post-picture-credit")).toBeNull();
+    expect(screen.queryByTestId("post-picture-credit-missing")).toBeNull();
+  });
+
+  // Two licences can both apply to one reel, and a caption carrying only the music credit would satisfy
+  // neither source. They are two lines because each source sets its own wording.
+  it("carries both credits when the music and the picture each require one", async () => {
+    renderScreen({
+      project: {
+        usedAudio: { mode: "narration+bgm", attributionRequired: true, attributionText: "Music by ○○○ (CC BY 4.0)" },
+        newsReelCard: newsReelCard({ creditText: "사진: 홍길동 / CC BY 4.0" }),
+      },
+    });
+    await pickProject();
+
+    const caption = screen.getByTestId("post-caption-preview").textContent ?? "";
+    expect(caption).toContain("Music by ○○○ (CC BY 4.0)");
+    expect(caption).toContain("사진: 홍길동 / CC BY 4.0");
   });
 
   // The draft exists because a caption was being lost by walking away from the screen. A series creator whose

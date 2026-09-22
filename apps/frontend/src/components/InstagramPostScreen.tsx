@@ -562,10 +562,31 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
   // Required but blank is a real state: attributionText is optional in the contract, and the app must not
   // invent wording a licence may be specific about.
   const creditMissing = creditRequired && !creditText;
+  /**
+   * The picture's credit, which is a different licence from the audio's and a different field on the project.
+   *
+   * 🔴 The two boxes on the 만들기 화면 (`creditRequired`/`creditText`, D-054) existed only to be written; a
+   * reel built from a 위키미디어 CC BY 사진 was going to Instagram with no picture credit and nothing blocking
+   * it — the same open end D-003 closed for audio, on the picture side. Read from `newsReelCard` rather than a
+   * flag of its own, for the reason the contract gives: two booleans can disagree, one fact cannot.
+   *
+   * 🟠 Short projects only. An Episode is never a news reel, so `project` alone is the source.
+   */
+  const pictureCreditRequired = project?.newsReelCard?.creditRequired === true;
+  const pictureCreditText = project?.newsReelCard?.creditText?.trim() ?? "";
+  // Required but blank, exactly as on the audio side: `creditText` is optional in the contract, and the app
+  // must not invent wording the licence is specific about (위키미디어는 촬영자·라이선스 이름을 요구합니다).
+  const pictureCreditMissing = pictureCreditRequired && !pictureCreditText;
 
   const hashtags = parseHashtags(hashtagsRaw);
   const aiNotice = aiNoticeOn ? "AI로 만든 영상입니다." : "";
-  const caption = composeCaption({ body, attribution: creditRequired ? creditText : "", aiNotice, hashtags });
+  /* Both credits in the one attribution block, 음원 먼저 — two licences can both apply to a single reel, and
+     each says its own thing, so they are two lines rather than one merged sentence. */
+  const attribution = [
+    creditRequired ? creditText : "",
+    pictureCreditRequired ? pictureCreditText : "",
+  ].filter((line) => line.length > 0).join("\n");
+  const caption = composeCaption({ body, attribution, aiNotice, hashtags });
 
   const captionOver = caption.length > INSTAGRAM_CAPTION_MAX;
   // Counted over the whole caption, not over the field above: a tag written into the body counts against the
@@ -611,7 +632,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
   // Anything but 9:16 is off the reel frame — landscape, and since item 6 square and 4:5 too. It used to be
   // `!vertical`, measured as `height >= width`, so a square or 4:5 file passed as 세로 9:16 (CLI Round 860).
   const offReelFrame = reelShape !== "9:16";
-  const copyBlocked = captionOver || hashtagsOver || creditMissing;
+  const copyBlocked = captionOver || hashtagsOver || creditMissing || pictureCreditMissing;
   /* The server's own record, on either shape — never a local flag. A reload has to keep saying "already
      posted", because the mistake this prevents is a second public copy of something already out there. */
   const published = project?.instagramPost ?? episode?.episode.instagramPost;
@@ -1207,6 +1228,20 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
             {creditMissing && (
               <p role="alert" data-testid="post-credit-missing" className="text-sm text-rose-400">
                 이 영상에 쓴 음원은 출처 표시가 필요한데 적을 문구가 비어 있습니다. 음원 보관함에서 문구를 채운 뒤 다시 오세요.
+              </p>
+            )}
+
+            {/* The picture's licence, same rule and same reason: not editable here, so it cannot drift from
+                what the 만들기 화면 wrote beside the picture it belongs to. */}
+            {pictureCreditRequired && !pictureCreditMissing && (
+              <div data-testid="post-picture-credit" className="space-y-1 rounded-xl border border-amber-400/30 bg-amber-500/5 p-3">
+                <p className="text-xs font-semibold text-amber-300">이 그림은 출처 표시가 필요해 캡션에 자동으로 들어갑니다.</p>
+                <p className="text-sm text-slate-300">{pictureCreditText}</p>
+              </div>
+            )}
+            {pictureCreditMissing && (
+              <p role="alert" data-testid="post-picture-credit-missing" className="text-sm text-rose-400">
+                이 릴에 쓴 그림은 출처 표시가 필요한데 적을 문구가 비어 있습니다. 뉴스 릴 만들기 화면에서 그림 출처를 채운 뒤 다시 오세요.
               </p>
             )}
           </div>
