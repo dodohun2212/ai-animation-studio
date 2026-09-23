@@ -1,5 +1,5 @@
 import { PLACEHOLDER_PNG, isPlaceholderImage } from "./placeholder-image.js";
-import { withWarning } from "../projects/warnings.js";
+import { withError, withWarning } from "../projects/warnings.js";
 import { ProjectLockTimeoutError, withProjectLock } from "../videos/project-lock.js";
 import { OPENAI_LEDGER_FILE, isBudgetLedgerUnreadable, recordSpend, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import * as crypto from "node:crypto";
@@ -17,6 +17,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
 import { budgetPreviewFor, OpenAiBudget, OpenAiBudgetExceededError } from "../providers/openai-budget.js";
 import { OpenAiAdapterError } from "../providers/openai-common.js";
+import { IMAGE_RUN_FAILURE_PREFIX, imageRunFailureRecord } from "../providers/openai-scene-failure.js";
 import { OPENAI_IMAGE_MODEL, callOpenAiImageApi, callOpenAiImageEditApi } from "./openai-image-adapter.js";
 import { collectReferenceImages, continuityForScene, describeReferenceMappingsForScene, leadsWithPreviousScene } from "./image-reference-selection.js";
 import { imagePromptForRequest, imagePromptFor, imageSizeFor, sceneValue, styleLineFor } from "./image-prompt.js";
@@ -178,7 +179,15 @@ export class LocalImageGenerationService {
     await this.approvedMapping(project);
 
     const startedAt = new Date().toISOString();
-    let current: StoredProject = { ...project, workflow_state: WorkflowState.GeneratingImages, updated_at: startedAt };
+    // A new run answers the last one's failure line, so it goes now rather than staying under a run that may
+    // well succeed. Only this pipeline's own lines are dropped — a merge failure is a different fact and the
+    // person still has to see it (video-merge.service.ts writes those).
+    let current: StoredProject = {
+      ...project,
+      workflow_state: WorkflowState.GeneratingImages,
+      updated_at: startedAt,
+      errors: project.errors.filter((line) => !line.startsWith(IMAGE_RUN_FAILURE_PREFIX)),
+    };
     try { await this.projects.save(current); } catch { throw imageStorageError(); }
 
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
@@ -272,13 +281,20 @@ export class LocalImageGenerationService {
     // the *next* scene at preflight (D-036) and leaves through this catch, so the happy path never runs — and
     // the scenes already bought before it broke would have gone unmentioned, which is the whole failure this
     // guards against.
+      // 🔴 Written down before anything is thrown. The thrown error reaches one screen once; this reaches the
+      // project itself, and it is the only thing left after a reload. Refusing a paid run and keeping no
+      // record of why is how a person ends up re-pressing the most expensive button to find out.
+      const refusal = error instanceof OpenAiAdapterError
+        ? imageRunFailureRecord(failingScene, error.message, error.failure ?? {})
+        : null;
       const recoverable = {
         ...current, workflow_state: WorkflowState.AssetMappingApproved, updated_at: new Date().toISOString(),
+        ...(refusal ? { errors: withError(current.errors, refusal) } : {}),
         ...(unrecordedScenes.length > 0 ? { warnings: withWarning(current.warnings, spendUnrecordedWarning(`${unrecordedScenes.join(", ")}번 장면 이미지 생성`, OPENAI_LEDGER_FILE)) } : {}),
       };
       await this.projects.save(recoverable).catch(() => undefined);
       if (isBudgetLedgerUnreadable(error)) throw imageBudgetLedgerUnreadable(); if (error instanceof OpenAiBudgetExceededError) throw imageBudgetExceeded(error.message);
-      if (error instanceof OpenAiAdapterError) throw imageProviderError(error.category, error.message, failingScene);
+      if (error instanceof OpenAiAdapterError) throw imageProviderError(error.category, error.message, failingScene, error.failure ?? {});
       if (error instanceof Error && error.message === "invalid png") throw imageGenerationFailed();
       if (error instanceof Error && error.message === "incomplete") throw imageGenerationFailed();
       throw imageStorageError();

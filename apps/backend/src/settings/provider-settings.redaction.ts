@@ -15,6 +15,19 @@ const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/([?&](?:client_secret|access_token|input_token|fb_exchange_token|code)=)[^&\s]+/gi, "$1[REDACTED]"],
 ];
 
+/**
+ * The pattern table applied to one string, for callers with no runtime secrets to remember.
+ *
+ * Exported so the table has one home. A provider's own refusal sentence is persisted into a project file and
+ * shown on a screen (openai-common.ts), which is the same "about to leave this process" moment the class below
+ * exists for — and a second hand-written list of patterns is a list that stops matching the first one.
+ */
+export function redactSecrets(value: unknown): string {
+  let message = typeof value === "string" ? value : JSON.stringify(value);
+  for (const [pattern, replacement] of SECRET_PATTERNS) message = message.replace(pattern, replacement);
+  return message;
+}
+
 /** Redacts values before this feature sends anything to a Nest logger. */
 export class ProviderSettingsRedactor {
   private readonly runtimeSecrets = new Set<string>();
@@ -26,8 +39,7 @@ export class ProviderSettingsRedactor {
   redact(value: unknown): string {
     let message = typeof value === "string" ? value : JSON.stringify(value);
     for (const secret of this.runtimeSecrets) message = message.replaceAll(secret, "[REDACTED]");
-    for (const [pattern, replacement] of SECRET_PATTERNS) message = message.replace(pattern, replacement);
-    return message;
+    return redactSecrets(message);
   }
 }
 

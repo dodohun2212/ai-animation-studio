@@ -7,7 +7,9 @@ import {
   OPENAI_MAX_BACKOFF_SECONDS,
   OPENAI_RETRYABLE_CATEGORIES,
   backoffSeconds,
+  PROVIDER_MESSAGE_MAX_CHARS,
   classifyOpenAiHttpError,
+  describeOpenAiHttpError,
   parseRetryAfterSeconds,
 } from "./openai-common.js";
 
@@ -132,5 +134,62 @@ describe("what a person reads", () => {
   it("does not tell somebody out of credit to try again in a moment", () => {
     expect(OPENAI_KOREAN_MESSAGES.quota_or_permission).not.toContain("잠시 후");
     expect(OPENAI_KOREAN_MESSAGES.rate_limit).toContain("잠시 후");
+  });
+});
+
+/**
+ * 🔴 The half this file used to read and throw away.
+ *
+ * `category` is a bucket of ours — nine of them cover every refusal OpenAI can send — so `safety_policy` is one
+ * sentence for "the prompt was refused", "the reference picture was refused" and "both". Which one it was is in
+ * the provider's own sentence and nowhere else: not in the spend ledger (one `succeeded: false` row), not in
+ * the project file, and not on the screen once it has been reloaded.
+ */
+describe("what the provider itself said", () => {
+  const refusalWithId = (status: number, body: unknown, requestId?: string) =>
+    new Response(JSON.stringify(body), { status, headers: requestId ? { "x-request-id": requestId } : {} });
+
+  it("carries the sentence as the provider wrote it, not the folded copy classification used", async () => {
+    const spoken = "Your request was rejected as a result of our safety system. Image input may not depict a real person.";
+    const failure = await describeOpenAiHttpError(refusalWithId(400, { error: { message: spoken } }, "req_abc123"));
+
+    expect(failure.category).toBe("safety_policy");
+    // 🔴 Verbatim. The classifier lowercases to match on; a person reading "your request was rejected…" learns
+    // the same fact while being told, in the app's own voice, that we retyped their sentence.
+    expect(failure.providerMessage).toBe(spoken);
+    expect(failure.providerRequestId).toBe("req_abc123");
+  });
+
+  /**
+   * 🔴 This string is written into a project's own file and rendered on a screen. OpenAI has no reason to echo a
+   * key back, which is exactly why nobody would be watching the day one did (AGENTS.md: never log, return or
+   * commit a secret).
+   */
+  it("redacts a secret that arrives inside the provider's own sentence", async () => {
+    const failure = await describeOpenAiHttpError(refusalWithId(401, { error: { message: "Incorrect API key provided: sk-proj-abcdef1234567890." } }));
+    expect(failure.providerMessage).toContain("[REDACTED]");
+    expect(failure.providerMessage).not.toContain("sk-proj-abcdef1234567890");
+  });
+
+  /** 🟠 A guard, not an editor — and a sentence that was cut must not read as one that ended. */
+  it("caps a body long enough to be something other than a sentence, visibly", async () => {
+    const failure = await describeOpenAiHttpError(refusalWithId(400, { error: { message: "x".repeat(PROVIDER_MESSAGE_MAX_CHARS + 50) } }));
+    expect(failure.providerMessage).toHaveLength(PROVIDER_MESSAGE_MAX_CHARS + 1);
+    expect(failure.providerMessage?.endsWith("…")).toBe(true);
+  });
+
+  /**
+   * Absent, not empty. A screen tests for the field to decide whether there is a quotation to show, and `""`
+   * renders as an empty pair of quote marks — which reads as the provider having said nothing on purpose.
+   */
+  it("leaves both fields off when the refusal carried neither", async () => {
+    const failure = await describeOpenAiHttpError(new Response("<html>502 Bad Gateway</html>", { status: 502 }));
+    expect(failure).toEqual({ category: "server" });
+  });
+
+  /** The narrow view stays exactly what it was — every caller that only wanted the bucket still gets it. */
+  it("sorts a refusal into the same category the classifier always did", async () => {
+    expect(await describeOpenAiHttpError(refusalWithId(429, { error: { code: "insufficient_quota" } })))
+      .toMatchObject({ category: await classifyOpenAiHttpError(refusal(429, { error: { code: "insufficient_quota" } })) });
   });
 });

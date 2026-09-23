@@ -5,6 +5,8 @@
 
 import type { OpenAiErrorCategory } from "@ai-animation-studio/shared";
 
+import { redactSecrets } from "../settings/provider-settings.redaction.js";
+
 // The list lives in the contract now, so the screens' sentence tables can be keyed on it (OPENAI_ERROR_CATEGORIES).
 export type { OpenAiErrorCategory };
 
@@ -35,22 +37,104 @@ export const OPENAI_DEFAULT_MAX_RETRIES = 2;
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * What the refusal itself said, kept beside the bucket we sorted it into.
+ *
+ * 🔴 Our category is a bucket; `providerMessage` is the only thing that says **what to change**. Nine
+ * categories cover every refusal OpenAI can send, so `safety_policy` is one sentence for "the prompt was
+ * refused", "the reference picture was refused" and "both" — and the difference is in their sentence, which
+ * this file used to read for classification and then drop on the floor.
+ */
+export interface OpenAiHttpFailure {
+  category: OpenAiErrorCategory;
+  /** Verbatim, redacted and capped. Absent when the response carried no usable sentence. */
+  providerMessage?: string;
+  /** The provider's `x-request-id`, absent when the response carried none — the one thing their support can look up. */
+  providerRequestId?: string;
+}
+
+/**
+ * 🟠 A guard, not an editor. Real refusals run 80–200 characters; a body long enough to hit this is not a
+ * sentence anyone meant us to show, and it is on its way into a project's own file. Truncation is visible
+ * (`…`) because a sentence that was cut must not read as one that ended.
+ */
+export const PROVIDER_MESSAGE_MAX_CHARS = 400;
+
 export class OpenAiAdapterError extends Error {
-  constructor(public readonly category: OpenAiErrorCategory | "empty_response" | "invalid_response", message: string) {
+  /**
+   * `failure` carries what the provider said. Optional because two categories are ours rather than theirs
+   * (`empty_response`/`invalid_response`): OpenAI answered 200 and there was nothing to quote.
+   */
+  constructor(
+    public readonly category: OpenAiErrorCategory | "empty_response" | "invalid_response",
+    message: string,
+    public readonly failure?: Pick<OpenAiHttpFailure, "providerMessage" | "providerRequestId">,
+  ) {
     super(message);
   }
 }
 
-export async function classifyOpenAiHttpError(response: Response): Promise<OpenAiErrorCategory> {
-  const status = response.status;
-  let code = ""; let message = "";
+/**
+ * One read of the error body, in both the shape that classifies and the shape a person reads.
+ *
+ * 🔴 `spoken` is the same string as `message` before it was lowercased. Classification wants it folded; a
+ * person wants it as the provider wrote it, and the two were never the same string — the lowercased one was
+ * simply the only one that existed.
+ */
+interface OpenAiErrorBody { code: string; message: string; spoken: string }
+
+async function readOpenAiErrorBody(response: Response): Promise<OpenAiErrorBody> {
   try {
     const body: unknown = await response.json();
     if (isObject(body) && isObject(body.error)) {
-      code = typeof body.error.code === "string" ? body.error.code.toLowerCase() : "";
-      message = typeof body.error.message === "string" ? body.error.message.toLowerCase() : "";
+      const spoken = typeof body.error.message === "string" ? body.error.message : "";
+      return {
+        code: typeof body.error.code === "string" ? body.error.code.toLowerCase() : "",
+        message: spoken.toLowerCase(),
+        spoken,
+      };
     }
   } catch { /* an unparsable error body still classifies by status */ }
+  return { code: "", message: "", spoken: "" };
+}
+
+/**
+ * The provider's sentence, safe to write into a project's own file and show on a screen.
+ *
+ * 🔴 Redacted first and always. This string is about to be persisted and rendered, and the one rule this
+ * repository does not bend is that a secret never reaches a log, a response or a commit (AGENTS.md). OpenAI has
+ * no reason to echo a key, which is exactly why nobody would notice the day one did.
+ */
+function presentableProviderMessage(spoken: string): string {
+  const redacted = redactSecrets(spoken).trim();
+  if (!redacted) return "";
+  return redacted.length > PROVIDER_MESSAGE_MAX_CHARS ? `${redacted.slice(0, PROVIDER_MESSAGE_MAX_CHARS)}…` : redacted;
+}
+
+/**
+ * The same classification this file has always done, with the provider's own words carried out alongside it.
+ *
+ * `classifyOpenAiHttpError` stays beside it as the narrow view, because most callers only ever wanted the
+ * bucket — and because a `Response` body can be read exactly once, so the two cannot be layered.
+ */
+export async function describeOpenAiHttpError(response: Response): Promise<OpenAiHttpFailure> {
+  const parsed = await readOpenAiErrorBody(response);
+  const providerMessage = presentableProviderMessage(parsed.spoken);
+  // Read off the response, not the body: a refusal whose body will not parse still carries this header, and
+  // that is the case where an id is worth the most.
+  const providerRequestId = response.headers.get("x-request-id") ?? "";
+  return {
+    category: categoryFor(response.status, parsed),
+    ...(providerMessage ? { providerMessage } : {}),
+    ...(providerRequestId ? { providerRequestId } : {}),
+  };
+}
+
+export async function classifyOpenAiHttpError(response: Response): Promise<OpenAiErrorCategory> {
+  return categoryFor(response.status, await readOpenAiErrorBody(response));
+}
+
+function categoryFor(status: number, { code, message }: OpenAiErrorBody): OpenAiErrorCategory {
   if (status === 401) return "authentication";
   if (status === 402 || status === 403 || code === "insufficient_quota" || code === "billing_hard_limit_reached" || message.includes("insufficient_quota")) return "quota_or_permission";
   if (code === "content_policy_violation" || code === "safety_violation" || message.includes("content policy") || message.includes("safety")) return "safety_policy";

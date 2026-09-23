@@ -1,4 +1,4 @@
-import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError, classifyOpenAiHttpError } from "../providers/openai-common.js";
+import { OPENAI_KOREAN_MESSAGES, OpenAiAdapterError, describeOpenAiHttpError } from "../providers/openai-common.js";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
 import { OPENAI_STORY_MODEL } from "../story/openai-story-adapter.js";
 
@@ -108,8 +108,8 @@ export async function callOpenAiEpisodePlannerApi(
     throw new OpenAiAdapterError("network", OPENAI_KOREAN_MESSAGES.network);
   }
   if (!response.ok) {
-    const category = await classifyOpenAiHttpError(response);
-    throw new OpenAiAdapterError(category, OPENAI_KOREAN_MESSAGES[category]);
+    const failure = await describeOpenAiHttpError(response);
+    throw new OpenAiAdapterError(failure.category, OPENAI_KOREAN_MESSAGES[failure.category], failure);
   }
   const body: unknown = await response.json().catch(() => null);
   const requestId = response.headers.get("x-request-id") ?? "";

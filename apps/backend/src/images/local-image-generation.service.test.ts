@@ -679,3 +679,37 @@ describe("real OpenAI image generation", () => {
     expect(progress.progress).toEqual({ sceneNumbers: [1, 2, 3, 4, 5, 6], completedSceneNumbers: [] });
   });
 });
+
+/**
+ * 🔴 What a refused paid run leaves behind once the screen has been reloaded.
+ *
+ * Before this, the answer was nothing: `errors: []`, `warnings: []`, the workflow state rolled back to where it
+ * started, and one `succeeded: false` row in the spend ledger that says a call failed and not one word about
+ * why. The thrown error reaches one screen once. Reload it and the reason is gone — so the only way left to
+ * find out is to press the most expensive button in the app again.
+ */
+describe("the record a refusal leaves in the project", () => {
+  it("writes down the provider's own reason, names the scene, and clears it when a new run starts", async () => {
+    const { projects, service } = await setupWithConnectedOpenAi();
+    const spoken = "Your request was rejected as a result of our safety system.";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: spoken } }), { status: 400, headers: { "x-request-id": "req_9" } }),
+    ));
+
+    const error = await service.generate("images", { approved: true }).catch((caught: unknown) => caught) as { response: { details: Record<string, unknown> } };
+    // Ours says which kind of refusal; theirs says what to change. Both travel, neither stands in for the other.
+    expect(error.response.details).toMatchObject({ category: "safety_policy", providerMessage: spoken, providerRequestId: "req_9" });
+
+    const failed = await projects.findById("images");
+    expect(failed.errors).toHaveLength(1);
+    expect(failed.errors[0]).toContain(spoken);
+    expect(failed.errors[0]).toContain("1번 장면");
+
+    // 🟠 A new run answers the last one's failure, so the line goes when the run starts rather than lingering
+    // under a run that succeeds. Pressing again with nothing to show for it would leave a red line about a
+    // refusal that no longer happened.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [{ b64_json: BOUGHT_PNG_BASE64 }] })));
+    await service.generate("images", { approved: true });
+    expect((await projects.findById("images")).errors).toEqual([]);
+  });
+});

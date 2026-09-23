@@ -897,6 +897,26 @@ export interface ImageGenerationFailureDetails {
    * category's own sentence ("check the key in API settings") is the right advice there, so the screen keeps it.
    */
   remedy?: SceneFailureRemedy;
+  /**
+   * What the provider itself said, verbatim — absent when it sent no sentence.
+   *
+   * 🔴 `category` is a bucket of ours; this is the only thing that says **what to change**. A run refused for
+   * `safety_policy` is told "안전 정책에 따라 요청이 거부되었습니다" and that is all anyone could learn: whether
+   * it was the prompt, one reference picture, or the pair of them is in the provider's sentence and nowhere
+   * else. This field exists because a whole afternoon went into re-deriving, from a ledger row and a timestamp,
+   * something the refusal had already said out loud and the app had thrown away.
+   *
+   * 🟠 Redacted and capped before it gets here (openai-common.ts). It is the provider talking, not us — a screen
+   * shows it as a quotation beside our own sentence, never instead of it, and never parses it.
+   */
+  providerMessage?: string;
+  /**
+   * The provider's own id for the refused request (`x-request-id`), absent when the response carried none.
+   *
+   * The one thing their support can look up, and it is gone the moment the screen re-renders unless it is
+   * carried and written down with the rest.
+   */
+  providerRequestId?: string;
 }
 
 export interface LongEpisodeVideoProgress {
