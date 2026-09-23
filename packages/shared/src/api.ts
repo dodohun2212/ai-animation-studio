@@ -742,6 +742,28 @@ export const PROVIDER_TASK_FAILURES: readonly { prefix: string; remedy: SceneFai
     prefix: "SAFETY.INPUT", remedy: "not_retryable", billedOnFailure: false,
     message: "첫 프레임이 Runway의 안전 검사에 걸렸습니다. 같은 그림으로는 통과하지 않으니 그 장면의 이미지를 바꿔야 합니다.",
   },
+  /**
+   * 🔴 The one this table missed, and it cost an evening. `INPUT_PREPROCESSING.SAFETY.TEXT` starts with
+   * `INPUT_PREPROCESSING`, not `SAFETY.INPUT`, so it matched nothing, fell to the caller's default — `retry`,
+   * hedged sentence — and the screen told somebody to wait and press again. They did, three times, against a
+   * moderation verdict that waiting cannot change. `needsChangedInput` keys on `change_input`, so this entry
+   * is also what makes the app refuse a retry that changes nothing.
+   *
+   * `change_input`, not `not_retryable`: unlike the two `SAFETY.*` entries above — whose cause is the first
+   * frame, fixed by going back and redrawing it — this one's cause is the scene's own text, which the person
+   * can edit right there and send again. Refusing outright would block the fix.
+   *
+   * `billedOnFailure: false` is measured, not assumed: three refusals on 저승길 scene 6 (2026-09-23), every
+   * one `billed_credits: 0` in the record and `actual_cost_usd: 0` in the ledger.
+   *
+   * 🟠 Only the variant that has actually been seen. Other `INPUT_PREPROCESSING.*` codes stay unknown on
+   * purpose — an unknown code gets the caller's default, and a guessed entry would be a sentence this app
+   * states with confidence about something nobody checked.
+   */
+  {
+    prefix: "INPUT_PREPROCESSING.SAFETY.TEXT", remedy: "change_input", billedOnFailure: false,
+    message: "장면 지시 글이 Runway의 안전 검사에 걸렸습니다. 같은 글로는 통과하지 않으니 그 장면의 글을 고친 뒤 다시 시도해 주세요.",
+  },
   {
     prefix: "SAFETY.OUTPUT", remedy: "not_retryable", billedOnFailure: true,
     message: "만들어진 영상이 Runway의 안전 검사에 걸렸습니다. 장면 지시를 바꾸지 않으면 같은 결과가 나옵니다.",

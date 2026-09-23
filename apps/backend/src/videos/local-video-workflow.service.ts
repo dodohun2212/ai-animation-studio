@@ -3,6 +3,9 @@ import { withWarning } from "../projects/warnings.js";
 import { isBudgetLedgerUnreadable, RUNWAY_LEDGER_FILE, spendUnrecordedWarning } from "../providers/budget-ledger.js";
 import { isUsableClip, PLACEHOLDER_MP4, wasPaidRun } from "./placeholder-clip.js";
 import { needsChangedInput } from "./scene-failure.js";
+import { promptFor } from "./video-prompt-compiler.js";
+import type { StoredScene } from "./video-prompt-compiler.js";
+import type { RunwayVideoRatio } from "@ai-animation-studio/shared";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -636,13 +639,44 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       && selected.every((scene) => records.find((record) => record.scene_number === scene)?.status === "failed");
     if (!allowedTerminalState && !allowedFailedRetry) throw videoWorkflowNotAllowed();
     const trimmedInstruction = additionalInstruction?.trim() || undefined;
+    /**
+     * 🔴 The scene as it reads **now**, not as it read when the job was approved.
+     *
+     * `runwayInputForScene` sends `record.prompt`, frozen at the confirmation screen. That is right for a
+     * pending job — approval is over a specific text at a specific price — and wrong for the one case that
+     * brings somebody back to the scene editor: a refusal whose documented cause is the text itself. Edit the
+     * scene, press retry, and the identical sentence went out again. 저승길 scene 6 (2026-09-23) was refused
+     * three times this way with the edit sitting on disk, unread.
+     *
+     * The image pipeline already fixed exactly this — a regeneration that recorded the previous batch's prompt
+     * (`850868f`) — and this is the same defect one pipeline over.
+     *
+     * 🟠 Price is untouched, which is what makes this safe to do without sending anyone back through
+     * confirmation: model, ratio and duration all come from the record, so only the words change, and the words
+     * are the ones this person typed themselves.
+     */
+    const rebuiltPrompt = new Map<SceneNumber, string>();
+    for (const record of records) {
+      if (!selected.includes(record.scene_number)) continue;
+      const scene = project.scenes[record.scene_number - 1];
+      if (!scene) continue;
+      const rebuilt = promptFor(scene as StoredScene, project.scenes[record.scene_number - 2] as StoredScene | undefined, String(record.ratio) as RunwayVideoRatio, Number(record.duration_seconds));
+      if (rebuilt.prompt !== String(record.prompt)) rebuiltPrompt.set(record.scene_number, rebuilt.prompt);
+    }
     // Before anything is archived or reset: a scene whose failure is documented as caused by its input buys
     // the same failure again if the same input goes back. Both screens hold their confirm until something is
     // written; this is that rule where the money leaves, for a caller that never saw a screen.
-    if (!trimmedInstruction && records.some((record) => selected.includes(record.scene_number) && needsChangedInput(typeof record.failure_code === "string" ? record.failure_code : undefined))) throw videoRetryNeedsChangedInput();
+    //
+    // 🟠 An edited scene **is** changed input, and is the more honest kind: an instruction is appended to the
+    // refused text, while an edit replaces it. Demanding an instruction from somebody who already rewrote the
+    // sentence would be the guard refusing the actual fix.
+    const stillUnchanged = (record: { scene_number: SceneNumber; failure_code?: unknown }) =>
+      needsChangedInput(typeof record.failure_code === "string" ? record.failure_code : undefined) && !rebuiltPrompt.has(record.scene_number);
+    if (!trimmedInstruction && records.some((record) => selected.includes(record.scene_number) && stillUnchanged(record))) throw videoRetryNeedsChangedInput();
     try { for (const scene of selected) await this.archive(project.project_id, scene); } catch { throw videoStorageError(); }
     const reset = records.filter((record) => selected.includes(record.scene_number)).map((record) => ({
       ...record, status: "created" as const,
+      ...(rebuiltPrompt.has(record.scene_number) ? { prompt: rebuiltPrompt.get(record.scene_number)! } : {}),
       runway_task_id: undefined, runway_submitted_at: undefined, runway_last_checked_at: undefined, runway_claimed_at: undefined, error: undefined, failure_code: undefined, billed_credits: undefined,
       additional_instruction: trimmedInstruction,
     }));

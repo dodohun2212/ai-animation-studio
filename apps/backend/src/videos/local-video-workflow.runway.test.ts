@@ -885,4 +885,51 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
     workflow.onModuleDestroy();
   });
 
+  /**
+   * 🔴 저승길 scene 6, 2026-09-23. Runway refused the **text** with
+   * `INPUT_PREPROCESSING.SAFETY.TEXT`, the scene was edited to take the refused wording out, retry was pressed —
+   * and the identical sentence went out again, because a retry re-sends `record.prompt`, frozen at the
+   * confirmation screen. The edit sat on disk, unread, through three refusals.
+   *
+   * The image pipeline already closed this exact hole (`850868f`: a regeneration recording the previous batch's
+   * prompt). This is the same defect one pipeline over.
+   */
+  it("sends the scene as it reads now when a text refusal is retried, and counts that edit as the changed input", async () => {
+    const deps = await setupWithConnectedRunway();
+    const workflow = newWorkflow(deps);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/v1/image_to_video")) return { ok: true, status: 200, json: async () => ({ id: "task-text" }), headers: { get: () => null } } as unknown as Response;
+      if (url.includes("/v1/tasks/")) return { ok: true, status: 200, json: async () => ({ id: "task-text", status: "FAILED", failure: "Text prompt did not pass moderation", failureCode: "INPUT_PREPROCESSING.SAFETY.TEXT" }), headers: { get: () => null } } as unknown as Response;
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+    vi.useFakeTimers();
+    let now = new Date("2026-09-23T10:00:00.000Z"); vi.setSystemTime(now);
+    await workflow.run("video_workflow", deps.accepted.jobId);
+    now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
+    const failed = await workflow.getProgress("video_workflow", deps.accepted.jobId);
+    expect(failed.failedSceneNumbers).toEqual([1]);
+    // The table knows this code now, so the screen says "change the words" instead of "wait and press again".
+    expect(failed.sceneFailures?.[1]).toMatchObject({ remedy: "change_input", billedOnFailure: false });
+
+    // Nothing edited, no instruction: still refused before anything is archived or re-submitted.
+    await expect(workflow.regenerate("video_workflow", deps.accepted.jobId, [1]))
+      .rejects.toMatchObject({ response: { code: "VIDEO_RETRY_NEEDS_CHANGED_INPUT" } });
+
+    // Now the scene itself is rewritten, the way somebody fixing a moderation refusal actually fixes it.
+    const edited = await deps.projects.findById("video_workflow");
+    const before = String((edited.video_generation_records[0] as Record<string, unknown>).prompt);
+    (edited.scenes[0] as Record<string, unknown>).main_motion = "고개를 들어 떠오르는 빛들을 바라본다";
+    await deps.projects.save(edited);
+
+    // 🔴 An edit *is* changed input — and the stronger kind, since an instruction is appended to the refused
+    // text while an edit replaces it. Demanding an instruction here would refuse the actual fix.
+    await expect(workflow.regenerate("video_workflow", deps.accepted.jobId, [1]))
+      .resolves.toMatchObject({ regeneratedSceneNumbers: [1] });
+
+    const after = await deps.projects.findById("video_workflow");
+    const record = after.video_generation_records.find((item) => (item as Record<string, unknown>).scene_number === 1) as Record<string, unknown>;
+    expect(String(record.prompt)).not.toBe(before);
+    expect(String(record.prompt)).toContain("고개를 들어 떠오르는 빛들을 바라본다");
+  });
+
 });

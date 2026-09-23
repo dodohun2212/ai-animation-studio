@@ -44,3 +44,26 @@ describe("what the provider's failure codes mean", () => {
     }
   });
 });
+
+/**
+ * 🔴 The code that was live on this machine and matched nothing.
+ *
+ * `INPUT_PREPROCESSING.SAFETY.TEXT` starts with `INPUT_PREPROCESSING`, not `SAFETY.INPUT`, so prefix matching
+ * missed it, the caller's default answered `retry`, and the screen told somebody to wait and press again —
+ * three times, against a moderation verdict that waiting cannot change (저승길 scene 6, 2026-09-23).
+ */
+describe("the refusal that reads the text, not the first frame", () => {
+  it("knows the code Runway actually sends, and calls it a change-the-input failure", () => {
+    const failure = providerTaskFailure("INPUT_PREPROCESSING.SAFETY.TEXT");
+    expect(failure?.remedy).toBe("change_input");
+    // Measured, not assumed: three refusals, every one billed_credits 0 and actual_cost_usd 0.
+    expect(failure?.billedOnFailure).toBe(false);
+    // It must send somebody to the words, not to the picture — the two SAFETY.* rows above mean the first frame.
+    expect(failure?.message).toContain("글");
+  });
+
+  /** 🟠 Guessed siblings are sentences stated with confidence about something nobody checked. */
+  it("leaves the INPUT_PREPROCESSING variants nobody has seen unknown", () => {
+    expect(providerTaskFailure("INPUT_PREPROCESSING.SOMETHING_ELSE")).toBeUndefined();
+  });
+});
