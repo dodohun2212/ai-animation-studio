@@ -99,6 +99,8 @@ Lead Agent가 작업 분석(Python 기준 또는 개선 과제)
 
 두 방식을 동시에 쓰지 않는다 — 예를 들어 `dev:backend`만 켜놓고 `4317`로 접속을 시도하면 아무것도 응답하지 않는다.
 
+**에이전트용 worktree는 다른 포트를 쓴다.** 위 `3000`·`5173`·`4317`은 `main`에서 도는 캡틴D의 앱 몫이다. `backend` worktree는 백엔드 `3100`, `frontend` worktree는 백엔드 `3200` + Vite `5273`(`DEV_FRONTEND_PORT`·`DEV_BACKEND_URL`)을 쓴다. 표·절차·`main` 으로 합치는 순서는 `AGENTS.md`의 「Running two agents at once」. Vite 는 `localhost` 에 바인딩되니 `127.0.0.1` 이 아니라 `http://localhost:5273` 으로 연다.
+
 ### `dev:desktop`은 백엔드 번들을 먼저 다시 만든다
 
 Electron은 `dev:backend`처럼 소스를 watch하지 않고 **미리 번들된 `apps/backend/dist-bundle/main.cjs`를 fork**한다. 그 번들을 만드는 것은 `npm run package --workspace @ai-animation-studio/backend` 뿐이라, 예전에는 `dev:desktop`이 **마지막으로 패키징한 날의 백엔드**를 띄웠다.

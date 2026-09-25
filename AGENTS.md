@@ -129,6 +129,61 @@ A worktree does not restrict file access. It identifies the assigned role and
 branch. Avoid editing another role's area unless the task explicitly requires
 it.
 
+### Running two agents at once: one checkout each
+
+One agent alone works in `main` and none of this applies. When two agents run at
+the same time, each gets its own checkout, so one agent's half-written file, test
+run or break-test never lands in the other's tree.
+
+```
+C:\dev\AI-Animation-Studio-Workspace\
+  main\       branch main          the person's own app. Nobody edits files here;
+                                   work only lands by fast-forward (below).
+  frontend\   branch feature/frontend   frontend agent
+  backend\    branch feature/backend    backend / integration agent
+```
+
+- **Each checkout is complete:** its own `node_modules` and its own `dist`. Create one
+  with `git worktree add ..\frontend -b feature/frontend main`, then
+  `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci` (about 20 s with a warm npm cache;
+  the Electron binary is only for the desktop shell, which is not run from here). A
+  copied or linked `node_modules` is wrong: its workspace links would point back
+  into `main`.
+- **Left behind on purpose:** `apps/backend/.env` (real provider keys) and
+  `apps/backend/learning_data/` (real projects) are git-ignored, so a worktree has
+  neither. Its backend has no keys and an empty store, which is the point: an agent
+  testing a screen must not write into the person's projects or reach a paid
+  provider. If sample data is needed, point `LEARNING_DATA_ROOT` at a **copy**, never at
+  `main`'s folder.
+- **Ports.** `main` keeps `3000` (backend) and `5173` (Vite); the desktop shell keeps
+  `4317`. Do not run `dev:desktop` from a worktree. Vite binds `localhost`, so open
+  `http://localhost:<port>`; `127.0.0.1` will not connect.
+
+  | Checkout | Backend | Vite |
+  | --- | --- | --- |
+  | `main` (the person's) | `3000` | `5173` |
+  | `backend` | `PORT=3100 npm run dev:backend` | — |
+  | `frontend` | `PORT=3200 npm run dev:backend` | `DEV_FRONTEND_PORT=5273 DEV_BACKEND_URL=http://127.0.0.1:3200 npm run dev:frontend` |
+
+  (`vite.config.ts` reads those two variables; with neither set it behaves as before.)
+- **The mailbox** `.claude-bridge/` is not versioned and exists only in `main`:
+  `..\main\.claude-bridge\`. A tool that can see only its own folder cannot read it;
+  say so at session start rather than working without it.
+- **Landing work, in order:**
+  1. Commit on your branch (the integration agent commits for the frontend agent with
+     `git -C ..\frontend add <files> && git -C ..\frontend commit`; explicit paths, as above).
+  2. `git rebase main` in your worktree (clean tree required), rebuild `packages/shared`,
+     and rerun the tests. Merge conflicts are most likely in `docs/00_NOW.md` and
+     this file — keep both sides.
+  3. In `main`: `git merge --ff-only feature/<branch>`, then `git push origin main`.
+     `main` moves under the person's watch server, which restarts once; say so.
+  4. The other branch rebases onto `main` before its next task.
+- **Removing one:** `git worktree remove ..\frontend`, then `git branch -d feature/frontend`.
+  Earlier worktrees (`feature/backend`, `feature/frontend`, from 2026-08-21) were still
+  at a 2026-08-23 commit on 2026-09-06 while all the work happened in `main`, and were
+  deleted on 2026-09-21. A worktree that is not rebased onto `main` before each task
+  goes stale the same way.
+
 ## Agent zones
 
 Roles are filled by whichever AI tool the user assigns at session start. This
@@ -154,8 +209,8 @@ may hold both roles, in which case it works in `main` and does everything.
 
 ## Git and shared-tree safety
 
-If two agents edit one working tree (until worktrees are set up), or the user
-edits while you work, in-flight changes are not yours: preserve existing
+If two agents edit one working tree (the two-checkout setup above avoids this), or
+the user edits while you work, in-flight changes are not yours: preserve existing
 uncommitted changes. Every rule below comes from an incident that already
 happened here.
 
