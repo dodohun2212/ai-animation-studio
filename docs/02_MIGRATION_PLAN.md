@@ -4496,3 +4496,10 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
   - 🟠 **`restoreVersion` 의 문서 주석은 「단기 되돌리기가 정확히 이 거래를 한다」고 말한다. 맞았다 — 결함까지 포함해서.** 🔴 이건 단기↔장편 비대칭의 **반대 방향**이다: 한쪽만 고쳐져서 벌어진 게 아니라, **한쪽을 베껴서 둘이 같은 결함을 나눠 가졌다.**
   - 🟢 코드는 따로 줬다(`LONG_EPISODE_VIDEO_RESTORE_IN_PROGRESS`). `LONG_EPISODE_MERGE_BUSY` 의 **문장은 여기서도 맞지만 이름이 틀리다** — 되돌리기가 병합 코드를 보고하면 읽는 사람이 **자기를 막고 있지 않은 렌더**를 찾으러 간다.
   - 🔴 **`restoreVersion` 에는 짝이 하나도 없었다** — 단기 쪽 되돌리기에는 여덟 개가 있다. 그 자체가 또 하나의 비대칭이다. 새 짝은 **되돌리기 자신의 키가 아니라 `FINAL_VIDEO_LOCK_KEY` 를 잡고** 단언하고, 사설 키로 되돌려서 **빨개지는 것과 그 상태에서 잡힌 락을 뚫고 쓰는 것**을 확인했다. 두 번째 케이스는 아무것도 안 잡힌 상태에서 되돌려서, **첫 케이스가 픽스처가 아니라 락에 대한 것**임을 고정한다. 백엔드 1589 → **1591**. `a4b7c7e`.
+
+## 2026-09-26 — 현재 문서 정합성 점검
+
+- `README.md`의 폐기된 frontend/backend 작업 트리 안내를 현재 단일 `main` 작업 방식으로 고쳤다(`git worktree list` 확인).
+- `docs/01_CURRENT_PRODUCT_SPEC.md`의 Instagram 게시 제외·신규 기능 제외 문구를 실제 게시 계약과 마이그레이션 완료 상태에 맞춰 고쳤다. 회차 자막 조절의 「미해결」 표시는 단기·장편 화면과 병합 서비스의 `sceneSubtitleLayout` 전달을 확인해 닫았다.
+- `docs/03_TEAM_WORKFLOW.md`의 역할 지정·작업 트리 설명을 `AGENTS.md` 기준으로 맞추고, `docs/06_DECISIONS.md` D-047의 루트 `learning_data` 현황을 현재 디스크와 맞췄다. `docs/00_NOW.md`의 오래된 필수 읽기 수·우편함 대기 문구도 정정했다.
+- 문서 외 코드 변경 없음. `decision-doc-references.test.ts` 6/6 통과. 유료 Provider 호출 없음.

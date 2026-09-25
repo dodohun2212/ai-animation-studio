@@ -65,12 +65,7 @@ PowerShell 실행 정책 때문에 `npm.ps1`이 차단되면 `npm.cmd`를 사용
 
 ## 작업공간
 
-```text
-AI-Animation-Studio-Workspace/
-├─ main/       통합과 검증
-├─ frontend/   feature/frontend
-└─ backend/    feature/backend
-```
-
-세 폴더에는 저장소 전체가 보이는 것이 정상입니다. 역할은 폴더에 들어 있는
-파일이 아니라 체크아웃된 브랜치와 담당 작업으로 구분합니다.
+기본 작업 위치는 `AI-Animation-Studio-Workspace/main/` 하나입니다. 프론트엔드와
+백엔드·통합 역할은 이 작업 트리에서 번갈아 맡습니다. 2026-09-25에 시험한
+`frontend/`·`backend/` 작업 트리와 브랜치는 다음 날 폐기했습니다. 역할과
+커밋 방식은 `AGENTS.md`를 따릅니다.

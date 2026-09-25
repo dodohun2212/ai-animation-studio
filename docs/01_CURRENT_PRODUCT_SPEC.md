@@ -163,16 +163,17 @@ videos/
   **없는 표는 아무 말도 안 한다.**
 ### 화면 아래 — 서비스 짝
 
-🔴 **화면 짝이 맞는데 서비스 짝이 어긋난 경우가 실제로 나왔다.** 릴은 자막 크기·높이를
-사람이 정할 수 있고 회차는 못 하는데, 두 화면은 똑같이 생겼다 — 차이가 렌더 쪽에만 있어서
-위 표로는 영영 안 걸린다(Cowork Round 696 ⑤). 그래서 **짝이 갈라진 것만** 여기 적는다.
+**화면 짝이 맞는데 서비스 짝이 어긋난 경우가 실제로 나왔다.** 릴만 자막 크기·높이를
+조절할 수 있던 차이는 렌더 쪽에 숨어 있었다(Cowork Round 696 ⑤). 2026-09-11에
+회차 화면과 렌더에도 손잡이를 붙여 닫았다. 위 화면 표만으로는 이 차이를 발견할 수
+없었으므로 서비스 짝도 따로 기록한다.
 
-🟠 **서비스는 화면보다 많고 전부 적으면 표가 안 읽힌다.** 기준은 하나다 — **한쪽에만 있는
-것, 또는 같은 일을 하는데 다르게 하는 것.** 나란히 잘 가는 짝은 여기 없어도 된다.
+🟠 **서비스는 화면보다 많고 전부 적으면 표가 안 읽힌다.** 아래에는 당시 갈라졌던
+병합 짝과 아직 대조하지 않은 주요 짝만 적는다. 없는 행을 「같다」는 뜻으로 읽지 않는다.
 
 | 하는 일 | 단기 | 장편 | 어긋난 곳 |
 |---|---|---|---|
-| 최종 병합 | `video-merge.service.ts` | `episode-video-merge.service.ts` | 🔴 `sceneSubtitleLayout` 을 단기만 넘긴다 — 회차는 조절 손잡이가 없다 (2026-09-09, 미해결) |
+| 최종 병합 | `video-merge.service.ts` | `episode-video-merge.service.ts` | ✅ 2026-09-11 회차도 `sceneSubtitleLayout`을 화면에서 받고 렌더에 전달함. 그 외 차이는 대조 안 함 |
 | 장면 이미지 | `images/local-image-generation.service.ts` | `episode-images.service.ts` | 대조 안 함 |
 | 내레이션 | `narration/local-narration-generation.service.ts` | `episode-narration.service.ts` | 대조 안 함 |
 | 대본 | `story/story-generation.service.ts` | `episode-scripts.service.ts` | 다른 단계다(위 「합치면 안 됨」 참조) |
@@ -205,10 +206,9 @@ videos/
 
 - 회원가입과 다중 사용자
 - 서버 배포
-- Instagram 실제 업로드
 - PyTorch와 LoRA
 - 승인 없는 자동 유료 생성
-- 새로운 기능 추가
 
-기존 Python 기능 이전이 완료되고 통합 검증을 통과한 후 제외 범위를 다시
-검토한다.
+Instagram 게시는 계정 선택과 명시적 확인을 거쳐 구현되어 있다
+(`docs/06_DECISIONS.md` D-015). 현재 기능 개선의 우선순위와 열린 결정은
+`docs/00_NOW.md`를 따른다.
