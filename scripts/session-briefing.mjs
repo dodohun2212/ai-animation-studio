@@ -126,6 +126,11 @@ const lines = [
   "프로젝트: 주제 → 대본 → 이미지 → 영상(Runway) → FFmpeg 병합 → 릴스 MP4 를 만드는 로컬 도구(NestJS · React · Electron).",
   "사용자는 캡틴D 한 명이고, 유료 호출과 게시 버튼은 캡틴D 만 누른다. 마이그레이션은 끝났고 지금은 기능 개선·다듬기 단계.",
   "",
+  "당신의 자리 (도구에 따라 — 브리핑 첫 줄에 자기 자리를 말하라):",
+  "  Codex        → 백엔드·통합 (옛 CLI 자리): apps/backend · packages/shared · apps/desktop, 전체 검증·커밋·push. 우편함은 from-cowork 를 읽고 from-cli 에 쓴다",
+  "  Cowork       → 프론트: apps/frontend · docs/05 (셸이 없다 — 검증·커밋은 백엔드·통합 자리에 넘긴다). from-cowork 에 쓰고 from-cli 를 읽는다",
+  "  Claude Code  → Codex 를 안 쓸 때 백엔드·통합. 캡틴D 가 다른 자리를 말하면 그게 우선 (상세: AGENTS.md 「Seats」)",
+  "",
   "어디에 무엇이 적혀 있나:",
   "  docs/00_NOW.md            지금 상태·다음 할 일·결정 대기 — 여기가 정답 (항목을 끝내면 이 파일을 고치고 멈춘다)",
   "  AGENTS.md                 규칙 (유료 호출 안전 · git 안전 · 역할 · 첫 세션 체크리스트)",
@@ -151,7 +156,7 @@ const lines = [
   "docs/00_NOW.md 요약 (머리말만 — 고른 항목은 원문을 읽는다; 옛 ⬜·🟡 는 낡았을 수 있다):",
   ...nowHeadlines(),
   "",
-  "→ 이 브리핑을 캡틴D 에게 한국어로 10줄 안에 전하고, 어떤 항목부터 할지 물어라. 고르기 전에는 작업을 시작하지 말고 큰 문서를 읽지 마라.",
+  "→ 이 브리핑을 캡틴D 에게 한국어로 10줄 안에 전하고, 어떤 항목부터 할지 물어라. 자기 자리에 필요한 문서(AGENTS.md 「Read first」)를 읽고, 캡틴D 가 고르기 전에는 작업을 시작하지 마라.",
 ];
 
 console.log(lines.join("\n"));

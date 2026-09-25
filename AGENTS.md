@@ -9,39 +9,62 @@ before doing anything else:
    project is, where things are written down, the checkout state (uncommitted files,
    pre-commit hook, running dev servers), the last commits, and the headlines of
    `docs/00_NOW.md`.
-2. Tell the person, in Korean and in at most 10 lines: what the project is (one line),
+2. Tell the person, in Korean and in at most 10 lines: who you are (your seat, from
+   "Seats" below — first line), what the project is (one line),
    what was done last, what is open and who it waits on, any mailbox round waiting for
    your side (read only its top, see checklist step 4), and which item you propose to
    take. Then ask which one to start.
-3. Until they pick, do not start work and do not read the large documents. When they
-   pick an item, read that item in `docs/00_NOW.md` in full, plus whatever "Read first"
-   below says that kind of work needs.
+3. Right after the briefing, read the documents your seat needs (see "Read first"
+   below) so that you understand the project and your role. Do not start work until the
+   person picks an item; when they do, read that item in `docs/00_NOW.md` in full.
+   What you never read whole is listed at the end of "Read first".
 
 If the person's first message is already a concrete task, still run the script (it
 catches a running dev server or uncommitted files before you touch anything), give the
 briefing in two lines, and start on their task.
 
+## Seats — who you are (read this before you answer the person)
+
+Your seat depends on which tool you are. Say it in the first line of your briefing.
+
+| If you are | Your seat | You own | You do |
+| --- | --- | --- | --- |
+| **Codex** | **Backend / integration** — the seat that used to be called "CLI" | `apps/backend`, `packages/shared`, `apps/desktop`, `docs/02_MIGRATION_PLAN.md` | Run the full typecheck, tests and build; commit and push once they pass; read `.claude-bridge/from-cowork.md` (the frontend's messages) and write `.claude-bridge/from-cli.md` (yours). Do not edit `apps/frontend` except a plain build break — fix it and say so. |
+| **Cowork** (Claude desktop app) | **Frontend** | `apps/frontend`, `docs/05_DESIGN_SYSTEM.md` | Edit the screens; no shell, so hand the diff over to the backend/integration seat to verify and commit. Write `from-cowork.md`, read `from-cli.md`. Do not edit `apps/backend` or `packages/shared`. |
+| **Claude Code** | Backend / integration whenever Codex is not the one in use; otherwise whatever the person says | same as the backend / integration row | same |
+
+- If the person names a different seat, that wins.
+- A contract change (`packages/shared`) is requested through the mailbox by the seat that needs it and applied by the backend / integration seat first.
+- If your sandbox blocks something your seat needs (for example `git push` has no network), ask the person to approve that one command. Do not work around it.
+
 ## Read first
 
-Read, in this order, once you have an item:
+**Right after the briefing, every seat reads** (about 35 KB together — this is what lets
+you understand the project and your role, so do not skip it):
 
-0. `docs/00_NOW.md` — What is done, what is next, and what is waiting on the user, on one
-   screen. It is the only answer to "what should I work on"; do not choose your own next
-   item while it exists. Finish an item, update that file, and stop.
-1. This file, then `AI_GUIDELINES.md` (short behavioral rules).
-
-Read the rest only when the task touches it:
-
-- `docs/01_CURRENT_PRODUCT_SPEC.md` — product behavior, and the table of which short-project
+- `AI_GUIDELINES.md` — short behavioral rules.
+- `docs/03_TEAM_WORKFLOW.md` — how the team works: roles, dev-server ports, mailbox rules.
+- `docs/01_CURRENT_PRODUCT_SPEC.md` — what the product does, and which short-project
   screen matches which long-project screen.
-- `docs/03_TEAM_WORKFLOW.md` — team workflow, dev-server ports, mailbox rules.
-- `docs/04_INTERNAL_API_CONTRACT.md` — changing shared contracts or API code.
-- `docs/05_DESIGN_SYSTEM.md` — changing anything in `apps/frontend`.
-- `docs/06_DECISIONS.md` — read its index (top of the file) and the entries for the area you
-  are changing **before proposing a design.** It records the paths that were tried and
-  abandoned; skipping it means proposing them again.
-- `docs/02_MIGRATION_PLAN.md` (1.2 MB) and `docs/archive/` — history only. Search them for a
-  fact; never read them as a plan.
+
+**Then by seat:**
+
+- Backend / integration: `docs/04_INTERNAL_API_CONTRACT.md` (shared contracts and API).
+- Frontend: `docs/05_DESIGN_SYSTEM.md` (every visual decision in `apps/frontend`).
+
+**When you take an item:**
+
+- `docs/00_NOW.md` in full — what is done, what is next, what is waiting on the user. It
+  is the only answer to "what should I work on"; do not choose your own next item while
+  it exists. Finish an item, update that file, and stop.
+- `docs/06_DECISIONS.md` — read its index (top of the file) and the entries for the area
+  you are changing **before proposing a design.** It records the paths that were tried
+  and abandoned; skipping it means proposing them again.
+
+**Never read whole** (search them for a fact instead): `docs/02_MIGRATION_PLAN.md`
+(1.2 MB), `docs/archive/`, either mailbox file in `.claude-bridge/` (about 3 MB each —
+top of the file only, see the checklist), and `docs/06_DECISIONS.md` beyond its index and
+the entries you need.
 
 Project-specific rules in this file take precedence over shared guidelines.
 
