@@ -44,6 +44,13 @@ const ALLOWED = new Map<string, string>([
   // (`lastFrameSceneNumber` stood here for one round. `VideoPromptPreviewScreen` names the picture each clip
   //  ends on now, so the third test below asked for this line back — the device working as built, twice.)
   ["billedCredits", "gap: the video failure cards do not name the provider's own charge yet (CLI Round 781)"],
+  // A gap, not a decision: a refused paid image run now carries the provider's own sentence and request id
+  // (`9c71dfe`, redacted and capped at 400 characters server-side), and the stopped run writes that sentence into
+  // `project.errors`, which `ProjectDetail` already renders — so the reason survives a reload. What no screen does
+  // yet is show it beside the failure sentence as a quotation, which is what the contract comment asks for. The
+  // test below turns red the day a screen reads either field, and that is when these two lines go.
+  ["providerMessage", "gap: the image failure sentence does not quote what the provider said yet (9c71dfe)"],
+  ["providerRequestId", "gap: the image failure sentence does not show the provider's request id yet (9c71dfe)"],
   // (`minimumChargeUsd` · `perGenerationUsd` stood here as a named gap for exactly one round. `videoModelPriceLine`
   //  reads both now — 「+ 장면당 $0.01」 and 「짧아도 최소 $0.64」 — so the third test below demanded these two
   //  lines back. That is the device working as built: an exception that outlives its reason fails instead of
