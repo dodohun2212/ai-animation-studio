@@ -2,20 +2,26 @@
 
 ## Read first
 
-Before changing code, read:
+Always read, in this order:
 
 0. `docs/00_NOW.md` — **read this one first, always.** What is done, what is next, and
    what is waiting on the user, on one screen. It is the only answer to "what should I
    work on"; do not choose your own next item while it exists. Finish an item, update
-   that file, and stop. `docs/02_MIGRATION_PLAN.md` below is the history archive it was
-   extracted from — 1.2 MB, not readable as a plan, and not to be used as one.
-1. `AI_GUIDELINES.md`
-2. `docs/01_CURRENT_PRODUCT_SPEC.md`
-3. `docs/02_MIGRATION_PLAN.md` — history only; see 0 above
-4. `docs/03_TEAM_WORKFLOW.md`
-5. `docs/06_DECISIONS.md` — why the code is shaped this way, especially which paths were tried and abandoned
-6. `docs/04_INTERNAL_API_CONTRACT.md` when changing shared or API code
-7. `docs/05_DESIGN_SYSTEM.md` when changing anything in `apps/frontend`
+   that file, and stop.
+1. This file, then `AI_GUIDELINES.md` (short behavioral rules).
+
+Read the rest only when the task touches it:
+
+- `docs/01_CURRENT_PRODUCT_SPEC.md` — product behavior, and the table of which short-project
+  screen matches which long-project screen.
+- `docs/03_TEAM_WORKFLOW.md` — team workflow, dev-server ports, mailbox rules.
+- `docs/04_INTERNAL_API_CONTRACT.md` — changing shared contracts or API code.
+- `docs/05_DESIGN_SYSTEM.md` — changing anything in `apps/frontend`.
+- `docs/06_DECISIONS.md` — read its index (top of the file) and the entries for the area you
+  are changing **before proposing a design.** It records the paths that were tried and
+  abandoned; skipping it means proposing them again.
+- `docs/02_MIGRATION_PLAN.md` (1.2 MB) and `docs/archive/` — history only. Search them for a
+  fact; never read them as a plan.
 
 Project-specific rules in this file take precedence over shared guidelines.
 

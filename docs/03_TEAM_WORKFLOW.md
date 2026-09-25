@@ -154,20 +154,11 @@ npm run dev:frontend  =  vite                 ← HMR
 
 새 세션은 이전 대화를 기억하지 못한다. 시작 시 다음을 수행한다.
 
-```text
-AGENTS.md, AI_GUIDELINES.md,
-docs/01_CURRENT_PRODUCT_SPEC.md,
-docs/02_MIGRATION_PLAN.md,
-docs/03_TEAM_WORKFLOW.md,
-docs/06_DECISIONS.md를 읽고,
-공유/API 변경이면 docs/04_INTERNAL_API_CONTRACT.md도 읽는다.
-협업 우편함이 있으면 .claude-bridge/from-cli.md 와 from-cowork.md 의
-최근 라운드를 읽는다. 두 파일 모두 맨 위에 새 라운드를 얹는다.
-현재 worktree와 Git 상태를 확인하고,
-이번 세션에 지정된 역할과 worktree 범위 안에서 작업한다.
-```
+읽을 문서의 목록과 순서는 `AGENTS.md`의 「Read first」와 「First session checklist」가 정한다. 같은 목록을 두 곳에 두면 어긋나서 여기서는 적지 않는다(예전에는 이 자리가 1.2MB짜리 `02_MIGRATION_PLAN.md`까지 읽으라고 해서 `AGENTS.md`와 달랐다).
 
-`docs/06_DECISIONS.md`는 코드가 지금의 모양인 이유 — 특히 **근거를 대고 접은 길** — 을 담는다. 이걸 안 읽고 시작하면 이미 폐기된 접근을 다시 제안하게 된다.
+여기 남는 것은 우편함 규칙이다: 협업 우편함이 있으면 `.claude-bridge/from-cli.md` 와 `from-cowork.md` 의 최근 라운드를 읽는다. 두 파일 모두 맨 위에 새 라운드를 얹는다.
+
+`docs/06_DECISIONS.md`는 코드가 지금의 모양인 이유 — 특히 **근거를 대고 접은 길** — 을 담는다. 설계를 제안하기 전에 그 색인과 관련 항목을 읽지 않으면 이미 폐기된 접근을 다시 제안하게 된다.
 
 ### 우편함 라운드 번호와 "맨 위"
 
