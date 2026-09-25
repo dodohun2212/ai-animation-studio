@@ -76,6 +76,25 @@ function nowHeadlines() {
   return out;
 }
 
+// The mailbox files are 3 MB each and newest-first. Only the newest two round headings of each are shown, so an
+// agent knows whether a hand-off is waiting without reading a byte of the body.
+function mailboxHeads() {
+  const out = [];
+  for (const name of ["from-cowork.md", "from-cli.md"]) {
+    let text;
+    try {
+      text = readFileSync(path.join(root, ".claude-bridge", name), "utf8");
+    } catch {
+      out.push(`  ${name}: (없음)`);
+      continue;
+    }
+    const heads = text.split(/\r?\n/).filter((line) => line.startsWith("## ")).slice(0, 2);
+    out.push(`  ${name} (${(Buffer.byteLength(text) / 1024 / 1024).toFixed(1)}MB, 최신 순):`);
+    for (const head of heads) out.push(`    ${oneLine(head.replace(/^## /, ""), 130)}`);
+  }
+  return out;
+}
+
 const branch = git("branch", "--show-current") || "(detached)";
 const changed = git("status", "--short").split("\n").filter(Boolean);
 const hooksPath = git("config", "core.hooksPath");
@@ -105,6 +124,9 @@ const lines = [
   servers.length
     ? `  !! 개발 서버가 돌고 있다 (${servers.join(", ")}) — apps/*/src 를 저장하면 캡틴D 의 서버가 재시작한다. 먼저 물어라`
     : "  개발 서버 없음",
+  "",
+  "우편함 (.claude-bridge/, git 밖 — 다른 AI 와의 인수인계. 읽지 마라: 캡틴D 가 인수인계가 왔다고 하거나 항목이 요구할 때만, 파일 맨 위 몇십 줄만):",
+  ...mailboxHeads(),
   "",
   "최근 커밋:",
   ...git("log", "--date=short", "--format=  %h %ad %s", "-8").split("\n").map((line) => oneLine(line, 150)),

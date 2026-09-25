@@ -182,8 +182,8 @@ may hold both roles, in which case it works in `main` and does everything.
   = frontend agent, `from-cli.md` = integration agent — legacy file names).
   It is not versioned, so a round number is only a pointer; the reason itself
   belongs in a code comment or `docs/06_DECISIONS.md`. Each side reads the
-  other's file and writes only its own. Read down to the last round you handled,
-  not just the top one.
+  other's file and writes only its own. Read from the top down to the last round
+  you handled, in small pieces (`head -c`), never the whole file.
 - **Who commits.** An agent that cannot run git — no shell (a chat-style editor), or a
   sandbox that blocks `.git` — hands its diff and a proposed commit message to one that
   can. That agent re-runs the checks and commits with explicit paths; it does not commit
@@ -251,13 +251,16 @@ happened here.
 
 ## First session checklist
 
-1. Read `docs/00_NOW.md` and take its top unfinished item, unless the user named
-   another.
+1. Run the briefing ("Session start" above). Once the person picks an item, or names
+   one, read that item in `docs/00_NOW.md` in full. Do not choose an item yourself.
 2. Confirm your role and zone with the user. Run `git status`; note uncommitted
    changes that are not yours.
 3. Read the rules in this file: paid-provider safety, git and shared-tree safety.
-4. Read the latest rounds of `.claude-bridge/from-cowork.md` and
-   `.claude-bridge/from-cli.md`, if the folder exists.
+4. Do **not** read the mailbox at session start: `.claude-bridge/from-cowork.md` and
+   `from-cli.md` are about 3 MB each. The briefing already lists the newest two round
+   headings of each. Read a round only when the person says a hand-off is waiting or
+   the item needs it, and then only from the top of the file in small pieces
+   (`head -c 8000`), never the whole file.
 5. Confirm you have the tools your role needs (table above). If not, say so
    before starting.
 6. Check for a running dev server before saving under `apps/*/src`.
