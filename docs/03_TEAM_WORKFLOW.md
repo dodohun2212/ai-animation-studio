@@ -29,7 +29,7 @@
 
 - 역할과 worktree는 **세션 시작 지시문**에서 정한다.
 - 단독 실행 시 현재 Lead Agent가 Main, Frontend, Backend 역할을 함께 맡아 `main`에서 작업할 수 있다.
-- 병렬 실행 시 역할별 작업을 `main`, `feature/frontend`, `feature/backend`에 나누되, 역할과 worktree를 세션 시작 시 명시한다.
+- 기본은 한 번에 에이전트 하나가 `main`에서 일하는 것이다(`AGENTS.md`의 「One agent at a time, in `main`」). 두 에이전트를 동시에 돌리는 것은 2026-09-25 에 worktree 로 시도했다가 다음 날 접었다 — 이유는 그 절에 있다.
 - 단독/병렬 어느 경우에도 기능 하나를 완료하면 필요한 검증과 `docs/02_MIGRATION_PLAN.md` 갱신을 마친다. 검증을 통과한 기능·수정은 곧바로 커밋하고, 사용자가 달리 말하지 않는 한 `origin`에 푸시한다(`AGENTS.md`의 Completion rules). 커밋·푸시는 통합 담당 에이전트만 한다. 미커밋 변경은 소유자·범위·검증 상태를 기록하고 보존하며, 다른 작업의 변경과 임의로 묶지 않는다. 다음 기능은 사용자에게 승인된 범위 안에서만 진행한다.
 - 특정 모델·도구·에이전트 이름을 이 문서에 추가하지 않는다.
 
@@ -50,7 +50,6 @@ Lead Agent가 작업 분석(Python 기준 또는 개선 과제)
 ## Git 규칙
 
 - `main`: 통합과 전체 검증의 기준 worktree
-- `feature/frontend`, `feature/backend`: 병렬 실행 시 선택적으로 사용
 - 작업 시작 전 현재 worktree와 Git 상태를 확인한다.
 - 다른 에이전트의 변경을 덮어쓰지 않는다.
 - 커밋 전에 관련 테스트를 실행한다.
@@ -99,7 +98,7 @@ Lead Agent가 작업 분석(Python 기준 또는 개선 과제)
 
 두 방식을 동시에 쓰지 않는다 — 예를 들어 `dev:backend`만 켜놓고 `4317`로 접속을 시도하면 아무것도 응답하지 않는다.
 
-**에이전트용 worktree는 다른 포트를 쓴다.** 위 `3000`·`5173`·`4317`은 `main`에서 도는 캡틴D의 앱 몫이다. `backend` worktree는 백엔드 `3100`, `frontend` worktree는 백엔드 `3200` + Vite `5273`(`DEV_FRONTEND_PORT`·`DEV_BACKEND_URL`)을 쓴다. 표·절차·`main` 으로 합치는 순서는 `AGENTS.md`의 「Running two agents at once」. Vite 는 `localhost` 에 바인딩되니 `127.0.0.1` 이 아니라 `http://localhost:5273` 으로 연다.
+`vite.config.ts` 는 `DEV_FRONTEND_PORT`·`DEV_BACKEND_URL` 환경 변수로 Vite 포트와 백엔드 주소를 옮길 수 있다(둘 다 없으면 위 표 그대로). 두 번째 checkout 을 캡틴D 의 앱 옆에 띄워야 할 때만 쓴다. Vite 는 `localhost` 에 바인딩되니 `127.0.0.1` 이 아니라 `http://localhost:<포트>` 로 연다.
 
 ### `dev:desktop`은 백엔드 번들을 먼저 다시 만든다
 

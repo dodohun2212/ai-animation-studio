@@ -119,82 +119,31 @@ Applies to migration work and post-migration improvement work alike.
 - Integrate and test each feature before starting the next large feature.
 - Do not create speculative abstractions, endpoints, or database tables.
 
-## Worktree roles
+## One agent at a time, in `main`
 
-- `main`: planning, shared contracts, integration, and full verification
-- `feature/frontend`: React UI and user interaction
-- `feature/backend`: workflow, persistence, adapters, media orchestration
+The default is one agent working in the `main` checkout, committing and pushing
+straight to `main` once its checks pass: no branches, no second checkout, no merge
+step. The frontend and backend roles below are hats one agent wears, or a hand-off
+between two agents taking turns — not two agents editing at once.
 
-A worktree does not restrict file access. It identifies the assigned role and
-branch. Avoid editing another role's area unless the task explicitly requires
-it.
+Two agents editing at the same time was tried on 2026-09-25 (one git worktree
+each) and dropped the next day, because it created more problems than the
+collisions it prevented:
 
-### Running two agents at once: one checkout each
+- A worktree's git data lives in `main\.git`, so a sandboxed agent (Codex's default
+  `workspace-write`) cannot commit or create branches there. Verified: `git commit`
+  fails with `Unable to create '...main/.git/worktrees/backend/index.lock':
+  Permission denied`.
+- Work on a branch reaches the person's app, which runs from `main`, only after a
+  merge, so somebody has to do the merge and the pushes.
+- Each checkout needs its own `node_modules` (`npm ci`), its own `dist` and its own
+  ports (`vite.config.ts` still reads `DEV_FRONTEND_PORT` and `DEV_BACKEND_URL` for
+  this), and it has neither the real `.env` keys nor `learning_data`.
+- The 2026-08 worktrees sat at a 2026-08-23 commit for weeks and were deleted on
+  2026-09-21: nobody kept them in step with `main`.
 
-One agent alone works in `main` and none of this applies. When two agents run at
-the same time, each gets its own checkout, so one agent's half-written file, test
-run or break-test never lands in the other's tree.
-
-```
-C:\dev\AI-Animation-Studio-Workspace\
-  main\       branch main          the person's own app. Nobody edits files here;
-                                   work only lands by fast-forward (below).
-  frontend\   branch feature/frontend   frontend agent
-  backend\    branch feature/backend    backend / integration agent
-```
-
-- **Each checkout is complete:** its own `node_modules` and its own `dist`. Create one
-  with `git worktree add ..\frontend -b feature/frontend main`, then
-  `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci` (about 20 s with a warm npm cache;
-  the Electron binary is only for the desktop shell, which is not run from here). A
-  copied or linked `node_modules` is wrong: its workspace links would point back
-  into `main`.
-- **Left behind on purpose:** `apps/backend/.env` (real provider keys) and
-  `apps/backend/learning_data/` (real projects) are git-ignored, so a worktree has
-  neither. Its backend has no keys and an empty store, which is the point: an agent
-  testing a screen must not write into the person's projects or reach a paid
-  provider. If sample data is needed, point `LEARNING_DATA_ROOT` at a **copy**, never at
-  `main`'s folder.
-- **Ports.** `main` keeps `3000` (backend) and `5173` (Vite); the desktop shell keeps
-  `4317`. Do not run `dev:desktop` from a worktree. Vite binds `localhost`, so open
-  `http://localhost:<port>`; `127.0.0.1` will not connect.
-
-  | Checkout | Backend | Vite |
-  | --- | --- | --- |
-  | `main` (the person's) | `3000` | `5173` |
-  | `backend` | `PORT=3100 npm run dev:backend` | — |
-  | `frontend` | `PORT=3200 npm run dev:backend` | `DEV_FRONTEND_PORT=5273 DEV_BACKEND_URL=http://127.0.0.1:3200 npm run dev:frontend` |
-
-  (`vite.config.ts` reads those two variables; with neither set it behaves as before.)
-- **The mailbox** `.claude-bridge/` is not versioned and exists only in `main`:
-  `..\main\.claude-bridge\`. A tool that can see only its own folder cannot read it;
-  say so at session start rather than working without it.
-- **A sandboxed agent cannot commit in a worktree.** Codex's default `workspace-write`
-  sandbox can read everywhere but write only inside its own checkout, and a worktree's
-  git data lives in `main\.git`. Verified 2026-09-25: `git commit` fails with
-  `Unable to create '...main/.git/worktrees/backend/index.lock': Permission denied`, and
-  `git switch -c` with `cannot lock ref`. Such an agent stops with its diff uncommitted and
-  its report; whoever is unsandboxed commits it (explicit paths, after rerunning the
-  checks). Widening the sandbox to `main\.git` would let it rewrite `main`'s refs, so it is
-  not the default.
-- **An agent's report is not the state of the tree.** In the same trial a sandboxed
-  agent reported `git switch -c` as succeeded; its own log said `exited 1` and no branch
-  existed. Before landing anything, check `git status`, the diff, and rerun the tests
-  yourself.
-- **Landing work, in order:**
-  1. Commit on your branch (the integration agent commits for the frontend agent with
-     `git -C ..\frontend add <files> && git -C ..\frontend commit`; explicit paths, as above).
-  2. `git rebase main` in your worktree (clean tree required), rebuild `packages/shared`,
-     and rerun the tests. Merge conflicts are most likely in `docs/00_NOW.md` and
-     this file — keep both sides.
-  3. In `main`: `git merge --ff-only feature/<branch>`, then `git push origin main`.
-     `main` moves under the person's watch server, which restarts once; say so.
-  4. The other branch rebases onto `main` before its next task.
-- **Removing one:** `git worktree remove ..\frontend`, then `git branch -d feature/frontend`.
-  Earlier worktrees (`feature/backend`, `feature/frontend`, from 2026-08-21) were still
-  at a 2026-08-23 commit on 2026-09-06 while all the work happened in `main`, and were
-  deleted on 2026-09-21. A worktree that is not rebased onto `main` before each task
-  goes stale the same way.
+If two agents must run at once again, decide first who commits and who merges; do
+not build the checkouts first.
 
 ## Agent zones
 
@@ -205,7 +154,7 @@ may hold both roles, in which case it works in `main` and does everything.
 | Role | Owns | Must not edit | Needs |
 | --- | --- | --- | --- |
 | Frontend agent | `apps/frontend`, `docs/05_DESIGN_SYSTEM.md` | `apps/backend`, `packages/shared` | File editing. Ideally a live browser (screenshot, DOM, console, network) and a shell for vitest. Without a shell, hand verification to the integration agent. |
-| Backend / integration agent | `apps/backend`, `packages/shared`, `apps/desktop`, `docs/02_MIGRATION_PLAN.md` | `apps/frontend` (except plain build breakage — a typo or missing import: fix it and say so) | Shell, git, Node. Runs full typecheck/test/build. **Sole committer and pusher.** |
+| Backend / integration agent | `apps/backend`, `packages/shared`, `apps/desktop`, `docs/02_MIGRATION_PLAN.md` | `apps/frontend` (except plain build breakage — a typo or missing import: fix it and say so) | Shell, git, Node. Runs full typecheck/test/build. Commits and pushes once the checks pass. |
 
 - **Contract changes (`packages/shared`):** the side that needs one writes the
   request (field, type, reason); the integration agent applies it and reports;
@@ -216,13 +165,16 @@ may hold both roles, in which case it works in `main` and does everything.
   belongs in a code comment or `docs/06_DECISIONS.md`. Each side reads the
   other's file and writes only its own. Read down to the last round you handled,
   not just the top one.
+- **Who commits.** An agent that cannot run git — no shell (a chat-style editor), or a
+  sandbox that blocks `.git` — hands its diff and a proposed commit message to one that
+  can. That agent re-runs the checks and commits with explicit paths; it does not commit
+  on trust.
 - Do not undo the other zone's code decisions. Report the problem instead.
 - A feature is done only when both halves pass verification.
 
 ## Git and shared-tree safety
 
-If two agents edit one working tree (the two-checkout setup above avoids this), or
-the user edits while you work, in-flight changes are not yours: preserve existing
+If two agents edit one working tree, or the user edits while you work, in-flight changes are not yours: preserve existing
 uncommitted changes. Every rule below comes from an incident that already
 happened here.
 
@@ -266,13 +218,17 @@ happened here.
   requires. Stop only after updating `docs/00_NOW.md`.
 - If told to "loop" or poll, that means re-reading the `.claude-bridge/` mailbox
   for new rounds, not only scanning code.
+- **An agent's report is not the state of the tree.** In the 2026-09-25 Codex trial a
+  sandboxed agent reported `git switch -c` as succeeded; its own log said `exited 1`
+  and no branch existed. Before you commit or report another agent's work, check
+  `git status` and the diff, and rerun the tests yourself.
 
 ## First session checklist
 
 1. Read `docs/00_NOW.md` and take its top unfinished item, unless the user named
    another.
-2. Confirm your role, zone and worktree with the user. Run `git status` and
-   `git worktree list`; note uncommitted changes that are not yours.
+2. Confirm your role and zone with the user. Run `git status`; note uncommitted
+   changes that are not yours.
 3. Read the rules in this file: paid-provider safety, git and shared-tree safety.
 4. Read the latest rounds of `.claude-bridge/from-cowork.md` and
    `.claude-bridge/from-cli.md`, if the folder exists.
@@ -293,7 +249,7 @@ Before reporting a task complete:
   commit; never leave the change uncommitted.
 - Never force-push or `git reset --hard`. A bad commit is fixed forward with a
   new commit.
-- Only the integration agent (see "Agent zones") commits and pushes. Other
-  agents write a proposed commit message and hand the change over.
+- The agent that ran the checks commits and pushes. One that cannot run git hands its
+  change over (see "Who commits" under "Agent zones").
 - After verification, update `docs/00_NOW.md` and stop for the user; do not pick
   the next item yourself.
