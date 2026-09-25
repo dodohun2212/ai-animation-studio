@@ -41,7 +41,7 @@
 |---|---|---|
 | 1 | 규칙을 `AGENTS.md` 로 일원화, `CLAUDE.md` 는 `@AGENTS.md` 포인터 | ✅ `a83e408`. 🟠 커밋 규칙이 문서상 「요청할 때만」→「검증 통과 즉시 커밋·push」로 바뀌었다(실제 운영에 문서를 맞춤). `.claude-bridge/README.md` 도 역할 이름으로 고쳤으나 git 밖이라 커밋 안 됨 |
 | 3 | 문서 다이어트 — 이 파일 줄이기 · 필수 읽기 줄이기 · `06` 색인 | ✅ 이 파일 231KB→12KB, 옛 전문은 `docs/archive/` 에 그대로(`28e2a41`) · 필수 읽기 8개→2개(`4289ae3`) · `06` 제목 색인(`bd74edf`). 검사: 가드 테스트 `decision-doc-references` 6/6 통과, 보관본 본문이 옛 파일과 바이트 동일. 🟠 **못 한 것:** 옛 ⬜·🟡 전수 재검증 — 「옛 파일 기준」 표시로 남겼다 |
-| 2 | `git worktree` 분리(프론트/백엔드 각자) · 서버 포트 · `packages/shared` 빌드 절차 | ✅ `..\frontend`(`feature/frontend`)·`..\backend`(`feature/backend`) 두 checkout 을 만들고 각자 `npm ci`(18초). 포트: 백엔드 wt `3100` · 프론트 wt 백엔드 `3200` + Vite `5273`, `main` 의 `3000`/`5173` 과 안 겹침(`DEV_FRONTEND_PORT`·`DEV_BACKEND_URL`, 프록시 통해 `/health` 응답 확인 후 서버 종료). 절차는 `AGENTS.md` 「Running two agents at once」. **검증:** 백엔드 wt 전체 1970 통과 · 프론트 wt 타입체크 통과, 프론트 1865/1866(실패 1개는 아래 §4, `main` 에서도 동일 실패) · 프록시 가드 두 개 통과. 🟠 **못 한 것:** 두 AI 를 실제로 동시에 돌려 본 적 없음 · **Cowork 를 `..\frontend` 로 옮기는 것과 우편함 접근**은 캡틴D 확인 필요(아래 §3) |
+| 2 | `git worktree` 분리(프론트/백엔드 각자) · 서버 포트 · `packages/shared` 빌드 절차 | ✅ `..\frontend`(`feature/frontend`)·`..\backend`(`feature/backend`) 두 checkout 을 만들고 각자 `npm ci`(18초). 포트: 백엔드 wt `3100` · 프론트 wt 백엔드 `3200` + Vite `5273`, `main` 의 `3000`/`5173` 과 안 겹침(`DEV_FRONTEND_PORT`·`DEV_BACKEND_URL`, 프록시 통해 `/health` 응답 확인 후 서버 종료). 절차는 `AGENTS.md` 「Running two agents at once」. **검증:** 백엔드 wt 전체 1970 통과 · 프론트 wt 타입체크 통과, 프론트 1865/1866(실패 1개는 원래 `main` 에도 있던 것 — 이후 `0bbc55e` 로 닫혀 1866/1866, 아래 §4) · 프록시 가드 두 개 통과. 🟠 **못 한 것:** 두 AI 를 실제로 동시에 돌려 본 적 없음 · **Cowork 를 `..\frontend` 로 옮기는 것과 우편함 접근**은 캡틴D 확인 필요(아래 §3) |
 | 4 | 새 AI 를 작은 백엔드 항목 하나에 시험 투입(유료 호출 금지·정직한 완료 보고·첫 시도 초록) · 프론트는 라이브 브라우저 연결 확인 | ⬜ |
 | 나중 | 우편함을 git 안으로(또는 라운드 ID 를 `날짜-시각-작성자` 로) · 단기·장편 중복 화면 공통 부품화 · 루트의 `*.pem` 을 `certs/` 로 | ⬜ |
 
@@ -70,10 +70,13 @@
 
 ## 4. 열린 개발 항목 (옛 파일 기준)
 
-- 🔴 **`main` 의 프론트 테스트가 1개 빨갛다 (2026-09-25 실측, 원래 있던 것).** `contract-optional-fields.test.ts` 「has no optional field that
-  no screen reads」 — `providerMessage`·`providerRequestId` 를 화면이 아무도 안 읽는다. `9c71dfe`(09-23, 거절된 유료 이미지 실행이
-  제공자가 한 말을 적음)가 계약에 넣은 필드의 **화면 절반이 없다**. worktree 와 무관하다(`main` 에서도 똑같이 실패). **끝났다는 뜻:**
-  화면이 두 필드를 읽어 보여 주거나, 화면에 안 쓸 것이면 계약에서 뺀다 — 가드가 초록이다. 프론트 몫.
+- **거절된 유료 이미지 실행의 「제공자가 한 말」을 화면이 인용으로 보여 주기** (프론트 · 2026-09-25 정리). `9c71dfe`(09-23)가 계약에
+  `providerMessage`·`providerRequestId` 를 넣었고 서버는 이미 실행이 멈출 때 둘을 `project.errors` 에 적는다(`imageRunFailureRecord`
+  — `ProjectDetail` 이 그 목록을 그려서 새로고침 뒤에도 남는다, 코드로 확인). **없는 것:** 실패 문장 **옆에** 인용으로 보여 주는 화면 —
+  계약 주석이 요구한 모양(우리 문장 「옆에」, 「대신」이 아니게, 파싱 안 함). **끝났다는 뜻:** 이미지 실패 카드가 제공자 사유를 인용으로,
+  요청 번호를 보조로 보여 주고, 사유가 없으면 아무것도 안 그린다 — 그러면 `contract-optional-fields.test.ts` 의 두 gap 항목이 스스로
+  빨개져 지운다. 유료 호출 없이 짝으로. 🟢 **`main` 의 빨간 테스트는 닫혔다(`0bbc55e`)**: 화면 구현이 아니라 두 필드를 그 가드의 이름 붙은
+  gap 예외로 올렸다(동작 변경 없음, 프론트 1866/1866). 🟠 갭이 **등록된 것이지 메워진 것이 아니다.**
 
 - **영상 모델 여럿 — 남은 ③: 실패·출처 문구가 제공자를 말하게** (캡틴D 가 2026-09-19 에 다음 항목으로 지정, 옛 줄 1861). 2026-09-25 에
   코드로 재확인: `apps/frontend/src/api/runwaySceneError.ts` 에 「Runway」가 글자로 14곳. 가격은 손대지 않는다(캡틴D 승인 출처만).
