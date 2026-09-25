@@ -1,13 +1,32 @@
 # AI Animation Studio Agent Rules
 
+## Session start — do this first, without being asked
+
+The person should never have to explain this repository to you. In a new session,
+before doing anything else:
+
+1. Run `node scripts/session-briefing.mjs` (read-only, about 5 KB). It prints what the
+   project is, where things are written down, the checkout state (uncommitted files,
+   pre-commit hook, running dev servers), the last commits, and the headlines of
+   `docs/00_NOW.md`.
+2. Tell the person, in Korean and in at most 10 lines: what the project is (one line),
+   what was done last, what is open and who it waits on, and which item you propose to
+   take. Then ask which one to start.
+3. Until they pick, do not start work and do not read the large documents. When they
+   pick an item, read that item in `docs/00_NOW.md` in full, plus whatever "Read first"
+   below says that kind of work needs.
+
+If the person's first message is already a concrete task, still run the script (it
+catches a running dev server or uncommitted files before you touch anything), give the
+briefing in two lines, and start on their task.
+
 ## Read first
 
-Always read, in this order:
+Read, in this order, once you have an item:
 
-0. `docs/00_NOW.md` — **read this one first, always.** What is done, what is next, and
-   what is waiting on the user, on one screen. It is the only answer to "what should I
-   work on"; do not choose your own next item while it exists. Finish an item, update
-   that file, and stop.
+0. `docs/00_NOW.md` — What is done, what is next, and what is waiting on the user, on one
+   screen. It is the only answer to "what should I work on"; do not choose your own next
+   item while it exists. Finish an item, update that file, and stop.
 1. This file, then `AI_GUIDELINES.md` (short behavioral rules).
 
 Read the rest only when the task touches it:

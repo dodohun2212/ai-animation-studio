@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/session-briefing.mjs\"",
+            "timeout": 20,
+            "statusMessage": "Reading the project briefing..."
+          }
+        ]
+      }
+    ]
+  }
+}
