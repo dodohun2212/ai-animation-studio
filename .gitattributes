@@ -1,0 +1,2 @@
+# Shell scripts must keep LF: with core.autocrlf=true a Windows checkout would give the hook a CR after the shebang and it would not run.
+.githooks/* text eol=lf

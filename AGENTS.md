@@ -186,6 +186,13 @@ happened here.
   and the commit ships half. After a `git mv` or delete, list only paths that
   exist. If the `git diff --cached --stat` file count is not what you meant,
   stop.
+- **A pre-commit hook re-checks every code commit** (`.githooks/pre-commit`). It runs
+  typecheck plus the suites the staged files can break — nothing for docs-only commits,
+  every suite when `packages/shared` changes — on the commit's own bytes, and refuses a
+  commit whose staged file also has unstaged changes. It is quiet when green and prints
+  only the last 40 lines of a failure. Never `--no-verify`; fix it and commit again. It
+  exists because red tests reached `main` twice on a report that they had been run.
+  Enable it once per clone: `git config core.hooksPath .githooks`.
 - **Commit the bytes you tested.** Record `sha256sum` of the files when the test
   run starts and run `sha256sum -c` right before staging; if anything changed,
   rerun the tests. Printing two hashes is not comparing them — make the check
@@ -235,6 +242,8 @@ happened here.
 5. Confirm you have the tools your role needs (table above). If not, say so
    before starting.
 6. Check for a running dev server before saving under `apps/*/src`.
+7. `git config core.hooksPath` must print `.githooks`; if it prints nothing, run
+   `git config core.hooksPath .githooks` (the pre-commit hook is per clone).
 
 ## Completion rules
 

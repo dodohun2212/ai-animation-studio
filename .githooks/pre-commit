@@ -1,0 +1,75 @@
+#!/bin/sh
+# Pre-commit gate: typecheck, then run the tests the staged files can break.
+#
+# Why it exists: red tests reached `main` twice (8249650, a52c744) because "the tests were run" was a claim, not a
+# check — one commit shipped bytes that changed after the run, the other never ran the suite that failed. This runs
+# on the commit's own bytes and does not depend on anybody's report.
+#
+# Scope, so it does not repeat work for nothing:
+#   docs / other files only   nothing runs (except the decision-reference guard when docs/06_DECISIONS.md changes)
+#   apps/backend              typecheck + backend tests
+#   apps/frontend             typecheck + frontend tests
+#   apps/desktop              typecheck + desktop tests
+#   packages/shared, root package.json / tsconfig   typecheck + every suite (a contract change reaches all of them)
+#
+# Output is one line per stage; only a failure prints anything else (its last 40 lines), so a passing run costs
+# nobody's attention. Never bypass with --no-verify: fix the failure and commit again.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+staged=$(git -c core.quotepath=off diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+
+# Tests run on the working tree, so they only speak for the commit when the working tree IS the commit.
+partial=$(printf '%s\n' "$staged" | while IFS= read -r file; do
+  git diff --quiet -- "$file" || printf '  %s\n' "$file"
+done)
+if [ -n "$partial" ]; then
+  echo "pre-commit: these files have changes that are NOT staged, so a test run would not describe this commit:"
+  printf '%s\n' "$partial"
+  echo "Stage the whole file (explicit path) or set the unstaged part aside, then commit again."
+  exit 1
+fi
+
+has() { printf '%s\n' "$staged" | grep -Eq "$1"; }
+
+all=0; backend=0; frontend=0; desktop=0
+has '^(packages/shared/|package(-lock)?\.json$|tsconfig[^/]*\.json$)' && all=1
+has '^apps/backend/' && backend=1
+has '^apps/frontend/' && frontend=1
+has '^apps/desktop/' && desktop=1
+if [ "$all" = 1 ]; then backend=1; frontend=1; desktop=1; fi
+
+run() {
+  label=$1; shift
+  log=$(mktemp)
+  printf 'pre-commit: %s ... ' "$label"
+  if "$@" >"$log" 2>&1; then
+    echo ok
+    rm -f "$log"
+  else
+    echo FAILED
+    tail -n 40 "$log"
+    rm -f "$log"
+    echo
+    echo "pre-commit: fix it and commit again. Do not use --no-verify."
+    exit 1
+  fi
+}
+
+if [ "$backend$frontend$desktop" != "000" ]; then
+  run "typecheck (shared build + every workspace)" npm run typecheck
+fi
+[ "$all" = 1 ]      && run "shared tests"   npm run test --workspace @ai-animation-studio/shared
+[ "$backend" = 1 ]  && run "backend tests"  npm run test --workspace @ai-animation-studio/backend
+[ "$frontend" = 1 ] && run "frontend tests" npm run test --workspace @ai-animation-studio/frontend
+[ "$desktop" = 1 ]  && run "desktop tests"  npm run test --workspace @ai-animation-studio/desktop
+
+# A docs-only commit still can break the guard that checks every D-### reference against docs/06_DECISIONS.md.
+if [ "$backend" = 0 ] && has '^docs/06_DECISIONS\.md$'; then
+  run "decision references" sh -c 'cd apps/backend && npx vitest run src/decision-doc-references.test.ts'
+fi
+
+exit 0
