@@ -1,27 +1,7 @@
 # Repository Session Instructions
 
-This file intentionally fixes no model, tool, role, or worktree. The user assigns those at the start of each session.
+@AGENTS.md
 
-Before working, read and follow these files in order:
-
-0. `docs/00_NOW.md` — current state, the ordered next items, and the decisions waiting on
-   the user. Read it first and take the top unfinished item; do not pick your own. When an
-   item is done, update that file and stop.
-1. `AGENTS.md`
-2. `AI_GUIDELINES.md`
-3. `docs/01_CURRENT_PRODUCT_SPEC.md`
-4. `docs/02_MIGRATION_PLAN.md`
-5. `docs/03_TEAM_WORKFLOW.md`
-6. `docs/06_DECISIONS.md` — why the code is shaped this way, especially which paths were tried and abandoned
-7. `docs/04_INTERNAL_API_CONTRACT.md` when changing shared contracts or API code
-8. `docs/05_DESIGN_SYSTEM.md` when doing UI work in `apps/frontend`
-
-If instructions conflict, `AGENTS.md` takes precedence.
-
-Respect the role and worktree assigned for the current session. A single agent may be assigned Main, Frontend, and Backend together; in that case it may work in `main` without creating or switching worktrees.
-
-The Python-to-TypeScript migration itself is complete (see `docs/02_MIGRATION_PLAN.md`'s handoff status). Current work is post-migration feature improvement and polish. The ordered list of what to do next lives in `docs/00_NOW.md`; `docs/02_MIGRATION_PLAN.md` keeps the dated history. For each item: implement both required layers, run relevant checks and the integrated verification, update the history only after verification, then update `docs/00_NOW.md` and stop for the user rather than choosing the next item yourself.
-
-Do not make paid provider requests in tests. Preserve the Python baseline and existing uncommitted user changes.
-
-Commit each feature or fix as soon as it passes verification — do not let uncommitted work accumulate across features. Push to `origin` after each commit unless the user says otherwise. If a hook or check fails, fix it and create a new commit rather than leaving the change uncommitted.
+This file exists only because Claude Code loads `CLAUDE.md`. All rules live in
+`AGENTS.md`; do not add rules here, or two tools will read two rulebooks. If this
+file and `AGENTS.md` ever disagree, `AGENTS.md` wins.
