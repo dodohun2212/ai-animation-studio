@@ -169,6 +169,18 @@ C:\dev\AI-Animation-Studio-Workspace\
 - **The mailbox** `.claude-bridge/` is not versioned and exists only in `main`:
   `..\main\.claude-bridge\`. A tool that can see only its own folder cannot read it;
   say so at session start rather than working without it.
+- **A sandboxed agent cannot commit in a worktree.** Codex's default `workspace-write`
+  sandbox can read everywhere but write only inside its own checkout, and a worktree's
+  git data lives in `main\.git`. Verified 2026-09-25: `git commit` fails with
+  `Unable to create '...main/.git/worktrees/backend/index.lock': Permission denied`, and
+  `git switch -c` with `cannot lock ref`. Such an agent stops with its diff uncommitted and
+  its report; whoever is unsandboxed commits it (explicit paths, after rerunning the
+  checks). Widening the sandbox to `main\.git` would let it rewrite `main`'s refs, so it is
+  not the default.
+- **An agent's report is not the state of the tree.** In the same trial a sandboxed
+  agent reported `git switch -c` as succeeded; its own log said `exited 1` and no branch
+  existed. Before landing anything, check `git status`, the diff, and rerun the tests
+  yourself.
 - **Landing work, in order:**
   1. Commit on your branch (the integration agent commits for the frontend agent with
      `git -C ..\frontend add <files> && git -C ..\frontend commit`; explicit paths, as above).
@@ -233,7 +245,9 @@ happened here.
 - **Do not patch files by opening them for write before encoding.** A failed
   encode after truncation empties the file. Use the editor tool, or encode the
   whole string first and write bytes. On Windows PowerShell 5.1 never
-  `Get-Content`/`Set-Content` a source file — it mangles Korean text.
+  `Get-Content`/`Set-Content` a source file — it mangles Korean text. Reading is hit
+  too: without `-Encoding UTF8` the Korean docs arrive as mojibake (seen in a Codex
+  trial log), so read them with `-Encoding UTF8` or a UTF-8-aware tool.
 - **After editing `packages/shared/src`,** build its `dist`
   (`npm run build --workspace @ai-animation-studio/shared`) before running
   backend `tsc`; backend types resolve through the gitignored `dist`.
