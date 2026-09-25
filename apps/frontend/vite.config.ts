@@ -13,27 +13,40 @@ import { defineConfig } from "vitest/config";
  * /long-projects, /settings, /assets, /audio, /videos. Instagram needs no entry of its own — its routes live
  * under /settings.
  */
+// Local NestJS backend only, for manual dev checks — never a paid provider.
+const DEV_PROXY: Record<string, string> = {
+  "/health": "http://127.0.0.1:3000",
+  "/projects": "http://127.0.0.1:3000",
+  "/long-projects": "http://127.0.0.1:3000",
+  "/settings": "http://127.0.0.1:3000",
+  "/assets": "http://127.0.0.1:3000",
+  "/images": "http://127.0.0.1:3000",
+  "/audio": "http://127.0.0.1:3000",
+  "/videos": "http://127.0.0.1:3000",
+  "/photo-cards": "http://127.0.0.1:3000",
+  "/news": "http://127.0.0.1:3000",
+  // The subtitle fonts, so a card preview in the dev browser draws with the same bytes FFmpeg burns in.
+  "/fonts": "http://127.0.0.1:3000",
+};
+
+/**
+ * A second checkout (an agent's git worktree) runs beside the person's own app, so it cannot take 5173 and 3000.
+ * DEV_FRONTEND_PORT and DEV_BACKEND_URL move it; with neither set nothing changes. The table above stays
+ * literal — `dev-proxy-prefixes.test.ts` reads this file's source for the `"/prefix": "http` lines — and the
+ * override only swaps every target after the fact, so the two cannot list different prefixes.
+ */
+const backendOverride = process.env.DEV_BACKEND_URL;
+const proxy = backendOverride
+  ? Object.fromEntries(Object.keys(DEV_PROXY).map((prefix) => [prefix, backendOverride]))
+  : DEV_PROXY;
+
 export default defineConfig({
   base: "./",
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: Number(process.env.DEV_FRONTEND_PORT ?? 5173),
     strictPort: true,
-    // Local NestJS backend only, for manual dev checks — never a paid provider.
-    proxy: {
-      "/health": "http://127.0.0.1:3000",
-      "/projects": "http://127.0.0.1:3000",
-      "/long-projects": "http://127.0.0.1:3000",
-      "/settings": "http://127.0.0.1:3000",
-      "/assets": "http://127.0.0.1:3000",
-      "/images": "http://127.0.0.1:3000",
-      "/audio": "http://127.0.0.1:3000",
-      "/videos": "http://127.0.0.1:3000",
-      "/photo-cards": "http://127.0.0.1:3000",
-      "/news": "http://127.0.0.1:3000",
-      // The subtitle fonts, so a card preview in the dev browser draws with the same bytes FFmpeg burns in.
-      "/fonts": "http://127.0.0.1:3000",
-    },
+    proxy,
   },
   test: {
     environment: "jsdom",
