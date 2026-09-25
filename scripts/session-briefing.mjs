@@ -80,6 +80,7 @@ function nowHeadlines() {
 // agent knows whether a hand-off is waiting without reading a byte of the body.
 function mailboxHeads() {
   const out = [];
+  const newest = {};
   for (const name of ["from-cowork.md", "from-cli.md"]) {
     let text;
     try {
@@ -91,6 +92,22 @@ function mailboxHeads() {
     const heads = text.split(/\r?\n/).filter((line) => line.startsWith("## ")).slice(0, 2);
     out.push(`  ${name} (${(Buffer.byteLength(text) / 1024 / 1024).toFixed(1)}MB, 최신 순):`);
     for (const head of heads) out.push(`    ${oneLine(head.replace(/^## /, ""), 130)}`);
+    // Round numbers count up across both files, so the higher newest number is the last thing anyone said.
+    const match = heads[0] && /(?:라운드\s*\**|Round\s+)(\d+)/.exec(heads[0]);
+    if (match) newest[name] = Number(match[1]);
+  }
+  const cowork = newest["from-cowork.md"];
+  const cli = newest["from-cli.md"];
+  if (cowork !== undefined && cli !== undefined) {
+    if (cowork > cli) {
+      out.push(`  → 가장 최근 라운드는 from-cowork ${cowork} 이고 from-cli 는 ${cli} 에서 멈춰 있다: CLI(백엔드·통합) 쪽이 읽고 답할 차례다.`);
+      out.push("    읽기: head -c 8000 .claude-bridge/from-cowork.md  (그 라운드가 끝날 때까지만, 파일 전체는 읽지 마라)");
+    } else if (cli > cowork) {
+      out.push(`  → 가장 최근 라운드는 from-cli ${cli} 이고 from-cowork 는 ${cowork} 에서 멈춰 있다: 프론트 쪽이 읽고 답할 차례다.`);
+      out.push("    읽기: head -c 8000 .claude-bridge/from-cli.md  (그 라운드가 끝날 때까지만, 파일 전체는 읽지 마라)");
+    } else {
+      out.push(`  → 두 파일의 최신 번호가 같다(${cowork}) — 번호가 겹쳤을 수 있으니 두 파일의 맨 위를 확인하라.`);
+    }
   }
   return out;
 }
@@ -125,7 +142,7 @@ const lines = [
     ? `  !! 개발 서버가 돌고 있다 (${servers.join(", ")}) — apps/*/src 를 저장하면 캡틴D 의 서버가 재시작한다. 먼저 물어라`
     : "  개발 서버 없음",
   "",
-  "우편함 (.claude-bridge/, git 밖 — 다른 AI 와의 인수인계. 읽지 마라: 캡틴D 가 인수인계가 왔다고 하거나 항목이 요구할 때만, 파일 맨 위 몇십 줄만):",
+  "우편함 (.claude-bridge/, git 밖 — 프론트·백엔드 AI 끼리의 소통 창구. 매 세션 확인하되 맨 위 최신 라운드만 짧게):",
   ...mailboxHeads(),
   "",
   "최근 커밋:",

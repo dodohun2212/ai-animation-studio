@@ -10,7 +10,8 @@ before doing anything else:
    pre-commit hook, running dev servers), the last commits, and the headlines of
    `docs/00_NOW.md`.
 2. Tell the person, in Korean and in at most 10 lines: what the project is (one line),
-   what was done last, what is open and who it waits on, and which item you propose to
+   what was done last, what is open and who it waits on, any mailbox round waiting for
+   your side (read only its top, see checklist step 4), and which item you propose to
    take. Then ask which one to start.
 3. Until they pick, do not start work and do not read the large documents. When they
    pick an item, read that item in `docs/00_NOW.md` in full, plus whatever "Read first"
@@ -256,11 +257,12 @@ happened here.
 2. Confirm your role and zone with the user. Run `git status`; note uncommitted
    changes that are not yours.
 3. Read the rules in this file: paid-provider safety, git and shared-tree safety.
-4. Do **not** read the mailbox at session start: `.claude-bridge/from-cowork.md` and
-   `from-cli.md` are about 3 MB each. The briefing already lists the newest two round
-   headings of each. Read a round only when the person says a hand-off is waiting or
-   the item needs it, and then only from the top of the file in small pieces
-   (`head -c 8000`), never the whole file.
+4. Check the mailbox: `.claude-bridge/` is how the frontend and backend agents talk
+   to each other. The briefing lists the newest two round headings of each file and
+   says whose turn it is. If a round from the other side is waiting, read it from the
+   top of its file (`head -c 8000`, a little more only if the round continues) and tell
+   the person what it asks, before anything else. Never read a whole mailbox file
+   (about 3 MB each): read from the top down and stop at the last round you handled.
 5. Confirm you have the tools your role needs (table above). If not, say so
    before starting.
 6. Check for a running dev server before saving under `apps/*/src`.
