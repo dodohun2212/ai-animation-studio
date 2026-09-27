@@ -3,8 +3,9 @@ import type { BudgetPreview, ImageReview, Project, SceneNumber, SceneStaleness, 
 import { IMAGE_ESTIMATED_COST_USD, WorkflowState, sceneNumbersFor } from "@ai-animation-studio/shared";
 
 import { getProject, toDisplayError } from "../api/projectsApi.js";
-import { getImageGenerationProgress, startImageGeneration, toImageGenerationDisplayError } from "../api/imageGenerationApi.js";
+import { ImageGenerationApiError, getImageGenerationProgress, startImageGeneration, toImageGenerationDisplayError } from "../api/imageGenerationApi.js";
 import {
+  ImageReviewApiError,
   approveImageReview,
   getImageReview,
   imageReviewContentUrl,
@@ -34,7 +35,7 @@ interface Props {
   onResume?: (target: ResumeTarget) => void;
 }
 
-type DisplayError = { code: string; message: string };
+type DisplayError = { code: string; message: string; providerMessage?: string; providerRequestId?: string };
 
 type LoadState =
   | { status: "loading" }
@@ -243,7 +244,20 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
         return next;
       });
     } catch (caught) {
-      setRegenerateErrors((current) => ({ ...current, [sceneNumber]: toImageReviewDisplayError(caught) }));
+      const displayError = toImageReviewDisplayError(caught);
+      if (caught instanceof ImageReviewApiError && caught.details) {
+        const d = caught.details;
+        setRegenerateErrors((current) => ({
+          ...current,
+          [sceneNumber]: {
+            ...displayError,
+            providerMessage: typeof d.providerMessage === "string" ? d.providerMessage : undefined,
+            providerRequestId: typeof d.providerRequestId === "string" ? d.providerRequestId : undefined,
+          },
+        }));
+      } else {
+        setRegenerateErrors((current) => ({ ...current, [sceneNumber]: displayError }));
+      }
     } finally {
       regenerateBusy.current.delete(sceneNumber);
       setRegeneratePendingScenes(new Set(regenerateBusy.current));
@@ -314,7 +328,17 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
       setProjectOverride(response.project);
       setConfirmOpen(false);
     } catch (caught) {
-      setGenerateError(toImageGenerationDisplayError(caught));
+      const displayError = toImageGenerationDisplayError(caught);
+      if (caught instanceof ImageGenerationApiError && caught.details) {
+        const d = caught.details;
+        setGenerateError({
+          ...displayError,
+          providerMessage: typeof d.providerMessage === "string" ? d.providerMessage : undefined,
+          providerRequestId: typeof d.providerRequestId === "string" ? d.providerRequestId : undefined,
+        });
+      } else {
+        setGenerateError(displayError);
+      }
     } finally {
       generateBusy.current = false;
       setGeneratePending(false);
@@ -470,9 +494,19 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
           )}
 
           {generateError && (
-            <p role="alert" data-testid="generate-error" data-error-code={generateError.code} className="text-sm text-rose-400">
-              {generateError.message}
-            </p>
+            <div role="alert" data-testid="generate-error" data-error-code={generateError.code} className="space-y-1.5">
+              <p className="text-sm text-rose-400">{generateError.message}</p>
+              {generateError.providerMessage && (
+                <blockquote data-testid="generate-error-provider-message" className="border-l-2 border-rose-400/40 pl-3 text-xs italic text-rose-300/80">
+                  {generateError.providerMessage}
+                </blockquote>
+              )}
+              {generateError.providerRequestId && (
+                <p data-testid="generate-error-provider-request-id" className="text-xs text-slate-400">
+                  요청 번호: {generateError.providerRequestId}
+                </p>
+              )}
+            </div>
           )}
 
           {result && (
@@ -711,14 +745,19 @@ export function ImageGenerationScreen({ projectId, onBack, onResume }: Props) {
                           )}
 
                           {regenerateError && (
-                            <p
-                              role="alert"
-                              data-testid={`review-regenerate-error-${review.sceneNumber}`}
-                              data-error-code={regenerateError.code}
-                              className="text-sm text-rose-400"
-                            >
-                              {regenerateError.message}
-                            </p>
+                            <div role="alert" data-testid={`review-regenerate-error-${review.sceneNumber}`} data-error-code={regenerateError.code} className="space-y-1.5">
+                              <p className="text-sm text-rose-400">{regenerateError.message}</p>
+                              {regenerateError.providerMessage && (
+                                <blockquote data-testid={`review-regenerate-error-provider-message-${review.sceneNumber}`} className="border-l-2 border-rose-400/40 pl-3 text-xs italic text-rose-300/80">
+                                  {regenerateError.providerMessage}
+                                </blockquote>
+                              )}
+                              {regenerateError.providerRequestId && (
+                                <p data-testid={`review-regenerate-error-provider-request-id-${review.sceneNumber}`} className="text-xs text-slate-400">
+                                  요청 번호: {regenerateError.providerRequestId}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
                       </li>

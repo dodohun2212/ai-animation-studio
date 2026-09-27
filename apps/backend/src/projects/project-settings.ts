@@ -33,14 +33,14 @@ function isValidClipDuration(value: unknown): value is number {
 }
 
 const STYLE_KEYS = ["visualStyle", "color", "lighting", "camera", "dialogue", "avoid", "aspect"] as const;
-const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled", "subtitlesEnabled", "sceneImageContinuityEnabled", "preset"] as const;
+const SETTINGS_KEYS = ["projectName", "topic", "genre", "mood", "character", "lore", "fullStory", "sceneCount", "clipDurationSeconds", "additionalNotes", "styleNotes", "narrationEnabled", "subtitlesEnabled", "sceneImageContinuityEnabled", "characterDialogueEnabled", "preset"] as const;
 
 /**
  * Accepted but not demanded. SETTINGS_KEYS does double duty — it is both what a request may contain and what it
  * must contain — and a field added after clients were already running cannot be in the second list without
  * making every existing page's save fail on a name it has never heard of.
  */
-const OPTIONAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(["sceneImageContinuityEnabled", "preset"]);
+const OPTIONAL_SETTINGS_KEYS: ReadonlySet<string> = new Set(["sceneImageContinuityEnabled", "characterDialogueEnabled", "preset"]);
 
 function asObject(value: unknown, field: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -106,6 +106,7 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
     additionalNotes: stringFrom(stored.lore_context.additional_notes),
     styleNotes: styleNotesFrom(stored.lore_context.style_notes),
     narrationEnabled: stored.lore_context.narration_enabled === true,
+    characterDialogueEnabled: stored.lore_context.character_dialogue_enabled === true,
     // Falls back to narrationEnabled's value when the key has never been stored — see ShortProjectSettings.subtitlesEnabled's doc comment.
     subtitlesEnabled: "subtitles_enabled" in stored.lore_context
       ? stored.lore_context.subtitles_enabled === true
@@ -150,6 +151,9 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
   if (typeof settings.narrationEnabled !== "boolean") {
     throw invalidRequest("settings.narrationEnabled must be a boolean.", { field: "settings.narrationEnabled" });
   }
+  if (settings.characterDialogueEnabled !== undefined && typeof settings.characterDialogueEnabled !== "boolean") {
+    throw invalidRequest("settings.characterDialogueEnabled must be a boolean.", { field: "settings.characterDialogueEnabled" });
+  }
   if (typeof settings.subtitlesEnabled !== "boolean") {
     throw invalidRequest("settings.subtitlesEnabled must be a boolean.", { field: "settings.subtitlesEnabled" });
   }
@@ -175,6 +179,7 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
     additionalNotes: optionalString(settings.additionalNotes, "settings.additionalNotes"),
     styleNotes: normalizedStyleNotes,
     narrationEnabled: settings.narrationEnabled,
+    characterDialogueEnabled: settings.characterDialogueEnabled === true,
     subtitlesEnabled: settings.subtitlesEnabled,
     sceneImageContinuityEnabled: settings.sceneImageContinuityEnabled === true,
     ...(settings.preset !== undefined ? { preset: parsePreset(settings.preset, "settings.preset") } : {}),
@@ -228,6 +233,7 @@ export function applyShortProjectSettings(stored: StoredProject, settings: Short
       additional_notes: settings.additionalNotes,
       style_notes: styleNotes,
       narration_enabled: settings.narrationEnabled,
+      character_dialogue_enabled: settings.characterDialogueEnabled,
       subtitles_enabled: settings.subtitlesEnabled,
       scene_image_continuity_enabled: settings.sceneImageContinuityEnabled,
       // Written when a save carries one; a save without one keeps whatever mark was stored (the spread above).

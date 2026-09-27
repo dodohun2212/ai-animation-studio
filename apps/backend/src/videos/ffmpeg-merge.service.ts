@@ -7,6 +7,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import type { MergeFailedDetails, PhotoCardSubtitleLayout, SceneNumber, SceneSubtitleLayout } from "@ai-animation-studio/shared";
 import { escapeForFfmpegFilterPath, sceneSubtitleAss } from "./subtitle-file.js";
 
@@ -34,7 +35,7 @@ export function fontsRoot(): string {
 }
 
 /** Where inside a render FFmpeg stopped — `sceneIndex` is the position in the scenes the merge was handed. */
-export type MergeStage = { stage: "scene"; sceneIndex: number } | { stage: "join" } | { stage: "music" };
+export type MergeStage = { stage: "scene"; sceneIndex: number } | { stage: "join" } | { stage: "music" } | { stage: "ffmpeg" } | { stage: "rename" };
 
 export class MediaToolError extends Error {
   constructor(readonly kind: "unavailable" | "invalid" | "failed", message: string, readonly where?: MergeStage) { super(message); }
@@ -154,6 +155,8 @@ export interface MergeSceneInput {
    * only for a clip that has an audio track (the caller measures it); absent keeps the clip's sound out, as before.
    */
   clipAudioVolume?: number;
+  /** A spoken line must never be reversed into the next shot by the ambience crossfade. */
+  spokenDialogue?: boolean;
   /** That scene's narration text, or null/undefined to burn in no subtitle line. Independent of narrationAudioPath — video-merge.service.ts sets this based on ShortProjectSettings.subtitlesEnabled, which can be on with no narration audio at all (subtitles-only, no TTS spend, a real Shorts use case since many viewers watch muted). */
   subtitleText?: string | null;
 }
@@ -218,10 +221,10 @@ const CLIP_AUDIO_EDGE_FADE_SECONDS = 0.15;
  * It used to fade out and back in at every cut (the edge fade above, both sides), which put a 0.3-second hole in
  * the ambience every five seconds; 캡틴D heard it as the sound cutting out with each scene (Cowork Round 881, the
  * 「뚝」 Round 822 anticipated). A crossfade needs both sounds at once, and a clip has no sound past its own end, so
- * the next scene opens on the previous clip's last half-second played backwards: it starts on the very sample the
- * previous scene ended on and fades out while the new clip fades in, equal-power, so a steady ambience keeps its
- * level. Nothing moves — every scene keeps its own length and its own sound under its own picture, and the join
- * still copies.
+ * the next scene opens with the previous clip's final half-second in its original time direction while the new
+ * clip fades in, equal-power. The earlier reverse method started on the last sample and sounded continuous for
+ * noise, but made a spoken syllable or a sound effect audibly run backwards. Nothing moves — every scene keeps
+ * its own length and its own sound under its own picture, and the join still copies.
  */
 const CLIP_AUDIO_CROSSFADE_SECONDS = 0.5;
 
@@ -269,15 +272,17 @@ export class FfmpegMergeEngine {
     return sampleCardSubtitleColors(still, width, height, (layout ?? DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT).center, path.join(directory, `scene${index + 1}.band.rgb`), this.runner);
   }
 
-  async probe(clip: string): Promise<void> {
+  async probe(clip: string): Promise<{ hasAudio: boolean }> {
     let result: MediaCommandResult;
     try { result = await this.command(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", clip]); }
     catch (error) { throw error instanceof MediaToolError && error.kind === "unavailable" ? error : new MediaToolError("invalid", "Scene video is invalid."); }
     try {
       const data = JSON.parse(result.stdout) as ProbeData;
-      const hasVideo = Array.isArray(data.streams) && data.streams.some((stream) => stream.codec_type === "video");
+      const streams = Array.isArray(data.streams) ? data.streams : [];
+      const hasVideo = streams.some((stream) => stream.codec_type === "video");
       const duration = Number(data.format?.duration);
       if (!hasVideo || !Number.isFinite(duration) || duration <= 0) throw new Error("invalid");
+      return { hasAudio: streams.some((stream) => stream.codec_type === "audio") };
     } catch { throw new MediaToolError("invalid", "Scene video is invalid."); }
   }
 
@@ -356,8 +361,8 @@ export class FfmpegMergeEngine {
       // The previous clip's sound crosses into this scene; this clip's crosses into the next one, so it does not
       // fade out at its own end unless nothing follows it.
       const previous = index > 0 ? scenes[index - 1] : undefined;
-      const inherited = sounding(previous);
-      const handsOver = own !== undefined && index + 1 < scenes.length && scenes[index + 1]!.stillDurationSeconds === undefined;
+      const inherited = scene.spokenDialogue || previous?.spokenDialogue ? undefined : sounding(previous);
+      const handsOver = own !== undefined && !scene.spokenDialogue && index + 1 < scenes.length && !scenes[index + 1]!.spokenDialogue && scenes[index + 1]!.stillDurationSeconds === undefined;
       const crossfade = Math.min(CLIP_AUDIO_CROSSFADE_SECONDS, clipDurationSeconds / 2).toFixed(3);
       try {
         if (own !== undefined || inherited !== undefined) {
@@ -366,7 +371,8 @@ export class FfmpegMergeEngine {
           const format = "aformat=sample_rates=48000:channel_layouts=stereo";
           const narrationInput = scene.narrationAudioPath ? ["-i", scene.narrationAudioPath] : [];
           const tailIndex = 1 + (scene.narrationAudioPath ? 1 : 0);
-          // `-sseof` reads only the previous clip's last stretch, so `areverse` holds half a second, not a clip.
+          // `-sseof` reads only the previous clip's last stretch. It stays forward: a seam must not reverse a
+          // spoken syllable or an effect merely to make its first sample match the cut.
           const tailInput = inherited !== undefined ? ["-sseof", `-${crossfade}`, "-i", previous!.clip] : [];
           const layers: string[] = [];
           if (scene.narrationAudioPath) layers.push("[1:a]apad[narr]");
@@ -375,7 +381,7 @@ export class FfmpegMergeEngine {
             const fadeOut = handsOver ? "" : `,afade=t=out:st=${Math.max(0, clipDurationSeconds - CLIP_AUDIO_EDGE_FADE_SECONDS).toFixed(3)}:d=${CLIP_AUDIO_EDGE_FADE_SECONDS}`;
             layers.push(`[0:a]volume=${own},${fadeIn}${fadeOut}[clip]`);
           }
-          if (inherited !== undefined) layers.push(`[${tailIndex}:a]areverse,volume=${inherited},afade=t=out:st=0:d=${crossfade}:curve=qsin[tail]`);
+          if (inherited !== undefined) layers.push(`[${tailIndex}:a]volume=${inherited},afade=t=out:st=0:d=${crossfade}:curve=qsin[tail]`);
           const labels = layers.map((layer) => layer.slice(layer.lastIndexOf("[")));
           const graph = labels.length === 1
             ? `${layers[0]!.slice(0, -labels[0]!.length)},apad,${format}[aout]`
@@ -469,10 +475,21 @@ export class FfmpegMergeEngine {
   async rotateClockwise(filePath: string): Promise<void> {
     const temporary = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${crypto.randomUUID()}.tmp.mp4`);
     try {
-      await this.command(["ffmpeg", "-y", "-i", filePath, "-map", "0:v:0", "-map", "0:a?", "-vf", "transpose=clock", "-c:v", "libx264", ...X264_QUALITY, "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", temporary]);
-      const stat = await fs.stat(temporary);
-      if (stat.size <= 0) throw new MediaToolError("failed", "Rotated output is empty.");
-      await fs.rename(temporary, filePath);
+      try {
+        await this.command(["ffmpeg", "-y", "-i", filePath, "-map", "0:v:0", "-map", "0:a?", "-vf", "transpose=clock", "-c:v", "libx264", ...X264_QUALITY, "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", temporary]);
+        const stat = await fs.stat(temporary);
+        if (stat.size <= 0) throw new MediaToolError("failed", "Rotated output is empty.");
+      } catch (error) { inStage(error, { stage: "ffmpeg" }); }
+      // On Windows a player may still be closing its read handle after unmount. Give that finite race a moment;
+      // an active player must still be released by the caller, and a persistent lock is reported as rename.
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try { await fs.rename(temporary, filePath); break; }
+        catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (attempt === 3 || (code !== "EPERM" && code !== "EBUSY")) inStage(error, { stage: "rename" });
+          await delay(250);
+        }
+      }
     } finally { await fs.unlink(temporary).catch(() => undefined); }
   }
 }

@@ -62,6 +62,8 @@ type VideoRecord = {
   ratio: RunwayVideoRatio;
   duration_seconds: number;
   estimated_cost_usd: number;
+  generate_dialogue_audio?: boolean;
+  dialogue_enabled?: boolean;
   status: "created";
   execution_mode: "local_fake_no_provider" | "runway";
   approved_at: string;
@@ -115,13 +117,14 @@ export class LocalVideoSubmissionService {
     return { confirmationId: value.confirmationId, userRequestId: value.userRequestId, approved: true, prompts };
   }
 
-  private hashInput(imageBytes: Buffer, prompt: string, ratio: string, durationSeconds: number, model: string): string {
+  private hashInput(imageBytes: Buffer, prompt: string, ratio: string, durationSeconds: number, model: string, generateDialogueAudio: boolean): string {
     const hash = createHash("sha256");
     hash.update(imageBytes);
     hash.update(prompt, "utf8");
     // Part of the confirmation hash on purpose: a preview taken under one model must not be submittable
     // after a swap, because the price and the result both change underneath it.
     hash.update(model, "ascii");
+    hash.update(`dialogue_audio:${generateDialogueAudio}`, "ascii");
     hash.update(ratio, "ascii");
     hash.update(String(durationSeconds), "ascii");
     return hash.digest("hex");
@@ -214,7 +217,7 @@ export class LocalVideoSubmissionService {
     const hashes: string[] = [];
     for (const scene of scenes) {
       const image = await fs.readFile(project.generated_images[scene - 1]!);
-      hashes.push(this.hashInput(image, request.prompts[scene - 1]!.prompt, preview.previews[scene - 1]!.ratio, preview.previews[scene - 1]!.durationSeconds, preview.previews[scene - 1]!.model));
+      hashes.push(this.hashInput(image, request.prompts[scene - 1]!.prompt, preview.previews[scene - 1]!.ratio, preview.previews[scene - 1]!.durationSeconds, preview.previews[scene - 1]!.model, preview.previews[scene - 1]!.generateDialogueAudio === true));
     }
     const duplicate = this.existing(project, request, hashes);
     if (duplicate) return duplicate;
@@ -235,6 +238,8 @@ export class LocalVideoSubmissionService {
       ratio: preview.previews[index]!.ratio,
       duration_seconds: preview.previews[index]!.durationSeconds,
       estimated_cost_usd: preview.previews[index]!.estimatedCostUsd,
+      generate_dialogue_audio: preview.previews[index]!.generateDialogueAudio === true,
+      dialogue_enabled: toShortProjectSettings(project).characterDialogueEnabled,
       // The confirmed decision, kept with the job: a setting changed mid-run must not change what a resumed scene sends.
       ...(preview.previews[index]!.lastFrameSceneNumber !== undefined ? { last_frame_scene: preview.previews[index]!.lastFrameSceneNumber } : {}),
       status: "created",

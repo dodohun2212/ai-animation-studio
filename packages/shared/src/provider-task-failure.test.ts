@@ -66,4 +66,10 @@ describe("the refusal that reads the text, not the first frame", () => {
   it("leaves the INPUT_PREPROCESSING variants nobody has seen unknown", () => {
     expect(providerTaskFailure("INPUT_PREPROCESSING.SOMETHING_ELSE")).toBeUndefined();
   });
+
+  it("recognises the observed third-party moderation route without claiming which image caused it", () => {
+    const failure = providerTaskFailure("INPUT_PREPROCESSING.SAFETY.THIRD_PARTY");
+    expect(failure).toMatchObject({ remedy: "change_input", billedOnFailure: false, canRetryWithoutLastFrame: true });
+    expect(failure?.message).not.toMatch(/3번|원인/);
+  });
 });

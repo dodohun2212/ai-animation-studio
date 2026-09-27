@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 
 import { Injectable } from "@nestjs/common";
-import { sceneNumbersFor, videoModelOption, videoSceneEstimatedCostUsd, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
+import { sceneNumbersFor, videoModelOption, videoModelSupportsDialogueAudio, videoSceneEstimatedCostUsd, WorkflowState, type GetVideoPromptPreviewResponse, type SceneNumber, type VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { validateImage } from "../assets/image-validation.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
@@ -17,6 +17,7 @@ import {
   videoPreviewDataInvalid,
   videoPreviewImagesInvalid,
   videoPreviewNotAllowed,
+  videoDialogueModelUnsupported,
 } from "./video-preview-api.error.js";
 import { runwayRatioForAspect } from "../projects/project-aspect.js";
 import { compileVideoPrompt, OPTIONAL_SCENE_FIELDS, SCENE_FIELDS, type StoredScene } from "./video-prompt-compiler.js";
@@ -47,7 +48,10 @@ function parseScenes(project: StoredProject, sceneNumbers: readonly SceneNumber[
       || keys.some((key) => !(SCENE_FIELDS as readonly string[]).includes(key) && !(OPTIONAL_SCENE_FIELDS as readonly string[]).includes(key))
       || SCENE_FIELDS.some((key) => !(key in raw)) || raw.number !== sceneNumbers[index]
       || SCENE_FIELDS.filter((key) => key !== "number").some((key) => typeof raw[key] !== "string" || !raw[key].trim())
-      || ("narration" in raw && typeof raw.narration !== "string")) {
+      || ("narration" in raw && typeof raw.narration !== "string")
+      || ("dialogue_speaker" in raw && typeof raw.dialogue_speaker !== "string")
+      || ("dialogue_text" in raw && typeof raw.dialogue_text !== "string")
+      || Boolean(String(raw.dialogue_speaker ?? "").trim()) !== Boolean(String(raw.dialogue_text ?? "").trim())) {
       throw videoPreviewDataInvalid();
     }
     return raw as StoredScene;
@@ -98,6 +102,8 @@ export class LocalVideoPreviewService {
     const sceneNumbers = scenesFor(project);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const model = await resolveVideoModel(this.providerSettings?.settingsStore());
+    const dialogueEnabled = toShortProjectSettings(project).characterDialogueEnabled;
+    if (dialogueEnabled && !videoModelSupportsDialogueAudio(model)) throw videoDialogueModelUnsupported();
     await this.assertApprovedImages(project, sceneNumbers);
     const scenes = parseScenes(project, sceneNumbers);
     const ratio = ratioFor(project);
@@ -108,11 +114,13 @@ export class LocalVideoPreviewService {
     const previews: VideoPromptPreview[] = scenes.map((scene, index) => {
       // The model is already in hand here for the quote; the prompt is compiled for that same model rather
       // than for whichever one this file was written against.
-      const { prompt, omittedSections } = compileVideoPrompt(model, { scene, previous: scenes[index - 1], ratio, clipDurationSeconds });
+      const generateDialogueAudio = dialogueEnabled && Boolean(scene.dialogue_text?.trim());
+      const { prompt, omittedSections } = compileVideoPrompt(model, { scene, previous: scenes[index - 1], ratio, clipDurationSeconds, dialogueEnabled });
       return {
         sceneNumber: sceneNumbers[index]!,
         prompt,
         model,
+        ...(generateDialogueAudio ? { generateDialogueAudio, dialogueSpeaker: scene.dialogue_speaker!.trim(), dialogueText: scene.dialogue_text!.trim() } : {}),
         ratio,
         durationSeconds: clipDurationSeconds,
         estimatedCostUsd: videoSceneEstimatedCostUsd(clipDurationSeconds, model),
@@ -129,6 +137,7 @@ export class LocalVideoPreviewService {
       digest.update(await fs.readFile(this.imagePath(project.project_id, preview.sceneNumber)));
       digest.update(preview.prompt, "utf8");
       digest.update(preview.model, "ascii");
+      digest.update(`dialogue_audio:${preview.generateDialogueAudio === true}`, "ascii");
       digest.update(preview.ratio, "ascii");
       digest.update(String(preview.durationSeconds), "ascii");
       // Part of what was confirmed: ending on the next picture is a different request from not doing so.

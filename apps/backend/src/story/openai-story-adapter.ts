@@ -25,7 +25,7 @@ export const STORY_SCENE_FIELDS = [
 ] as const;
 
 /** The scene count is a per-project setting (2-12, see MIN/MAX_SCENE_COUNT in shared/domain.ts), so this schema is built per request rather than a fixed constant. */
-function storySchema(sceneCount: number) {
+function storySchema(sceneCount: number, dialogueEnabled: boolean) {
   return {
     type: "object",
     additionalProperties: false,
@@ -38,7 +38,7 @@ function storySchema(sceneCount: number) {
         type: "array", minItems: sceneCount, maxItems: sceneCount,
         items: {
           type: "object", additionalProperties: false,
-          required: [...STORY_SCENE_FIELDS],
+          required: [...STORY_SCENE_FIELDS, ...(dialogueEnabled ? ["dialogue_speaker", "dialogue_text"] : [])],
           properties: {
             number: { type: "integer", minimum: 1, maximum: sceneCount },
             description: { type: "string" }, visual_action: { type: "string" },
@@ -49,6 +49,7 @@ function storySchema(sceneCount: number) {
             expression_change: { type: "string" }, continuity_hint: { type: "string" },
             // Narration/subtitle sentence, naturally readable within the scene's clip duration — no stage directions or camera language.
             narration: { type: "string" },
+            ...(dialogueEnabled ? { dialogue_speaker: { type: "string" }, dialogue_text: { type: "string" } } : {}),
           },
         },
       },
@@ -80,7 +81,7 @@ function extractOutputText(body: unknown): string {
 export async function callOpenAiStoryApi(
   apiKey: string,
   prompt: string,
-  options: { model?: string; fetchImpl?: typeof fetch; sceneCount?: number } = {},
+  options: { model?: string; fetchImpl?: typeof fetch; sceneCount?: number; dialogueEnabled?: boolean } = {},
 ): Promise<{ story: StoredStory; requestId: string }> {
   const model = options.model ?? OPENAI_STORY_MODEL;
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -94,7 +95,7 @@ export async function callOpenAiStoryApi(
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model, input: prompt,
-        text: { format: { type: "json_schema", name: "animation_story", strict: true, schema: storySchema(sceneCount) } },
+        text: { format: { type: "json_schema", name: "animation_story", strict: true, schema: storySchema(sceneCount, options.dialogueEnabled === true) } },
       }),
     });
   } catch {
@@ -110,6 +111,6 @@ export async function callOpenAiStoryApi(
   if (!text) throw new OpenAiAdapterError("empty_response", "대본 응답이 비어 있습니다.");
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
-  try { validateStory(parsed, sceneCount); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
+  try { validateStory(parsed, sceneCount, options.dialogueEnabled === true); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
   return { story: parsed, requestId };
 }

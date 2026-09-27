@@ -144,6 +144,12 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
   const [regenerateAllConfirmOpen, setRegenerateAllConfirmOpen] = useState(false);
   /** One-off direction for the open single-scene confirmation; cleared whenever that panel opens or closes. */
   const [regenerateInstruction, setRegenerateInstruction] = useState("");
+  /**
+   * Whether the pending single-scene retry should omit the end-frame image.
+   * Only sent to the server when the failure also carries `retryWithoutLastFrame`; defaults to true (checked)
+   * so the person who arrives at this dialog after a third-party safety refusal sees the actionable path first.
+   */
+  const [omitLastFrame, setOmitLastFrame] = useState(true);
   /** Kept separate from the per-scene one: regenerate-all applies its direction to every scene at once. */
   const [regenerateAllInstruction, setRegenerateAllInstruction] = useState("");
   const [regenerateAllPending, setRegenerateAllPending] = useState(false);
@@ -310,6 +316,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     if (regenerateBusy.current.has(sceneNumber)) return;
     clearRegenerateError(sceneNumber);
     setRegenerateInstruction("");
+    setOmitLastFrame(true);
     // Closes the all-scenes one: two open confirmations would stand side by side quoting one scene and all of
     // them — two prices for two actions, and the reader has to notice which panel they are in.
     setRegenerateAllConfirmOpen(false);
@@ -320,6 +327,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     if (regenerateBusy.current.has(sceneNumber)) return;
     clearRegenerateError(sceneNumber);
     setRegenerateInstruction("");
+    setOmitLastFrame(true);
     setRegenerateConfirmScene((current) => (current === sceneNumber ? null : current));
   }
 
@@ -328,11 +336,17 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
     regenerateBusy.current.add(sceneNumber);
     setRegeneratePendingScenes(new Set(regenerateBusy.current));
     try {
-      const response = await regenerateVideoScene(projectId, jobId, sceneNumber, regenerateInstruction);
+      // `omitLastFrame` is only sent when the failure advertises a retry-without-last-frame route AND the
+      // person left the checkbox on. A plain retry (no retryWithoutLastFrame, or checkbox cleared) omits
+      // the field entirely so the server never sees an accidental opt-in.
+      const currentFailure = progressState.status === "ready" ? progressState.progress.sceneFailures?.[sceneNumber] : undefined;
+      const shouldOmitLastFrame = omitLastFrame && !!currentFailure?.retryWithoutLastFrame;
+      const response = await regenerateVideoScene(projectId, jobId, sceneNumber, regenerateInstruction, shouldOmitLastFrame || undefined);
       setProgressState({ status: "ready", progress: response });
       setReviewState({ status: "idle" });
       setRegenerateConfirmScene(null);
       setRegenerateInstruction("");
+      setOmitLastFrame(true);
       setRegenerateErrors((current) => {
         if (!(sceneNumber in current)) return current;
         const next = { ...current };
@@ -688,6 +702,35 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                               {sceneRemedyAdvice(failure?.remedy)}
                             </p>
                           )}
+                          {/* Shown only when this specific failure used an end-frame and the backend found an
+                              observed retry route without it. Default-checked: arriving here after a
+                              third-party safety refusal, this is the one path that is not "send the same thing
+                              again" — the person can clear the check if they prefer the unchanged submit. */}
+                          {failure?.retryWithoutLastFrame && (
+                            <>
+                              <label
+                                className="flex cursor-pointer items-start gap-2 text-sm text-slate-300"
+                                data-testid={`failed-scene-retry-omit-last-frame-label-${sceneNumber}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={omitLastFrame}
+                                  onChange={(e) => setOmitLastFrame(e.target.checked)}
+                                  disabled={regeneratePending}
+                                  data-testid={`failed-scene-retry-omit-last-frame-${sceneNumber}`}
+                                  className="mt-0.5 shrink-0 accent-amber-400"
+                                />
+                                <span>
+                                  끝 프레임({failure.retryWithoutLastFrame.lastFrameSceneNumber}번 장면 그림) 빼고 보내기
+                                </span>
+                              </label>
+                              {omitLastFrame && (
+                                <p className="text-xs text-slate-400" data-testid={`failed-scene-retry-omit-last-frame-note-${sceneNumber}`}>
+                                  이 클립은 {failure.retryWithoutLastFrame.lastFrameSceneNumber}번 그림으로 끝나지 않아, 다음 장면과 이어지는 곳이 튈 수 있습니다.
+                                </p>
+                              )}
+                            </>
+                          )}
                           {/* Same endpoint as a review regeneration, so the same one-off direction applies —
                               useful when the scene failed on its content rather than on a transient error. */}
                           <RegenerateInstructionField
@@ -717,7 +760,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                               type="button"
                               className={smallAmberButton}
                               onClick={() => void confirmRegenerate(sceneNumber)}
-                              disabled={regeneratePending || (mustChangeInput && regenerateInstruction.trim().length === 0)}
+                              disabled={regeneratePending || (mustChangeInput && regenerateInstruction.trim().length === 0 && !(omitLastFrame && !!failure?.retryWithoutLastFrame))}
                             >
                               {regeneratePending ? "다시 시도 중..." : "예, 다시 시도합니다"}
                             </button>
@@ -977,6 +1020,25 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                   {scene.motionPrompt}
                                 </p>
                               </details>
+                            )}
+                            {(scene?.dialogue_speaker !== undefined || scene?.dialogue_text !== undefined) && (
+                              <dl
+                                data-testid={`video-review-dialogue-${review.sceneNumber}`}
+                                className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs"
+                              >
+                                {scene?.dialogue_speaker !== undefined && (
+                                  <>
+                                    <dt className="text-slate-500">화자</dt>
+                                    <dd className="text-slate-300">{scene.dialogue_speaker}</dd>
+                                  </>
+                                )}
+                                {scene?.dialogue_text !== undefined && (
+                                  <>
+                                    <dt className="text-slate-500">대사</dt>
+                                    <dd className="whitespace-pre-wrap break-words text-slate-300">{scene.dialogue_text}</dd>
+                                  </>
+                                )}
+                              </dl>
                             )}
                             {approveError && (
                               <p

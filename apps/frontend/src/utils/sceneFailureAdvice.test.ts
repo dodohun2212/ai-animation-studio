@@ -161,6 +161,12 @@ describe("mergeFailureMessage", () => {
     expect(mergeFailureMessage(BASE, { stage: "join" })).not.toContain("번 장면");
   });
 
+  it("distinguishes rotation encoding from replacement of a player-locked original", () => {
+    expect(mergeFailureMessage(BASE, { stage: "ffmpeg" })).toContain("세로 영상으로 변환");
+    expect(mergeFailureMessage(BASE, { stage: "rename" })).toContain("원본 파일로 교체");
+    expect(mergeFailureMessage(BASE, { stage: "rename" })).toContain(BASE);
+  });
+
   /** 766 규칙 — 모르는 값이면 단계 문장을 통째로 뺍니다. 틀린 단계는 없는 단계보다 나쁩니다. */
   it("reads exactly as before for an unknown stage, an absent stage, or no details at all", () => {
     expect(mergeFailureMessage(BASE, { stage: "colour_grade" })).toBe(BASE);

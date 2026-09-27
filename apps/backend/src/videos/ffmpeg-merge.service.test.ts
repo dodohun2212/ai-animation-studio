@@ -98,9 +98,10 @@ describe("FfmpegMergeEngine.merge clip sound", () => {
     // No fade-out at scene 1's end: scene 2 opens on it.
     expect(graphOf(first!)).toBe("[0:a]volume=1,afade=t=in:st=0:d=0.15,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
     expect(first).not.toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
-    // Scene 2 has no sound of its own, so it holds only scene 1's tail, played back from the cut and fading away.
+    // Scene 2 has no sound of its own, so it holds only scene 1's forward tail and fades it away.
     expect(second!.slice(second!.indexOf("-sseof"), second!.indexOf("-sseof") + 4)).toEqual(["-sseof", "-0.500", "-i", "scene1.mp4"]);
-    expect(graphOf(second!)).toBe("[1:a]areverse,volume=1,afade=t=out:st=0:d=0.500:curve=qsin,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    expect(graphOf(second!)).toBe("[1:a]volume=1,afade=t=out:st=0:d=0.500:curve=qsin,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    expect(graphOf(second!)).not.toContain("areverse");
     expect(second).not.toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
   });
 
@@ -117,9 +118,9 @@ describe("FfmpegMergeEngine.merge clip sound", () => {
       5, finalPath, "9:16");
     const [, second, third] = calls.filter((args) => args.includes("-vf"));
     expect(second!.filter((arg, index) => second![index - 1] === "-i")).toEqual(["scene2.mp4", "n2.mp3", "scene1.mp4"]);
-    expect(graphOf(second!)).toBe("[1:a]apad[narr];[0:a]volume=0.5,afade=t=in:st=0:d=0.500:curve=qsin[clip];[2:a]areverse,volume=0.5,afade=t=out:st=0:d=0.500:curve=qsin[tail];[narr][clip][tail]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    expect(graphOf(second!)).toBe("[1:a]apad[narr];[0:a]volume=0.5,afade=t=in:st=0:d=0.500:curve=qsin[clip];[2:a]volume=0.5,afade=t=out:st=0:d=0.500:curve=qsin[tail];[narr][clip][tail]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
     // The last clip is the only one that fades out, since nothing follows to carry it.
-    expect(graphOf(third!)).toBe("[0:a]volume=0.5,afade=t=in:st=0:d=0.500:curve=qsin,afade=t=out:st=4.850:d=0.15[clip];[1:a]areverse,volume=0.5,afade=t=out:st=0:d=0.500:curve=qsin[tail];[clip][tail]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
+    expect(graphOf(third!)).toBe("[0:a]volume=0.5,afade=t=in:st=0:d=0.500:curve=qsin,afade=t=out:st=4.850:d=0.15[clip];[1:a]volume=0.5,afade=t=out:st=0:d=0.500:curve=qsin[tail];[clip][tail]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,apad,aformat=sample_rates=48000:channel_layouts=stereo[aout]");
   });
 
   it("keeps the sound steady across a cut between two clips that sound alike", async ({ skip }) => {
@@ -816,6 +817,39 @@ describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", 
     expect(rightRed, "the top is on the right").toBeGreaterThan(rightBlue);
     await expect(fs.readdir(root)).resolves.not.toContainEqual(expect.stringContaining(".tmp"));
   }, 120000);
+
+  it.skipIf(process.platform !== "win32")("identifies a locked original as a rename failure without replacing it", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "rotate-final-locked-")); roots.push(root);
+    const file = path.join(root, "instagram_reel.mp4");
+    await fs.writeFile(file, "original");
+    const handle = await fs.open(file, "r");
+    try {
+      const runner: MediaCommandRunner = async (args) => {
+        await fs.writeFile(args.at(-1)!, "rotated");
+        return { stdout: "", stderr: "" };
+      };
+      await expect(new FfmpegMergeEngine(runner).rotateClockwise(file))
+        .rejects.toMatchObject({ where: { stage: "rename" } });
+      await expect(fs.readFile(file, "utf8")).resolves.toBe("original");
+      await expect(fs.readdir(root)).resolves.toEqual(["instagram_reel.mp4"]);
+    } finally { await handle.close(); }
+  });
+
+  it.skipIf(process.platform !== "win32")("replaces the original when a player releases its handle shortly after unmount", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "rotate-final-release-")); roots.push(root);
+    const file = path.join(root, "instagram_reel.mp4");
+    await fs.writeFile(file, "original");
+    const handle = await fs.open(file, "r");
+    const release = setTimeout(() => { void handle.close(); }, 350);
+    try {
+      const runner: MediaCommandRunner = async (args) => {
+        await fs.writeFile(args.at(-1)!, "rotated");
+        return { stdout: "", stderr: "" };
+      };
+      await new FfmpegMergeEngine(runner).rotateClockwise(file);
+      await expect(fs.readFile(file, "utf8")).resolves.toBe("rotated");
+    } finally { clearTimeout(release); await handle.close().catch(() => undefined); }
+  });
 
 
   /**

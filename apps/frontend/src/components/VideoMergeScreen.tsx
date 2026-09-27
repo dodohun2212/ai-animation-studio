@@ -236,9 +236,12 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   const [clipFacts, setClipFacts] = useState<VideoClipFacts[]>([]);
   /* 잰 클립이 **몇 장면 중 몇 개**인지 — 잰 것만 보고 전체를 말하지 않기 위해서입니다(CLI Round 820). */
   const [clipSceneCount, setClipSceneCount] = useState(0);
-  /* 클립 자체 소리를 얼마나 깔지(0~100). 기본 0 = 오늘과 같음 — 「화면 맞춤」의 「여백」과 같은 규칙으로,
-     고르기 전까지 결과가 지금과 같아야 합니다. */
-  const [clipVolumePercent, setClipVolumePercent] = useState(0);
+  /* 클립 자체 소리를 얼마나 깔지(0~100). **null = 안 건드림** — 보내지 않고 서버 기본을 씁니다: 대사 음성을
+     요청한 장면만 100%, 나머지 0%(CLI Round 1124). 대사 장면이 없으면 그 기본은 「전부 0%」라 오늘과 같습니다. */
+  const [clipVolumePercent, setClipVolumePercent] = useState<number | null>(null);
+  /* 서버가 「생략하면 이 장면 클립 소리를 100% 로 넣는다」고 판정한 장면 수(`VideoReview.dialogueAudioDefault`).
+     화면이 대사 글·실측 소리로 따로 세지 않습니다 — 같은 규칙을 두 벌 두면 언젠가 갈립니다. */
+  const [dialogueDefaultScenes, setDialogueDefaultScenes] = useState(0);
   const [audioMode, setAudioMode] = useState<AudioMode | null>(null);
   const [tracks, setTracks] = useState<AudioLibraryTrack[]>([]);
   const [trackId, setTrackId] = useState("");
@@ -281,6 +284,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
               setClipModels([...new Set(review.reviews.map((one) => one.model).filter((model): model is VideoModel => model !== undefined))]);
               setClipFacts(review.reviews.map((one) => one.clip).filter((clip): clip is VideoClipFacts => clip !== undefined));
               setClipSceneCount(review.reviews.length);
+              setDialogueDefaultScenes(review.reviews.filter((one) => one.dialogueAudioDefault === true).length);
             })
             .catch(() => { /* Unknown, which is what approvedCount already is. */ });
         }
@@ -431,8 +435,11 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   /** Null until the project has loaded — merging before then would send a mode derived from nothing. */
   /* 포토카드엔 클립이 없어 서버가 거절합니다 — 화면이 아예 안 보내고, 아래 칸도 숨깁니다. */
   const audioSettings: MergeAudioSettings | null = toAudioSettings(
-    audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds, pictureCard ? 0 : clipVolumePercent,
+    audioMode, trackId, audioStartSeconds, bgmVolumePercent, bgmFadeSeconds, pictureCard ? null : clipVolumePercent,
   );
+  /* 버튼 글자가 읽는 값 — 안 건드렸어도 대사 장면이 있으면 클립 소리가 **들어갑니다.** 그때 「무음으로 병합」이라고
+     쓰면 거짓말입니다(`mergeButtonLabel` 의 🔴 와 같은 이유). */
+  const clipVolumeForLabel = pictureCard ? 0 : clipVolumePercent ?? (dialogueDefaultScenes > 0 ? 100 : 0);
   const modeUnready = audioMode !== null && needsTrack(audioMode) && !trackId;
   /**
    * 🔴 **병합 버튼을 막는 단 하나의 소리 조건 — 보낼 설정을 만들 수 없다.**
@@ -605,15 +612,28 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
               min={0}
               max={100}
               step={5}
-              value={clipVolumePercent}
+              value={clipVolumePercent ?? 0}
               disabled={pending || confirmOpen}
               onChange={(event) => setClipVolumePercent(Number(event.target.value))}
               className="mt-1 w-full accent-violet-500"
             />
           </label>
           <p data-testid="merge-clip-volume-value" className="text-xs tabular-nums text-slate-400">
-            {clipVolumePercent === 0 ? "0% — 쓰지 않습니다(지금까지의 결과)" : `${clipVolumePercent}%`}
+            {clipVolumePercent === null
+              ? dialogueDefaultScenes > 0
+                ? `기본 — 대사 장면 ${dialogueDefaultScenes}개는 100%, 나머지 클립은 0%`
+                : "0% — 쓰지 않습니다(지금까지의 결과)"
+              : clipVolumePercent === 0
+                ? "0% — 모든 클립 소리를 쓰지 않습니다"
+                : `${clipVolumePercent}% — 모든 클립에 같은 음량`}
           </p>
+          {/* 슬라이더 하나가 **모든 장면**에 걸린다는 것(CLI Round 1124 ③)은 대사 장면이 있을 때만 말할 가치가
+              있습니다 — 움직이는 순간 대사 장면의 100% 가 사라지니까요. */}
+          {dialogueDefaultScenes > 0 && (
+            <p data-testid="merge-clip-volume-dialogue-note" className="text-xs text-slate-400">
+              음량을 움직이면 대사 장면도 포함해 모든 클립이 그 값이 됩니다. 대사를 빼려면 0%로 내리세요.
+            </p>
+          )}
         </fieldset>
       )}
       {(!result || remaking) && audioMode !== null && (
@@ -644,7 +664,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             onClick={openConfirmation}
             disabled={confirmOpen || pending || blocked || audioUnready}
           >
-            {mergeButtonLabel(audioMode, pictureCard ? 0 : clipVolumePercent)}
+            {mergeButtonLabel(audioMode, clipVolumeForLabel)}
           </button>
           {/* 🟠 못 누르는 이유를 **이유별로** 말합니다. 버튼이 닫힌 채 아무 말도 없으면 화면이 고장 난 것으로
               읽히고, 두 이유를 한 문장으로 뭉개면 「음악을 고르라」는 말이 아직 불러오는 중인 사람에게 갑니다. */}
@@ -766,6 +786,13 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           {result.project.usedAudio?.clipVolume !== undefined && result.project.usedAudio.clipVolume > 0 && (
             <p data-testid="merge-used-clip-audio" className="text-xs tabular-nums text-slate-400">
               이 영상에는 클립 소리가 {Math.round(result.project.usedAudio.clipVolume * 100)}% 음량으로 깔려 있습니다.
+            </p>
+          )}
+          {/* 음량을 안 건드려 서버 기본(대사 장면만 100%)으로 구운 경우 — 그때 `clipVolume` 은 기록에 없어서 위 줄이
+              안 뜨고, 이 줄이 없으면 대사가 든 영상이 「클립 소리 없음」처럼 보입니다(CLI Round 1126). */}
+          {result.project.usedAudio?.dialogueAudioDefaultSceneCount !== undefined && result.project.usedAudio.dialogueAudioDefaultSceneCount > 0 && (
+            <p data-testid="merge-used-dialogue-audio" className="text-xs tabular-nums text-slate-400">
+              이 영상에는 대사 장면 {result.project.usedAudio.dialogueAudioDefaultSceneCount}개의 클립 소리가 100% 음량으로 들어 있습니다.
             </p>
           )}
           <AttributionNotice usedAudio={result.project.usedAudio} />

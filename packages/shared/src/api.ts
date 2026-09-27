@@ -737,7 +737,7 @@ export type SceneFailureRemedy = (typeof SCENE_FAILURE_REMEDIES)[number];
  *
  * From docs.dev.runwayml.com/errors/task-failures.
  */
-export const PROVIDER_TASK_FAILURES: readonly { prefix: string; remedy: SceneFailureRemedy; billedOnFailure: boolean; message: string }[] = [
+export const PROVIDER_TASK_FAILURES: readonly { prefix: string; remedy: SceneFailureRemedy; billedOnFailure: boolean; message: string; canRetryWithoutLastFrame?: true }[] = [
   {
     prefix: "SAFETY.INPUT", remedy: "not_retryable", billedOnFailure: false,
     message: "첫 프레임이 Runway의 안전 검사에 걸렸습니다. 같은 그림으로는 통과하지 않으니 그 장면의 이미지를 바꿔야 합니다.",
@@ -763,6 +763,10 @@ export const PROVIDER_TASK_FAILURES: readonly { prefix: string; remedy: SceneFai
   {
     prefix: "INPUT_PREPROCESSING.SAFETY.TEXT", remedy: "change_input", billedOnFailure: false,
     message: "장면 지시 글이 Runway의 안전 검사에 걸렸습니다. 같은 글로는 통과하지 않으니 그 장면의 글을 고친 뒤 다시 시도해 주세요.",
+  },
+  {
+    prefix: "INPUT_PREPROCESSING.SAFETY.THIRD_PARTY", remedy: "change_input", billedOnFailure: false, canRetryWithoutLastFrame: true,
+    message: "영상 모델 제공사의 검열에 막혔습니다. 같은 입력으로는 다시 막힐 가능성이 큽니다. 끝 프레임을 빼고 다시 보내 볼 수 있습니다.",
   },
   {
     prefix: "SAFETY.OUTPUT", remedy: "not_retryable", billedOnFailure: true,
@@ -814,12 +818,14 @@ export interface MergeClipsInvalidDetails {
 /**
  * The `details` of VIDEO_MERGE_FAILED and LONG_EPISODE_MERGE_FAILED when the render stopped inside FFmpeg: fitting
  * one scene's clip to the frame (and which scene), joining the fitted clips, or laying the music under the result.
- * Absent when it stopped anywhere else (writing a file, an empty output) — the step is then not FFmpeg's to name.
+ * A final-video rotation instead reports whether encoding or replacing the existing file failed.
  */
 export type MergeFailedDetails =
   | { stage: "scene"; sceneNumber: SceneNumber }
   | { stage: "join" }
-  | { stage: "music" };
+  | { stage: "music" }
+  | { stage: "ffmpeg" }
+  | { stage: "rename" };
 
 export interface SceneFailure {
   /** This app's own category, unchanged — still what a screen picks its sentence from. */
@@ -834,6 +840,8 @@ export interface SceneFailure {
    * file is the fix, not the button). Screens draw no advice line when it is absent (Cowork Round 773).
    */
   remedy?: SceneFailureRemedy;
+  /** Present only when this failed submission used an end-frame image and the provider code has an observed retry route that omits it once. */
+  retryWithoutLastFrame?: { lastFrameSceneNumber: SceneNumber };
   billedOnFailure: boolean;
   /**
    * What the provider says this attempt cost, in its own credits (Runway: 1 credit = $0.01) — read from the
@@ -1541,6 +1549,8 @@ export interface ShortProjectSettings {
   styleNotes: ShortProjectStyleNotes;
   /** Off by default for existing projects. When on, the Story schema's `narration` field is used to generate per-scene TTS audio during Video merge instead of silence. */
   narrationEnabled: boolean;
+  /** One short-project switch. The Story AI writes per-scene speaker and spoken words; old projects default to off. */
+  characterDialogueEnabled: boolean;
   /**
    * Independent of narrationEnabled — a scene's narration text can be burned in as a subtitle during merge
    * without any TTS audio at all ("captions only", a real Shorts use case since many viewers watch muted).
@@ -1588,8 +1598,8 @@ export interface ShortProjectSettings {
  * everywhere else.
  */
 export type ShortProjectSettingsInput =
-  Omit<ShortProjectSettings, "durationSeconds" | "sceneImageContinuityEnabled">
-  & { sceneImageContinuityEnabled?: boolean };
+  Omit<ShortProjectSettings, "durationSeconds" | "sceneImageContinuityEnabled" | "characterDialogueEnabled">
+  & { sceneImageContinuityEnabled?: boolean; characterDialogueEnabled?: boolean };
 
 /**
  * Two flags rather than one, because this form has two locks and they close at different moments.
@@ -1929,6 +1939,10 @@ export interface VideoPromptPreview {
   sceneNumber: SceneNumber;
   prompt: string;
   model: VideoModel;
+  /** True only if this request asks the provider to generate the scene's spoken dialogue in its clip audio. */
+  generateDialogueAudio?: boolean;
+  dialogueSpeaker?: string;
+  dialogueText?: string;
   ratio: RunwayVideoRatio;
   durationSeconds: number;
   estimatedCostUsd: number;
@@ -2381,6 +2395,8 @@ export interface VideoReview {
    * was (recordedVideoModel).
    */
   model?: VideoModel;
+  /** True only when this scene's latest video request asked for dialogue audio and the measured clip has an audio track. With clipVolume omitted, merge uses that track at 100%; this does not prove the spoken words are audible or correct. */
+  dialogueAudioDefault?: boolean;
   /**
    * What the clip on disk actually is — measured with ffprobe when the review is read, not inferred from the model.
    * Absent when it could not be measured (ffprobe missing, or a local placeholder that is not a real video).
@@ -2391,7 +2407,7 @@ export interface VideoReview {
    * with the catalogue's `frameShape` is evidence the catalogue is wrong, the way h3_max_768p's was (`2a087b5`).
    *
    * `hasAudio` is whether the file carries an audio track at all, not whether it is loud; the merge's own mapping
-   * decides what is heard (today: nothing from the clip — see VIDEO_CLIP_AUDIO_NOTE).
+   * decides what is heard. `dialogueAudioDefault` also requires the matching request record.
    */
   clip?: VideoClipFacts;
 }
@@ -2425,6 +2441,8 @@ export interface RegenerateVideoRequest {
    * execution mode (no real Runway call).
    */
   additionalInstruction?: string;
+  /** Explicitly retry this one eligible failed scene without its previously confirmed end-frame image. The original end frame is retained for later regenerations. */
+  omitLastFrame?: true;
 }
 
 export interface RegenerateVideoResponse extends GenerationProgressResponse {
@@ -2462,8 +2480,9 @@ export interface MergeAudioSettings {
   /** Fade-in at the start and fade-out at the end of the whole final video, in seconds. Server default when omitted: 2. */
   fadeSeconds?: number;
   /**
-   * 0 to 1 — the clips' own sound, laid under whatever `mode` makes (narration, music, or silence). Omitted or 0
-   * is the merge as before: the clip's sound is dropped.
+   * 0 to 1 — the clips' own sound, laid under whatever `mode` makes (narration, music, or silence). When omitted,
+   * scenes with `VideoReview.dialogueAudioDefault` use their clip track at full volume and other scenes drop it.
+   * An explicit value, including 0, applies to every scene's clip track, including dialogue-requested scenes.
    *
    * One layer on every mode rather than more modes (CLI Round 821 · Cowork Round 822): `silent` + 1 is 「영상 소리만」,
    * `narration` + 0.3 is a voice over the clip's ambience — the pairing 캡틴D's H3 Max reel asked for. Only clips

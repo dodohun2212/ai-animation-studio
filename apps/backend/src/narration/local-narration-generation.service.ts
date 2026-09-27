@@ -151,6 +151,11 @@ export class LocalNarrationGenerationService {
     try {
       for (const number of scenes) {
         failingScene = number;
+        // A clip asked to speak its own line must not also buy the same scene's voice-over TTS.
+        if (toShortProjectSettings(current).characterDialogueEnabled && sceneValue(current.scenes[number - 1], "dialogue_text")) {
+          skipped.push(number);
+          continue;
+        }
         const text = sceneValue(current.scenes[number - 1], "narration");
         const destination = this.narrationPath(current.project_id, number);
         if (!text) { skipped.push(number); continue; }

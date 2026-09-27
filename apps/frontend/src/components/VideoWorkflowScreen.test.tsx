@@ -458,6 +458,85 @@ describe("VideoWorkflowScreen", () => {
     expect(within(panel).getByRole("button", { name: "예, 다시 시도합니다" })).not.toBeDisabled();
   });
 
+  /**
+   * INPUT_PREPROCESSING.SAFETY.THIRD_PARTY(Seedance 검열): 끝 프레임이 차단 원인일 수 있고 비용은 들지 않습니다.
+   * 체크박스는 기본 선택이어야 하며, 선택 상태에서는 지시문 없이도 「예, 다시 시도합니다」가 활성화됩니다.
+   * 또한 연결성 경고 문구(다음 장면과 이어지는 곳이 튈 수 있습니다)가 즉시 보여야 합니다.
+   */
+  it("shows the omit-last-frame checkbox checked by default and enables the confirm button without an instruction", async () => {
+    const failure = {
+      category: "unknown",
+      providerCode: "INPUT_PREPROCESSING.SAFETY.THIRD_PARTY",
+      remedy: "change_input",
+      billedOnFailure: false,
+      retryWithoutLastFrame: { lastFrameSceneNumber: 3 },
+    };
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failedWith(failure))));
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+
+    await screen.findByTestId("failed-scene-retry-confirm-2");
+    const checkbox = screen.getByTestId("failed-scene-retry-omit-last-frame-2") as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    const note = screen.getByTestId("failed-scene-retry-omit-last-frame-note-2");
+    expect(note.textContent).toContain("3번 그림으로 끝나지 않아");
+    expect(note.textContent).toContain("튈 수 있습니다");
+    // Instruction field is empty — button is enabled because the checked checkbox is an escape path.
+    const confirmPanel = screen.getByTestId("failed-scene-retry-confirm-2");
+    expect(within(confirmPanel).getByRole("button", { name: "예, 다시 시도합니다" })).not.toBeDisabled();
+  });
+
+  /**
+   * 체크 상태에서 확인하면 omitLastFrame:true 를 한 번만 보내고,
+   * 체크를 해제한 뒤에는 기존 `change_input` 경로처럼 지시문을 입력하고,
+   * 그 지시문만 담긴 본문을 보냅니다.
+   */
+  it("sends omitLastFrame:true when the checkbox is checked, and omits it when unchecked", async () => {
+    const failure = {
+      category: "unknown",
+      providerCode: "INPUT_PREPROCESSING.SAFETY.THIRD_PARTY",
+      remedy: "change_input",
+      billedOnFailure: false,
+      retryWithoutLastFrame: { lastFrameSceneNumber: 3 },
+    };
+    const retried = makeProgress({ status: "running", completedSceneNumbers: [1], currentSceneNumber: 2 });
+
+    // ── Part 1: checkbox checked (default) → omitLastFrame:true ──────────────
+    const fetchMock1 = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, failedWith(failure)))
+      .mockResolvedValueOnce(jsonResponse(200, retried));
+    const { unmount } = renderScreen(fetchMock1);
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+    const panel1 = await screen.findByTestId("failed-scene-retry-confirm-2");
+    fireEvent.click(within(panel1).getByRole("button", { name: "예, 다시 시도합니다" }));
+
+    await waitFor(() => expect(fetchMock1).toHaveBeenCalledTimes(2));
+    const [, init1] = fetchMock1.mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(String(init1.body))).toEqual({ approved: true, omitLastFrame: true });
+
+    unmount();
+
+    // ── Part 2: checkbox unchecked → plain body ───────────────────────────────
+    const fetchMock2 = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, failedWith(failure)))
+      .mockResolvedValueOnce(jsonResponse(200, retried));
+    renderScreen(fetchMock2);
+
+    await screen.findByTestId("failed-scenes-section");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-2"));
+    const panel2 = await screen.findByTestId("failed-scene-retry-confirm-2");
+    fireEvent.click(screen.getByTestId("failed-scene-retry-omit-last-frame-2")); // uncheck
+    fireEvent.change(screen.getByTestId("failed-scene-retry-instruction-2"), { target: { value: "움직임을 단순하게" } });
+    fireEvent.click(within(panel2).getByRole("button", { name: "예, 다시 시도합니다" }));
+
+    await waitFor(() => expect(fetchMock2).toHaveBeenCalledTimes(2));
+    const [, init2] = fetchMock2.mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(String(init2.body))).toEqual({ approved: true, additionalInstruction: "움직임을 단순하게" });
+  });
+
   /** SAFETY.INPUT / SAFETY.OUTPUT: the same request never passes, so a paid button here sells a known outcome. */
   it("offers no retry at all when the provider says the request cannot pass", async () => {
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, failedWith({ category: "unknown", providerCode: "SAFETY.INPUT.01", remedy: "not_retryable", billedOnFailure: false }))));
@@ -1129,5 +1208,48 @@ describe("VideoWorkflowScreen source", () => {
     const notice = await screen.findByTestId("provider-mode-notice");
     expect(notice.textContent).toContain("실제 유료 Runway API를 호출합니다");
     expect(notice.textContent).not.toContain("비용 없이");
+  });
+
+  it("shows dialogue_speaker and dialogue_text in the review card when the scene carries them", async () => {
+    const scenes: Scene[] = [
+      ...scenesFor(5),
+      {
+        number: 6,
+        script: "Scene 6 script",
+        motionPrompt: "Scene 6 motion prompt",
+        generatedImagePath: "images/scene6.png",
+        generatedVideoPath: "videos/runway/scene6.mp4",
+        dialogue_speaker: "한예슬",
+        dialogue_text: "우리 다시 시작할 수 있어.",
+      },
+    ];
+    const review = {
+      project: makeProject({ workflowState: WorkflowState.ReviewingVideos, scenes }),
+      reviews: sixReviews(),
+    };
+    renderScreen(vi.fn().mockImplementation(async (url: string) =>
+      String(url).endsWith("/review")
+        ? jsonResponse(200, review)
+        : jsonResponse(200, makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] }))));
+
+    const card6 = await screen.findByTestId("video-review-dialogue-6");
+    expect(card6.textContent).toContain("한예슬");
+    expect(card6.textContent).toContain("우리 다시 시작할 수 있어.");
+
+    // A scene without dialogue carries no dialogue block.
+    expect(screen.queryByTestId("video-review-dialogue-1")).toBeNull();
+  });
+
+  it("omits dialogue block when dialogue_speaker and dialogue_text are both absent from the scene", async () => {
+    const review = reviewResponse(sixReviews());
+    renderScreen(vi.fn().mockImplementation(async (url: string) =>
+      String(url).endsWith("/review")
+        ? jsonResponse(200, review)
+        : jsonResponse(200, makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] }))));
+
+    await screen.findByTestId("video-review-list");
+    for (let n = 1; n <= 6; n++) {
+      expect(screen.queryByTestId(`video-review-dialogue-${n}`)).toBeNull();
+    }
   });
 });

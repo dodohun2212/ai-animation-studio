@@ -114,7 +114,7 @@ export const SCENE_FIELDS = [
  * field existed have exactly SCENE_FIELDS.length keys and must keep working. It is accepted here only so the
  * strict "no unexpected keys" check below does not reject newer scenes that do carry it.
  */
-export const OPTIONAL_SCENE_FIELDS = ["narration"] as const;
+export const OPTIONAL_SCENE_FIELDS = ["narration", "dialogue_speaker", "dialogue_text"] as const;
 
 /**
  * Not the provider's 1,000: the room left after the no-legible-text rule the adapter appends to every prompt on
@@ -122,7 +122,7 @@ export const OPTIONAL_SCENE_FIELDS = ["narration"] as const;
  */
 const UTF16_PROMPT_LIMIT = RUNWAY_PROMPT_AUTHORING_LIMIT;
 
-export type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number> & { narration?: string };
+export type StoredScene = Record<(typeof SCENE_FIELDS)[number], string | number> & { narration?: string; dialogue_speaker?: string; dialogue_text?: string };
 
 /** Equivalent to JavaScript's UTF-16 code-unit count used by the Python UI. */
 export function utf16Length(value: string): number {
@@ -141,6 +141,7 @@ export interface VideoPromptResult {
 /** Exactly what a dialect reads. A compiler that wants more than this is describing a different feature. */
 export interface VideoPromptInput {
   scene: StoredScene;
+  dialogueEnabled?: boolean;
   /** Scene N-1, for the continuity cue. Absent for scene 1 by definition, not by omission. */
   previous: StoredScene | undefined;
   ratio: RunwayVideoRatio;
@@ -236,7 +237,7 @@ export function videoPromptDrift(recorded: string, recomputed: string): VideoPro
  * phrasing is not supported and may produce unpredictable or even opposite results." The image side's Avoid
  * pattern does not transfer here; Runway is a different model with the opposite behavior for negatives.
  */
-function compileFirstFrameMotion({ scene, previous, ratio, clipDurationSeconds }: VideoPromptInput): VideoPromptResult {
+function compileFirstFrameMotion({ scene, previous, ratio, clipDurationSeconds, dialogueEnabled }: VideoPromptInput): VideoPromptResult {
   const orientation = ratio === "1280:720" ? "horizontal" : "vertical";
   const continuity = previous
     ? [previous.end_motion, previous.continuity_hint].filter((value, index, values) => values.indexOf(value) === index).join(" ")
@@ -254,6 +255,9 @@ function compileFirstFrameMotion({ scene, previous, ratio, clipDurationSeconds }
     ["Starts at", String(scene.start_motion)],
     ["Action", String(scene.main_motion)],
     ["Performance", String(scene.expression_change)],
+    ...(dialogueEnabled && scene.dialogue_speaker?.trim() && scene.dialogue_text?.trim()
+      ? [["Spoken dialogue", `${scene.dialogue_speaker.trim()} says aloud exactly: “${scene.dialogue_text.trim()}”. Generate audible character speech synchronized with the performance; no voice-over repetition.`] as [string, string]]
+      : []),
     ["Ends at", String(scene.end_motion)],
     ["Motivated camera", String(scene.camera_motion)],
     ["Environment", String(scene.environment_motion)],
@@ -318,5 +322,5 @@ export function compileVideoPrompt(model: VideoModel, input: VideoPromptInput): 
  * grammar is registered, because that is the day this stops being true and every clip made by the other model
  * would read as 「장면 내용이 바뀌었다」 for a reason no person caused.
  */
-export const promptFor = (scene: StoredScene, previous: StoredScene | undefined, ratio: RunwayVideoRatio, clipDurationSeconds: number): VideoPromptResult =>
-  compileVideoPrompt(VIDEO_MODELS[0], { scene, previous, ratio, clipDurationSeconds });
+export const promptFor = (scene: StoredScene, previous: StoredScene | undefined, ratio: RunwayVideoRatio, clipDurationSeconds: number, dialogueEnabled = false): VideoPromptResult =>
+  compileVideoPrompt(VIDEO_MODELS[0], { scene, previous, ratio, clipDurationSeconds, dialogueEnabled });

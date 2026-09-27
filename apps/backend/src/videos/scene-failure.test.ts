@@ -85,6 +85,13 @@ describe("what a screen is told about a failed scene", () => {
     expect(sceneFailureFor("timeout"), "without a number, the rule stands").not.toHaveProperty("billedCredits");
   });
 
+  it("offers end-frame omission only when the observed code and an actual end frame are both present", () => {
+    expect(sceneFailureFor("blocked", "INPUT_PREPROCESSING.SAFETY.THIRD_PARTY", 0, 3)).toMatchObject({
+      retryWithoutLastFrame: { lastFrameSceneNumber: 3 },
+    });
+    expect(sceneFailureFor("blocked", "INPUT_PREPROCESSING.SAFETY.THIRD_PARTY", 0)).not.toHaveProperty("retryWithoutLastFrame");
+  });
+
   it("carries no remedy where none of the three sentences is true, and still says whether it was billed", () => {
     expect(sceneFailureFor("submit_interrupted")).toEqual({ category: "submit_interrupted", billedOnFailure: true });
     expect(sceneFailureFor("budget_exceeded")).not.toHaveProperty("remedy");

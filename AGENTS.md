@@ -2,26 +2,35 @@
 
 ## Session start — do this first, without being asked
 
-The person should never have to explain this repository to you. In a new session,
-before doing anything else:
+The person should never have to explain this repository to you. In a new session, in
+this order, **before you answer anything** — whatever the first message says (a greeting,
+a question, even a concrete task):
 
-1. Run `node scripts/session-briefing.mjs` (read-only, about 5 KB). It prints what the
-   project is, where things are written down, the checkout state (uncommitted files,
-   pre-commit hook, running dev servers), the last commits, and the headlines of
-   `docs/00_NOW.md`.
-2. Tell the person, in Korean and in at most 10 lines: who you are (your seat, from
-   "Seats" below — first line), what the project is (one line),
+1. Run `node scripts/session-briefing.mjs` (read-only, about 8 KB). It prints your seat,
+   what the project is, where things are written down, the checkout state (uncommitted
+   files, pre-commit hook, running dev servers), whose turn the mailbox is, the last
+   commits, and the headlines of `docs/00_NOW.md`.
+   **No shell (the frontend seat in the Claude app usually has none):** you cannot run it.
+   Read instead, in this order: the top of `docs/00_NOW.md` (§1–§4), the newest round at
+   the top of each `.claude-bridge/` file (first 8 KB only), and the modification times
+   of the files under `apps/frontend/src` you are about to touch. Say in the briefing that
+   git state (uncommitted files, last commits) is unknown to you — do not guess it.
+2. **Read the documents your seat needs** (list under "Read first": everyone reads
+   `AI_GUIDELINES.md`, `docs/03_TEAM_WORKFLOW.md` and `docs/01_CURRENT_PRODUCT_SPEC.md`;
+   backend / integration adds `docs/04_INTERNAL_API_CONTRACT.md`, frontend adds
+   `docs/05_DESIGN_SYSTEM.md`). This is not optional and is not skipped because the
+   first message is a question: if the person asks what you have read, read first, then
+   answer. On Windows PowerShell use `Get-Content -Raw -Encoding UTF8 <file>`.
+3. Only then answer. If there is no concrete task, tell the person, in Korean and in at
+   most 10 lines: who you are (your seat, first line), what the project is (one line),
    what was done last, what is open and who it waits on, any mailbox round waiting for
    your side (read only its top, see checklist step 4), and which item you propose to
-   take. Then ask which one to start.
-3. Right after the briefing, read the documents your seat needs (see "Read first"
-   below) so that you understand the project and your role. Do not start work until the
-   person picks an item; when they do, read that item in `docs/00_NOW.md` in full.
-   What you never read whole is listed at the end of "Read first".
+   take. Then ask which one to start. If the first message is a concrete task, give that
+   briefing in two lines and do the task.
+4. Do not start work on an item the person has not picked. When they pick one, read that
+   item in `docs/00_NOW.md` in full. What you never read whole is listed at the end of
+   "Read first".
 
-If the person's first message is already a concrete task, still run the script (it
-catches a running dev server or uncommitted files before you touch anything), give the
-briefing in two lines, and start on their task.
 
 ## Seats — who you are (read this before you answer the person)
 
@@ -57,6 +66,12 @@ you understand the project and your role, so do not skip it):
 - `docs/00_NOW.md` in full — what is done, what is next, what is waiting on the user. It
   is the only answer to "what should I work on"; do not choose your own next item while
   it exists. Finish an item, update that file, and stop.
+- **Also write it down when you start, and when it changes hands.** On the item's line in
+  `00_NOW.md` add one line: `🟡 진행 중 (날짜) — 누가 · 무엇까지 · 우편함 라운드 N`. If the
+  work is split into numbered sub-steps in the mailbox, the numbers go on that line too.
+  A multi-round item that exists only in the mailbox makes this file wrong without anyone
+  noticing: on 2026-09-27 items 4 and 5 ran through rounds 1107–1113 while this file still
+  said the dialogue feature was paused and "no start signal sent".
 - `docs/06_DECISIONS.md` — read its index (top of the file) and the entries for the area
   you are changing **before proposing a design.** It records the paths that were tried
   and abandoned; skipping it means proposing them again.
@@ -187,6 +202,26 @@ collisions it prevented:
 
 If two agents must run at once again, decide first who commits and who merges; do
 not build the checkouts first.
+
+**One session per seat.** Two sessions holding the same seat is the same collision in a
+smaller form, and it already happened: on 2026-09-27 two frontend sessions ran at once,
+one reported item 5 done while the other was finishing item 4's follow-up, and
+`from-cowork.md` shrank from about 3 MB to 2.7 KB at 11:36 — the history was gone (the
+cause is inferred, not measured; the file is outside git, so it was not recovered).
+
+- If the mailbox shows your seat saying something you did not say (a round you did not
+  write, a file under your zone saved at a time you did not save it), stop and ask the
+  person whether another session is open before you write anything.
+- **Writing a mailbox file without a shell** (the frontend seat replaces the whole file):
+  note the file's modification time when you read it, and write only if it is unchanged
+  at the moment you save (`device_commit_files` with `expectedMtimeMs`). If it changed,
+  do not write — read the new top and start again. Your new round goes on top of the
+  file you just read, never on top of an older copy.
+  Upload each write under a **new file name** and, after writing, read the file back and
+  compare its hash with what you meant to write. On 2026-09-27 a round written this way at
+  11:57 was found at 12:18 replaced by the previous version, with the save time of that
+  write — the tool is suspected of reusing an earlier upload of the same name (inferred,
+  not measured). A check that the write "succeeded" is not a check of what was written.
 
 ## Agent zones
 

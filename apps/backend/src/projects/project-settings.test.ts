@@ -19,6 +19,7 @@ const settings = {
   additionalNotes: "무서운 장면 제외",
   styleNotes: { visualStyle: "수채화", lighting: "달빛", aspect: "16:9" },
   narrationEnabled: true,
+  characterDialogueEnabled: false,
   subtitlesEnabled: true,
   sceneImageContinuityEnabled: false,
 };

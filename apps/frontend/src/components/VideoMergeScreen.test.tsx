@@ -83,12 +83,14 @@ function renderScreen(
   clipModels?: Record<number, string>,
   /** 그 장면 클립을 잰 값, 장면 번호별 — 없는 것이 정상입니다(ffprobe 없음 · 가짜 실행 · 병합을 마친 프로젝트). */
   clipFacts?: Record<number, { width: number; height: number; hasAudio: boolean }>,
+  /** 서버가 `dialogueAudioDefault: true` 로 판정한 장면 번호들(CLI Round 1124). 없으면 어느 장면도 아닙니다. */
+  dialogueDefaults?: readonly number[],
 ) {
   // The confirmation count comes from the video review route, never from a field on the scene — no response has
   // ever carried one (see the note above the COMPLETED-project test). A test says which scenes are confirmed by
   // number, which is the thing the route actually reports.
   const scenes = (project.scenes ?? sixScenes()) as Scene[];
-  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: (approved ?? scenes.map((one) => one.number)).includes(scene.number) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z", ...(clipModels?.[scene.number] ? { model: clipModels[scene.number] } : {}), ...(clipFacts?.[scene.number] ? { clip: clipFacts[scene.number] } : {}) }));
+  const reviews = scenes.map((scene) => ({ sceneNumber: scene.number, status: (approved ?? scenes.map((one) => one.number)).includes(scene.number) ? "approved" as const : "pending" as const, updatedAt: "2026-08-23T00:00:00.000Z", ...(clipModels?.[scene.number] ? { model: clipModels[scene.number] } : {}), ...(clipFacts?.[scene.number] ? { clip: clipFacts[scene.number] } : {}), ...(dialogueDefaults?.includes(scene.number) ? { dialogueAudioDefault: true } : {}) }));
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     if (url === PROJECT_URL && !init) {
@@ -857,6 +859,49 @@ describe("VideoMergeScreen", () => {
       .toEqual({ mode: "silent", clipVolume: 0.4 });
   });
 
+  /**
+   * 🔴 2026-09-27 부터 「안 보냄」과 「0」은 다릅니다(CLI Round 1124). 안 건드리면 서버가 대사 장면만 100% 로
+   * 굽습니다 — 그러니 화면은 그렇게 **말해야** 하고, 버튼이 「무음」이라고 하면 거짓말입니다. 그리고 요청에는
+   * `clipVolume` 이 **없어야** 합니다(0 을 보내면 대사가 꺼집니다).
+   */
+  it("says the dialogue scenes go in at 100% when untouched, and sends no clip volume", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const withSound = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: true }]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, withSound, [2, 5]);
+
+    const value = await screen.findByTestId("merge-clip-volume-value");
+    await waitFor(() => expect(value.textContent).toContain("대사 장면 2개는 100%"));
+    expect(screen.getByTestId("merge-clip-volume-dialogue-note").textContent).toContain("모든 클립이 그 값");
+    const button = screen.getByTestId("open-merge-confirm-button");
+    expect(button.textContent, "대사 소리가 들어가는데 「무음」이라고 하면 안 됩니다").toBe("영상 소리로 병합");
+
+    fireEvent.click(button);
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    expect(JSON.parse(String((mergeFetch.mock.calls[0] as [string, RequestInit])[1].body)).audio).toEqual({ mode: "silent" });
+  });
+
+  /** 사람이 0 으로 내린 것은 「안 건드림」이 아닙니다 — 대사까지 끄라는 뜻이라 0 을 **보냅니다.** */
+  it("sends an explicit 0 once someone lowers it, turning the dialogue off too", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const scenes = sixScenes();
+    const withSound = Object.fromEntries(scenes.map((scene) => [scene.number, { width: 768, height: 1152, hasAudio: true }]));
+    renderScreen(mergeFetch, { scenes }, undefined, undefined, undefined, undefined, undefined, withSound, [2]);
+
+    await waitFor(() => expect(screen.getByTestId("merge-clip-volume-value").textContent).toContain("대사 장면 1개"));
+    fireEvent.change(screen.getByLabelText("섞는 음량"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("섞는 음량"), { target: { value: "0" } });
+    expect(screen.getByTestId("merge-clip-volume-value").textContent).toContain("모든 클립 소리를 쓰지 않습니다");
+    const button = screen.getByTestId("open-merge-confirm-button");
+    expect(button.textContent).toBe("무음으로 병합");
+
+    fireEvent.click(button);
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    expect(JSON.parse(String((mergeFetch.mock.calls[0] as [string, RequestInit])[1].body)).audio).toEqual({ mode: "silent", clipVolume: 0 });
+  });
+
   /** 소리가 들어 있는 클립이 하나도 없으면 칸 자체가 없습니다 — 아무것도 못 하는 칸은 눌러 보게 만듭니다. */
   it("offers no clip-sound control when no clip carries sound", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
@@ -884,6 +929,24 @@ describe("VideoMergeScreen", () => {
 
     const line = await screen.findByTestId("merge-used-clip-audio");
     expect(line.textContent).toContain("40%");
+    expect(screen.queryByTestId("merge-used-dialogue-audio"), "명시한 음량이면 대사 기본 줄은 없습니다").toBeNull();
+  });
+
+  /** 안 건드리고 구운 대사 릴 — `clipVolume` 이 기록에 없으니, 대사 장면 수가 그 영상의 소리를 말합니다(CLI Round 1126). */
+  it("says how many dialogue scenes went in at 100% when the volume was left to the default", async () => {
+    const withDialogue = makeResponse({
+      project: makeProject({ scenes: sixScenes(), usedAudio: { mode: "silent", dialogueAudioDefaultSceneCount: 2 } }),
+    });
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, withDialogue));
+    renderScreen(mergeFetch, { scenes: sixScenes() });
+
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    const line = await screen.findByTestId("merge-used-dialogue-audio");
+    expect(line.textContent).toContain("대사 장면 2개");
+    expect(line.textContent).toContain("100%");
+    expect(screen.queryByTestId("merge-used-clip-audio")).toBeNull();
   });
 
   it("sends a photo card's adjusted subtitle layout with the merge", async () => {

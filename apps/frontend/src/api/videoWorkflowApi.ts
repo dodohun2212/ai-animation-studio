@@ -264,10 +264,14 @@ const APPROVED_BODY = { approved: true as const };
 /**
  * Omits `additionalInstruction` entirely when blank rather than sending an empty string — the contract treats
  * blank as absent, and leaving the key out keeps the request byte-identical to a plain regeneration.
+ * `omitLastFrame: true` is sent only when the caller explicitly opts in — a plain retry leaves the field out.
  */
-function regenerateBody(additionalInstruction?: string): RegenerateVideoRequest {
+function regenerateBody(additionalInstruction?: string, omitLastFrame?: boolean): RegenerateVideoRequest {
   const trimmed = additionalInstruction?.trim();
-  return trimmed ? { approved: true, additionalInstruction: trimmed } : { approved: true };
+  const body: RegenerateVideoRequest = { approved: true };
+  if (trimmed) body.additionalInstruction = trimmed;
+  if (omitLastFrame) body.omitLastFrame = true;
+  return body;
 }
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -295,10 +299,11 @@ export function regenerateVideoScene(
   jobId: string,
   sceneNumber: SceneNumber,
   additionalInstruction?: string,
+  omitLastFrame?: boolean,
 ): Promise<RegenerateVideoResponse> {
   return request(
     API_ROUTES.videoRegenerate(projectId, jobId, sceneNumber),
-    { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(regenerateBody(additionalInstruction)) },
+    { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(regenerateBody(additionalInstruction, omitLastFrame)) },
     isRegenerateVideoResponse,
   );
 }

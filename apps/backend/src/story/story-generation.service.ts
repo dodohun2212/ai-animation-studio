@@ -13,7 +13,7 @@ export type StoredStory = {
   title: string;
   synopsis: string;
   ending: string;
-  scenes: Array<Record<(typeof SCENE_FIELDS)[number], string | number>>;
+  scenes: Array<Record<(typeof SCENE_FIELDS)[number], string | number> & { dialogue_speaker?: string; dialogue_text?: string }>;
 };
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -23,7 +23,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
  * Enforces Python's OpenAI `STORY_SCHEMA` plus StoryEngine's ordered-scene
  * and non-empty-description invariants before anything is persisted.
  */
-export function validateStory(value: unknown, sceneCount = 6): asserts value is StoredStory {
+export function validateStory(value: unknown, sceneCount = 6, dialogueEnabled = false): asserts value is StoredStory {
   if (!object(value) || Object.keys(value).length !== 4
     || !["title", "synopsis", "ending", "scenes"].every((key) => key in value)
     || typeof value.title !== "string" || typeof value.synopsis !== "string" || typeof value.ending !== "string"
@@ -32,8 +32,9 @@ export function validateStory(value: unknown, sceneCount = 6): asserts value is 
   }
 
   value.scenes.forEach((scene, index) => {
-    if (!object(scene) || Object.keys(scene).length !== SCENE_FIELDS.length
+    if (!object(scene) || Object.keys(scene).length !== SCENE_FIELDS.length + (dialogueEnabled ? 2 : 0)
       || !SCENE_FIELDS.every((key) => key in scene)
+      || (dialogueEnabled && (typeof scene.dialogue_speaker !== "string" || typeof scene.dialogue_text !== "string"))
       || scene.number !== index + 1
       || !SCENE_FIELDS.slice(1).every((key) => typeof scene[key] === "string")
       || !String(scene.description).trim()) {
@@ -49,7 +50,8 @@ export function validateStory(value: unknown, sceneCount = 6): asserts value is 
  */
 export function generateLocalStory(stored: StoredProject, approvedPrompt: string): StoredStory {
   const topic = stored.topic.trim();
-  const sceneCount = toShortProjectSettings(stored).sceneCount;
+  const settings = toShortProjectSettings(stored);
+  const sceneCount = settings.sceneCount;
   const concisePrompt = approvedPrompt.trim().replace(/\s+/g, " ").slice(0, 120);
   const scenes = Array.from({ length: sceneCount }, (_, offset) => {
     const number = offset + 1;
@@ -73,6 +75,7 @@ export function generateLocalStory(stored: StoredProject, approvedPrompt: string
       expression_change: "focused to hopeful",
       continuity_hint: number === 1 ? "Establish the opening visual state." : "Continue the previous scene's ending pose and direction.",
       narration: `Scene ${number} narration for ${topic}.`,
+      ...(settings.characterDialogueEnabled ? { dialogue_speaker: settings.character || "주인공", dialogue_text: `여기서 ${topic}의 비밀을 알아내야 해.` } : {}),
     };
   });
   const story: StoredStory = {
@@ -81,6 +84,6 @@ export function generateLocalStory(stored: StoredProject, approvedPrompt: string
     ending: `The ${sceneCount}-scene ${topic} story reaches a clear local ending.`,
     scenes,
   };
-  validateStory(story, sceneCount);
+  validateStory(story, sceneCount, settings.characterDialogueEnabled);
   return story;
 }

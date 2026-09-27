@@ -731,8 +731,24 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
    */
   async function rotateFinal(): Promise<void> {
     if (picked.status !== "ready" || picked.kind !== "project" || rotating) return;
+    /*
+     * 🔴 Let go of the file before asking for it to be replaced (CLI Round 1119). The server writes the turned
+     * cut beside the final and renames it over the original; on Windows that rename fails with EPERM while
+     * anything still holds the original open — and the player above does, streaming it. That was the real
+     * failure 캡틴D hit on 2026-09-27 (`미지의공간2`, reproduced by CLI). `pause()` or a new `src` alone does not
+     * promise the stream is closed, so: empty the element's source and `load()` (the documented way to drop a
+     * media resource), unmount it while the request runs (`rotating` below), and wait one task so that commit
+     * lands before the request leaves. The player comes back on success or failure.
+     */
+    const player = videoRef.current;
+    if (player) {
+      player.pause();
+      player.removeAttribute("src");
+      player.load();
+    }
     setRotating(true);
     setRotateError(null);
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
     try {
       const response = await rotateFinalVideo(picked.project.id);
       setConfirmRotate(false);
@@ -927,7 +943,18 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
         <div className="grid gap-5 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
           <div className="space-y-5">
           <div className={cardSection} data-testid="post-video">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption -- generated clips carry no caption track */}
+            {/* While the rotate runs the player is not on screen at all — see rotateFinal: a mounted player holds the
+                file the server has to replace. Same box, so the column does not jump. */}
+            {rotating ? (
+              <div
+                data-testid="post-video-released"
+                role="status"
+                className={`${reelShape === "landscape" ? "aspect-video" : reelShape === "portrait" ? "aspect-[9/16]" : imageBoxAspectClass(reelShape)} flex w-full items-center justify-center rounded-xl border border-white/10 bg-slate-950/60 p-4 text-center text-xs text-slate-400`}
+              >
+                영상을 돌리는 동안 미리보기를 잠시 닫았습니다.
+              </div>
+            ) : (
+            /* eslint-disable-next-line jsx-a11y/media-has-caption -- generated clips carry no caption track */
             <video
               ref={videoRef}
               data-testid="post-video-player"
@@ -954,6 +981,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                 setMeasured(frame === null && seconds === null ? null : { frame, seconds });
               }}
             />
+            )}
             {/* Instagram's own uploader offers a frame strip for this; the app has the same video already on
                 screen, so the choice is "the frame you are looking at" rather than a second way to look. Nothing
                 has to be pressed — unset means frame 0, which is exactly what Instagram does on its own. */}

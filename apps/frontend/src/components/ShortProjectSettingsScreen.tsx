@@ -56,7 +56,7 @@ type State = {
 const EMPTY_SETTINGS: ShortProjectSettings = {
   projectName: "", topic: "", genre: "미스터리", mood: "시네마틱", character: "", lore: "", fullStory: "",
   durationSeconds: 30, sceneCount: 6, clipDurationSeconds: 5, additionalNotes: "", styleNotes: { aspect: "16:9" },
-  narrationEnabled: false, subtitlesEnabled: false,
+  narrationEnabled: false, characterDialogueEnabled: false, subtitlesEnabled: false,
   // Placeholder until the settings arrive; the screen has no control for this yet (CLI Round 623).
   sceneImageContinuityEnabled: false,
 };
@@ -1300,6 +1300,27 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               <span>
                 자막 넣기
                 <span className="mt-1 block text-xs text-slate-400">같은 문장을 글자로 얹습니다. <span className="text-slate-300">비용 없음.</span></span>
+              </span>
+            </label>
+          </div>
+          {/* 캐릭터 대사는 내레이션과 다른 음원입니다: 내레이션은 해설자 목소리, 대사는 클립 안 인물이 직접 말하는
+              소리입니다. 두 스위치가 동시에 켜져도 겹치지 않습니다 — 서버가 각각 다른 트랙으로 만듭니다. */}
+          <div className="md:col-span-2 space-y-3 rounded-xl border border-white/10 bg-slate-950/40 p-3.5">
+            <p className="text-sm font-semibold text-slate-100">캐릭터 대사</p>
+            <p className="text-xs leading-relaxed text-slate-400">
+              인물이 영상 안에서 직접 말하는 장면에 쓰세요. 내레이션(해설자 읽어주기)과 다른 음원이라 함께 켜도 충돌하지 않습니다.
+            </p>
+            <label className="flex items-start gap-2.5 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                data-testid="settings-character-dialogue-enabled"
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-violet-500"
+                checked={state.settings.characterDialogueEnabled}
+                onChange={(event) => setField("characterDialogueEnabled", event.target.checked)}
+              />
+              <span>
+                캐릭터 대사 음성 켜기
+                <span className="mt-1 block text-xs text-slate-400">대사가 있는 장면마다 인물 목소리를 영상 안에 넣습니다. 장면마다 비용이 듭니다.</span>
               </span>
             </label>
           </div>

@@ -44,6 +44,39 @@ const value = (record: Record<string, unknown>, key: string, fallback = "") => t
 const AUTONOMOUS_SETTING = "자율";
 
 /**
+ * The flower preset writes "<flower>의 꽃말" into the topic. Use that source for every flower rather than fixing
+ * one species: the Story model can shorten or drop a name, and the image prompt reads the stored scene fields,
+ * not the original topic. The one known ambiguous input is an alias, not the identity rule — "투구" alone can
+ * mean a helmet, while 캡틴D's flower reel meant Aconitum. Other flower names pass through unchanged.
+ */
+const FLOWER_NAME_ALIASES: Readonly<Record<string, string>> = { 투구: "투구꽃(Aconitum, monkshood)" };
+
+function plantIdentityFor(stored: StoredProject): string | undefined {
+  const settings = toShortProjectSettings(stored);
+  if (settings.preset?.id !== "flower_meaning") return undefined;
+  const topicName = settings.topic.trim().match(/^(.+?)의\s*꽃말(?:\s*[—–:-]|\s*$)/u)?.[1]?.trim();
+  const projectName = settings.projectName.trim().match(/^(.+?)\s+꽃말$/u)?.[1]?.trim();
+  const name = topicName || projectName;
+  if (!name || name.length > 80) return undefined;
+  return `${FLOWER_NAME_ALIASES[name] ?? name} — 요청한 바로 그 식물 종의 고유한 꽃·잎·줄기 형태를 유지하는 같은 한 포기`;
+}
+
+function lockPlantIdentity(story: StoredStory, identity: string | undefined): StoredStory {
+  if (!identity) return story;
+  return {
+    ...story,
+    scenes: story.scenes.map((scene) => ({
+      ...scene,
+      // These are the three fields imagePromptFor sends to the image provider. Repeating the identity here is
+      // stronger than trusting a narrative-only mention, and remains true from the first sprout through bloom.
+      start_motion: `${scene.start_motion} 식물 종은 ${identity}이다.`,
+      composition: `${scene.composition} 화면의 식물은 ${identity} 한 포기만 유지한다.`,
+      focus_subject: `${scene.focus_subject} — ${identity}. 다른 식물 종이나 일반적인 꽃으로 바꾸지 않는다.`,
+    })),
+  };
+}
+
+/**
  * The cast block plus the sentences that only mean something once there is a cast to mean it about.
  *
  * These four lines used to sit in the template as flat text under $character_cast_metadata, which made them
@@ -192,13 +225,14 @@ export class StoryPromptService {
 
   /** Real OpenAI generation only runs when a connected credential and a budget tracker are both wired in; otherwise this always falls back to the local fake adapter. */
   private async generateStory(stored: StoredProject, prompt: string, apiKey: string | null): Promise<{ story: StoredStory; spendUnrecorded: boolean }> {
-    if (!apiKey || !this.budget) return { story: await generateLocalStory(stored, prompt), spendUnrecorded: false };
+    const identity = plantIdentityFor(stored);
+    if (!apiKey || !this.budget) return { story: lockPlantIdentity(await generateLocalStory(stored, prompt), identity), spendUnrecorded: false };
     await this.budget.preflight(STORY_ESTIMATED_COST_USD);
     let succeeded = false;
     let story: StoredStory | undefined;
     let spendUnrecorded = false;
     try {
-      ({ story } = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: toShortProjectSettings(stored).sceneCount }));
+      ({ story } = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: toShortProjectSettings(stored).sceneCount, dialogueEnabled: toShortProjectSettings(stored).characterDialogueEnabled }));
       succeeded = true;
     } finally {
       // `recordSpend` rather than a bare await, because this is a `finally`: a throw here discards the Story
@@ -209,7 +243,7 @@ export class StoryPromptService {
     // Returned after the finally, not from inside the try. A `return { story, spendUnrecorded }` in there builds
     // its object before the finally runs, so the flag the finally sets never reaches the caller — the warning
     // was silently never attached, and only the test that asserts the sentence caught it.
-    return { story: story!, spendUnrecorded };
+    return { story: lockPlantIdentity(story!, identity), spendUnrecorded };
   }
 
   private async original(stored: StoredProject): Promise<string> {
@@ -219,7 +253,12 @@ export class StoryPromptService {
     } catch {
       throw storyStorageError(false);
     }
-    return renderTemplate(template, await promptVariables(stored, this.assets));
+    const base = renderTemplate(template, await promptVariables(stored, this.assets));
+    const identity = plantIdentityFor(stored);
+    const instructions = [base];
+    if (identity) instructions.push(`[식물 종 고정]\n이번 릴의 식물은 ${identity}이다. 모든 장면에서 같은 식물 종·잎·꽃 형태를 유지하고, 일반적인 싹·다른 꽃·물건으로 바꾸지 마십시오. 첫 장면부터 마지막 장면까지 장면의 start_motion·composition·focus_subject에 이 식물 이름을 명시하십시오.`);
+    if (toShortProjectSettings(stored).characterDialogueEnabled) instructions.push(`[캐릭터 대사 — 이 프로젝트에서 사용]\n각 장면에 dialogue_speaker와 dialogue_text를 쓰십시오. 인물이 실제로 말하지 않는 장면은 두 값을 모두 빈 문자열로 두십시오. 말하는 장면은 화면에 보이는 한 인물의 이름과, 그 인물이 클립 길이 안에 자연스럽게 말할 수 있는 짧은 대사 한 줄을 쓰십시오. 영상 속 인물이 직접 말하는 대사이며 내레이션(narration)과 구분하십시오. 같은 문장을 두 필드에 반복하지 마십시오. 입 모양이나 발음의 정확도를 약속하는 문구는 쓰지 마십시오.`);
+    return instructions.join("\n\n");
   }
 
   async preview(projectId: string): Promise<CreateStoryPromptPreviewResponse> {

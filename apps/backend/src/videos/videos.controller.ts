@@ -15,14 +15,15 @@ import { VideoLibraryService } from "./video-library.service.js";
 interface HttpResponse { type(value: string): void; setHeader(name: string, value: string): void }
 
 /** Same lenient "not the expected shape → treat as no-op" fallback this controller already used for regenerate before additionalInstruction existed — see the two routes below. */
-function parseRegenerateBody(body: unknown): { additionalInstruction?: string } | undefined {
+function parseRegenerateBody(body: unknown): { additionalInstruction?: string; omitLastFrame?: true } | undefined {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
-  const record = body as { approved?: unknown; additionalInstruction?: unknown };
+  const record = body as { approved?: unknown; additionalInstruction?: unknown; omitLastFrame?: unknown };
   if (record.approved !== true) return undefined;
-  if (Object.keys(record).some((key) => key !== "approved" && key !== "additionalInstruction")) return undefined;
+  if (Object.keys(record).some((key) => key !== "approved" && key !== "additionalInstruction" && key !== "omitLastFrame")) return undefined;
   if (record.additionalInstruction !== undefined && typeof record.additionalInstruction !== "string") return undefined;
+  if (record.omitLastFrame !== undefined && record.omitLastFrame !== true) return undefined;
   const trimmed = typeof record.additionalInstruction === "string" ? record.additionalInstruction.trim() : "";
-  return { ...(trimmed ? { additionalInstruction: trimmed } : {}) };
+  return { ...(trimmed ? { additionalInstruction: trimmed } : {}), ...(record.omitLastFrame === true ? { omitLastFrame: true } : {}) };
 }
 
 @Controller()
@@ -106,7 +107,7 @@ export class VideosController {
     const parsed = parseRegenerateBody(body);
     if (!parsed) return this.workflow.regenerate(projectId, jobId, []);
     const number = Number(sceneNumber);
-    return this.workflow.regenerate(projectId, jobId, Number.isInteger(number) && String(number) === sceneNumber ? [number as SceneNumber] : [], parsed.additionalInstruction);
+    return this.workflow.regenerate(projectId, jobId, Number.isInteger(number) && String(number) === sceneNumber ? [number as SceneNumber] : [], parsed.additionalInstruction, parsed.omitLastFrame === true);
   }
 
   @Post(`${API_ROUTES.projects}/:projectId/videos/generations/:jobId/regenerate-all`)
@@ -114,7 +115,7 @@ export class VideosController {
     const parsed = parseRegenerateBody(body);
     if (!parsed) return this.workflow.regenerate(projectId, jobId, []);
     const scenes = await this.workflow.jobSceneNumbers(projectId, jobId);
-    return this.workflow.regenerate(projectId, jobId, scenes, parsed.additionalInstruction);
+    return this.workflow.regenerate(projectId, jobId, scenes, parsed.additionalInstruction, parsed.omitLastFrame === true);
   }
 
   /** Re-fetches this job's already-paid Runway outputs for scenes left holding a placeholder. Never generates. */

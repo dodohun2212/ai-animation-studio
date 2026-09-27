@@ -155,6 +155,8 @@ const MERGE_STAGE_SENTENCES: Record<MergeFailureStage, (scene: number | undefine
   join: () => "틀에 맞춘 클립들을 이어 붙이는 단계에서 멈췄습니다.",
   // The one stage whose cause is something the person chose on this very screen, so it says so.
   music: () => "배경음을 입히는 단계에서 멈췄습니다 — 음악 파일이나 시작 지점을 바꿔 다시 시도해 보세요.",
+  ffmpeg: () => "완성본을 세로 영상으로 변환하는 단계에서 멈췄습니다.",
+  rename: () => "변환한 영상을 원본 파일로 교체하는 단계에서 멈췄습니다 — 영상을 재생 중이라면 재생을 멈추고 다시 시도해 주세요.",
 };
 
 /**

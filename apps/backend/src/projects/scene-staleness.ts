@@ -133,7 +133,7 @@ export async function computeSceneStaleness(
     if (recordedVideoPrompt !== undefined) {
       const previous = number > 1 ? (project.scenes[number - 2] as StoredScene) : undefined;
       let recomputed: string | undefined;
-      try { recomputed = promptFor(scene as StoredScene, previous, ratio, clipDurationSeconds).prompt; } catch { recomputed = undefined; }
+      try { recomputed = promptFor(scene as StoredScene, previous, ratio, clipDurationSeconds, toShortProjectSettings(project).characterDialogueEnabled).prompt; } catch { recomputed = undefined; }
       // Values, not labels — see describesSameScene. Renaming a prompt section is not a scene edit, and a
       // different clip length is not one either: see videoPromptDrift.
       if (recomputed !== undefined) {

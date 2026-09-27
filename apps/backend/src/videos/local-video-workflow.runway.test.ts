@@ -932,4 +932,36 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
     expect(String(record.prompt)).toContain("고개를 들어 떠오르는 빛들을 바라본다");
   });
 
+  it("submits the observed third-party moderation retry without its end frame once, then restores that frame in the record", async () => {
+    const deps = await setupWithConnectedRunway({ model: "seedance2_5_720p", chain: true });
+    const workflow = newWorkflow(deps);
+    let submitted: Record<string, unknown> | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/v1/image_to_video")) {
+        submitted = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return { ok: true, status: 200, json: async () => ({ id: "task-without-end-frame" }), headers: { get: () => null } } as unknown as Response;
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+    const failed = await deps.projects.findById("video_workflow");
+    const record = failed.video_generation_records[0] as Record<string, unknown>;
+    record.status = "failed";
+    record.error = "blocked by provider moderation";
+    record.failure_code = "INPUT_PREPROCESSING.SAFETY.THIRD_PARTY";
+    record.billed_credits = 0;
+    await deps.projects.save(failed);
+
+    expect((await workflow.getProgress("video_workflow", deps.accepted.jobId)).sceneFailures?.[1]).toMatchObject({
+      retryWithoutLastFrame: { lastFrameSceneNumber: 2 },
+    });
+    await expect(workflow.regenerate("video_workflow", deps.accepted.jobId, [1], undefined, true))
+      .resolves.toMatchObject({ status: "running" });
+
+    expect((submitted?.promptImage as unknown[])).toHaveLength(1);
+    const after = await deps.projects.findById("video_workflow");
+    const afterRecord = after.video_generation_records.find((item) => (item as Record<string, unknown>).scene_number === 1) as Record<string, unknown>;
+    expect(afterRecord.last_frame_scene).toBe(2);
+    expect(afterRecord.omit_last_frame_once).toBeUndefined();
+  });
+
 });

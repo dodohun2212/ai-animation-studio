@@ -1,6 +1,6 @@
 import type { GetVideoPromptPreviewResponse, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
 import { RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse } from "../api/testUtils.js";
@@ -715,5 +715,102 @@ describe("VideoPromptPreviewScreen", () => {
       fireEvent.click(screen.getByTestId("open-confirm-button"));
       expect(screen.queryByTestId("submit-confirm-panel")).toBeNull();
     });
+  });
+});
+
+/*
+ * 대사 표시(5번, Cowork 「제 1109」) 짝. 2026-09-27 에 이 파일이 이 블록만 남기고 덮어써져 위의 기존 짝이
+ * 사라졌었고(CLI 1128), HEAD 의 원본을 그대로 되살린 뒤 이 블록을 뒤에 붙였다. 기존 짝을 지우지 않는다.
+ */
+/**
+ * Minimal preview response that satisfies the contract guard.
+ *
+ * MIN_SCENE_COUNT is 2, so we always return two previews and number them 1 and 2 in order — the guard
+ * rejects anything that is not exactly 1..N. `sceneOverrides` lets individual tests patch one scene's
+ * optional fields without re-writing the whole shape.
+ */
+function makeDialoguePreviewResponse(sceneOverrides: Partial<Record<1 | 2, object>> = {}) {
+  return {
+    previews: ([1, 2] as const).map((sceneNumber) => ({
+      sceneNumber,
+      prompt: `Scene ${sceneNumber} prompt`,
+      model: "gen4_turbo",
+      ratio: "720:1280",
+      durationSeconds: 5,
+      estimatedCostUsd: 0.5,
+      ...(sceneOverrides[sceneNumber] ?? {}),
+    })),
+    confirmationId: "conf_test_abc",
+  };
+}
+
+describe("VideoPromptPreviewScreen — dialogue", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+  });
+
+  it("shows dialogue speaker, text and audio flag when preview includes them", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, makeDialoguePreviewResponse({
+          1: { dialogueSpeaker: "김민준", dialogueText: "여기서 떠나지 않겠어.", generateDialogueAudio: true },
+        })),
+      ),
+    );
+    render(<VideoPromptPreviewScreen projectId="sample_project" onBack={() => {}} />);
+
+    // Scene 1 shows all three dialogue fields.
+    const section = await screen.findByTestId("preview-dialogue-1");
+    expect(section).toBeTruthy();
+    expect(screen.getByTestId("preview-dialogue-speaker-1").textContent).toBe("김민준");
+    expect(screen.getByTestId("preview-dialogue-text-1").textContent).toBe("여기서 떠나지 않겠어.");
+    expect(screen.getByTestId("preview-dialogue-audio-1").textContent).toBe("생성");
+
+    // Scene 2 has no dialogue fields — its section must be absent.
+    expect(screen.queryByTestId("preview-dialogue-2")).toBeNull();
+  });
+
+  it("shows 생성 안 함 when generateDialogueAudio is false", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, makeDialoguePreviewResponse({ 1: { generateDialogueAudio: false } })),
+      ),
+    );
+    render(<VideoPromptPreviewScreen projectId="sample_project" onBack={() => {}} />);
+
+    await screen.findByTestId("preview-dialogue-1");
+    expect(screen.getByTestId("preview-dialogue-audio-1").textContent).toBe("생성 안 함");
+  });
+
+  it("omits dialogue section entirely when preview carries no dialogue fields", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, makeDialoguePreviewResponse())));
+    render(<VideoPromptPreviewScreen projectId="sample_project" onBack={() => {}} />);
+
+    // Wait for the screen to finish loading (the prompt list appears).
+    await screen.findByTestId("preview-1");
+    expect(screen.queryByTestId("preview-dialogue-1")).toBeNull();
+    expect(screen.queryByTestId("preview-dialogue-2")).toBeNull();
+  });
+
+  it("shows an understandable Korean error when the chosen model does not support character dialogue audio", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(422, {
+          code: "VIDEO_DIALOGUE_MODEL_UNSUPPORTED",
+          message: "server raw message — must not leak to user",
+        }),
+      ),
+    );
+    render(<VideoPromptPreviewScreen projectId="sample_project" onBack={() => {}} />);
+
+    const error = await screen.findByTestId("preview-error");
+    expect(error).toHaveAttribute("data-error-code", "VIDEO_DIALOGUE_MODEL_UNSUPPORTED");
+    // The safe fixed Korean message names what to do; the backend's raw text never surfaces.
+    expect(error.textContent).toContain("캐릭터 대사");
+    expect(error.textContent).not.toContain("server raw message");
   });
 });

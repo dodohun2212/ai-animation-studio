@@ -13,6 +13,7 @@ import { StoryPromptService, renderTemplate } from "./story-prompt.service.js";
 import { generateLocalStory, validateStory } from "./story-generation.service.js";
 import { STORY_SCENE_FIELDS } from "./openai-story-adapter.js";
 import { WorkflowState } from "@ai-animation-studio/shared";
+import { imagePromptFor } from "../images/image-prompt.js";
 
 const roots: string[] = [];
 async function setup() {
@@ -192,6 +193,39 @@ describe("StoryPromptService", () => {
     expect(persisted.scenes).toHaveLength(6);
     expect(persisted.scenes.map((scene) => (scene as { number: number }).number)).toEqual([1, 2, 3, 4, 5, 6]);
     await expect(service.approve("sample", { originalPromptSha256: "a".repeat(64), prompt: "x", approved: true })).rejects.toMatchObject({ response: { code: "STORY_PROMPT_STALE" } });
+  });
+  it.each([
+    ["투구", "투구꽃(Aconitum, monkshood)"],
+    ["장미", "장미 —"],
+    ["해바라기", "해바라기 —"],
+  ])("locks the requested %s plant, not a fixed flower, into the prompt and image-facing fields", async (flower, identity) => {
+    const { repository, service } = await setup();
+    const stored = await repository.findById("sample");
+    await repository.save({
+      ...stored,
+      topic: `${flower}의 꽃말 — 밤의 열림`,
+      lore_context: { ...stored.lore_context, project_name: `${flower} 꽃말`, settings_preset: { id: "flower_meaning", revision: 3 } },
+    });
+
+    const preview = await service.preview("sample");
+    expect(preview.preview.originalPrompt).toContain(identity);
+    await service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true });
+
+    const scene = (await repository.findById("sample")).scenes[0] as Record<string, string>;
+    for (const field of ["start_motion", "composition", "focus_subject"]) {
+      expect(scene[field]).toContain(identity);
+    }
+    expect(imagePromptFor(scene, "")).toContain(identity);
+    if (flower !== "투구") expect(imagePromptFor(scene, "")).not.toContain("Aconitum");
+  });
+  it("does not inject a flower identity into an ordinary project", async () => {
+    const { repository, service } = await setup();
+    const stored = await repository.findById("sample");
+    await repository.save({ ...stored, topic: "장미의 꽃말 — 밤의 열림" });
+    const preview = await service.preview("sample");
+    await service.approve("sample", { originalPromptSha256: preview.preview.originalPromptSha256, prompt: preview.preview.originalPrompt, approved: true });
+    const scene = (await repository.findById("sample")).scenes[0] as Record<string, string>;
+    expect(scene.focus_subject).not.toContain("요청한 바로 그 식물 종");
   });
   it("rejects blank, unapproved, and unknown approval fields", async () => {
     const { service } = await setup(); const preview = await service.preview("sample");

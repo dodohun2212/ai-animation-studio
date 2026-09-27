@@ -31,6 +31,7 @@ const SAFE_ERRORS: Record<string, string> = {
   VIDEO_PREVIEW_NOT_ALLOWED: "영상 미리보기는 모든 장면 이미지가 승인된 프로젝트에서만 가능합니다.",
   VIDEO_PREVIEW_IMAGES_INVALID: "승인된 장면 이미지가 유효하지 않습니다. 이미지를 다시 확인해 주세요.",
   VIDEO_PREVIEW_DATA_INVALID: "영상 프롬프트 데이터를 확인할 수 없습니다.",
+  VIDEO_DIALOGUE_MODEL_UNSUPPORTED: "선택한 영상 모델은 캐릭터 대사 음성을 생성할 수 없습니다. 영상 모델을 바꾸거나 프로젝트의 캐릭터 대사를 끄세요.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

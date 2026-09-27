@@ -66,14 +66,17 @@ export function toAudioSettings(
   volumePercent: number | null = null,
   fadeSeconds: number | null = null,
   /**
-   * 클립 자체 소리를 모드가 만든 소리 **밑에** 까는 음량(0~100). 0 은 오늘과 같음(버림)이라 **보내지 않습니다** —
-   * 계약이 「생략·0 = 오늘과 같음」이니 결과는 같고, 안 보내면 오늘까지의 요청이 바이트 그대로입니다
-   * (`frameFit` 과 같은 규칙).
+   * 클립 자체 소리를 모드가 만든 소리 **밑에** 까는 음량(0~100). **null 은 「안 건드림」이라 보내지 않습니다.**
+   *
+   * 🔴 2026-09-27 부터 「생략」과 「0」은 다릅니다(CLI Round 1124, 계약 `MergeAudioSettings.clipVolume`):
+   * 생략하면 서버가 **대사 음성을 요청했고 실제로 소리가 든 장면만 100%**, 나머지는 0% 로 굽고, 명시한 0 은
+   * 대사 장면까지 **전부** 끕니다. 그래서 예전처럼 「0 이면 안 보냄」으로 두면, 사람이 대사를 끄려고 슬라이더를
+   * 0 으로 내려도 대사가 100% 로 들어갑니다. 사람이 만진 값은 0 이어도 보냅니다.
    */
-  clipVolumePercent = 0,
+  clipVolumePercent: number | null = null,
 ): MergeAudioSettings | null {
   if (mode === null) return null;
-  const clip = clipVolumePercent > 0 ? { clipVolume: clipVolumePercent / 100 } : {};
+  const clip = clipVolumePercent !== null ? { clipVolume: clipVolumePercent / 100 } : {};
   // A start point without a track is meaningless, and 0 is what the server does anyway — sending it would put a
   // number in the request that says nothing, and later read as a choice someone made.
   if (!needsTrack(mode)) return { mode, ...clip };

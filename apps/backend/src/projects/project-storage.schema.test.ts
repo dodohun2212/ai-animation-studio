@@ -145,6 +145,12 @@ describe("parseStoredProject", () => {
     expect(minimal.used_audio).toEqual({ mode: "silent" });
   });
 
+  it("preserves the count of dialogue-default scenes and rejects an impossible count", () => {
+    expect(parseStoredProject(baseProject({ used_audio: { mode: "silent", dialogue_audio_default_scene_count: 2 } })).used_audio)
+      .toEqual({ mode: "silent", dialogue_audio_default_scene_count: 2 });
+    expect(() => parseStoredProject(baseProject({ used_audio: { mode: "silent", dialogue_audio_default_scene_count: 0 } }))).toThrow();
+  });
+
   it("rejects an invalid used_audio.mode and a non-object used_audio", () => {
     expect(() => parseStoredProject(baseProject({ used_audio: { mode: "loud" } }))).toThrow();
     expect(() => parseStoredProject(baseProject({ used_audio: "narration" }))).toThrow();

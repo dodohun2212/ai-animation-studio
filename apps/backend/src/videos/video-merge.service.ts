@@ -33,6 +33,14 @@ function scenesFor(project: StoredProject): SceneNumber[] {
   return sceneNumbersFor(toShortProjectSettings(project).sceneCount);
 }
 
+function requestedDialogueAudio(project: StoredProject, sceneNumber: SceneNumber): boolean {
+  for (let index = project.video_generation_records.length - 1; index >= 0; index -= 1) {
+    const record = project.video_generation_records[index];
+    if (isObject(record) && record.scene_number === sceneNumber) return record.generate_dialogue_audio === true;
+  }
+  return false;
+}
+
 function isApprovedReviews(value: unknown, scenes: readonly SceneNumber[]): value is StoredReview[] {
   return Array.isArray(value) && value.length === scenes.length && value.every((item) => typeof item === "object" && item !== null
     && scenes.includes((item as { scene_number?: unknown }).scene_number as SceneNumber)
@@ -229,7 +237,8 @@ export class LocalVideoMergeService {
   }
 
   /**
-   * A video review with each scene's clip as measured on disk added (VideoReview.clip) — shape and sound track.
+   * A video review with each scene's clip as measured on disk (VideoReview.clip), plus the same
+   * request-record-and-audio-track decision the merge uses for its omitted-volume default.
    *
    * Here and not in the workflow service that builds the review: that service is kept free of subprocess and FFmpeg
    * dependencies on purpose (video-preview.no-provider-calls.test.ts), and the merge already owns FFmpeg. The id
@@ -237,9 +246,11 @@ export class LocalVideoMergeService {
    * (ffprobe missing, a placeholder) is simply left without the field — a review never fails over it.
    */
   async withClipFacts<T extends { project: { id: string }; reviews: VideoReview[] }>(response: T): Promise<T> {
+    const project = await this.projects.findById(response.project.id);
     const reviews = await Promise.all(response.reviews.map(async (review) => {
       const clip = await probeClipFacts(this.clip(response.project.id, review.sceneNumber), this.runner);
-      return clip ? { ...review, clip } : review;
+      const dialogueAudioDefault = Boolean(clip?.hasAudio && requestedDialogueAudio(project, review.sceneNumber));
+      return clip ? { ...review, clip, dialogueAudioDefault } : { ...review, dialogueAudioDefault };
     }));
     return { ...response, reviews };
   }
@@ -271,20 +282,24 @@ export class LocalVideoMergeService {
    * ShortProjectSettings.subtitlesEnabled's doc comment): a scene gets a subtitle whenever subtitlesEnabled is on
    * AND that scene has narration text, regardless of whether narration audio exists for it.
    */
-  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number, subtitleLayout?: PhotoCardSubtitleLayout, sceneSubtitleLayout?: SceneSubtitleLayout, clipVolume = 0): Promise<MergeSceneInput[]> {
+  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number, subtitleLayout?: PhotoCardSubtitleLayout, sceneSubtitleLayout?: SceneSubtitleLayout, clipVolume?: number, clipAudioFacts?: readonly boolean[]): Promise<MergeSceneInput[]> {
     const settings = toShortProjectSettings(project);
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
+      const clipHasAudio = stillDurationSeconds === undefined && (clipAudioFacts?.[index] ?? (await probeClipFacts(clips[index]!, this.runner))?.hasAudio === true);
+      const spokenDialogue = clipHasAudio && requestedDialogueAudio(project, scene);
       // The same question narrationAvailableFor asks, so the mode a person was allowed to pick is the mode
       // they actually get. Asking a narrower one here is what let "나레이션" produce a silent video.
-      const narrationAudioPath = includeNarration && typeof file === "string" && !isPlaceholderNarration(project, index + 1)
+      const narrationAudioPath = includeNarration && !spokenDialogue && typeof file === "string" && !isPlaceholderNarration(project, index + 1)
         && (await fs.stat(file).then((stat) => stat.size > 0).catch(() => false)) ? file : null;
-      const subtitleText = settings.subtitlesEnabled ? sceneValue(project.scenes[scene - 1], "narration") || null : null;
+      const subtitleText = settings.subtitlesEnabled
+        ? (spokenDialogue ? sceneValue(project.scenes[scene - 1], "dialogue_text") : sceneValue(project.scenes[scene - 1], "narration")) || null : null;
       // The still-ness of the clip is what decides which layout the renderer reads, so each is attached only
       // on its own side of that branch: a card never carries a scene layout, and a scene never carries a card's.
       // The clip's sound joins only where the clip has a track to give (measured, as VideoReview.clip is): a
       // scene without one is merged as before rather than failing the whole reel over a missing stream.
-      const clipAudioVolume = stillDurationSeconds === undefined && clipVolume > 0 && (await probeClipFacts(clips[index]!, this.runner))?.hasAudio ? clipVolume : undefined;
+      const effectiveClipVolume = clipVolume ?? (spokenDialogue ? 1 : 0);
+      const clipAudioVolume = clipHasAudio && effectiveClipVolume > 0 ? effectiveClipVolume : undefined;
       /*
        * 🔴 The card travels with **every** picture, not only the first. A reel's words are the reel — losing
        * the headline halfway through would be losing the thing somebody is watching — and the merge burns
@@ -298,7 +313,7 @@ export class LocalVideoMergeService {
          * changes, or somebody reading loses their place three times in a row.
          */
         ? { clip: clips[index]!, narrationAudioPath, subtitleText, stillDurationSeconds, revealSubtitle: index === 0, ...(subtitleLayout ? { subtitleLayout } : {}), ...(newsReelCard ? { newsReelCard } : {}) }
-        : { clip: clips[index]!, narrationAudioPath, subtitleText, ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(clipAudioVolume !== undefined ? { clipAudioVolume } : {}) };
+        : { clip: clips[index]!, narrationAudioPath, subtitleText, spokenDialogue, ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(clipAudioVolume !== undefined ? { clipAudioVolume } : {}) };
     }));
   }
 
@@ -391,10 +406,10 @@ export class LocalVideoMergeService {
    * Mirrors local-video-workflow.service.ts's private archive(), generalized to the
    * final video's own directory — see video-library.service.ts's historyFileName() for the matching read side.
    */
-  private async archiveExistingFinal(projectId: string): Promise<void> {
+  private async archiveExistingFinal(projectId: string): Promise<string | undefined> {
     const current = this.final(projectId);
     const bytes = await fs.readFile(current).catch(() => undefined);
-    if (!bytes || bytes.length === 0) return;
+    if (!bytes || bytes.length === 0) return undefined;
     const history = path.join(this.projectDirectory(projectId), "videos", "final", "history");
     await fs.mkdir(history, { recursive: true });
     const entries = await fs.readdir(history);
@@ -402,7 +417,9 @@ export class LocalVideoMergeService {
     const next = (versions.length ? Math.max(...versions) : 0) + 1;
     const temporary = path.join(history, `.instagram_reel_v${String(next).padStart(3, "0")}.mp4.tmp`);
     await fs.writeFile(temporary, bytes);
-    await fs.rename(temporary, path.join(history, `instagram_reel_v${String(next).padStart(3, "0")}.mp4`));
+    const archivedPath = path.join(history, `instagram_reel_v${String(next).padStart(3, "0")}.mp4`);
+    await fs.rename(temporary, archivedPath);
+    return archivedPath;
   }
 
   /**
@@ -421,11 +438,12 @@ export class LocalVideoMergeService {
       const facts = await probeClipFacts(finalPath, this.runner);
       if (!facts) throw videoMergeContentUnavailable();
       if (facts.height >= facts.width) throw videoFinalAlreadyRotated();
-      await this.archiveExistingFinal(project.project_id);
+      const archivedPath = await this.archiveExistingFinal(project.project_id);
       try { await this.engine.rotateClockwise(finalPath); }
       catch (error) {
+        if (archivedPath) await fs.unlink(archivedPath).catch(() => undefined);
         if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
-        throw videoMergeFailed();
+        throw videoMergeFailed(mergeFailedDetails(error instanceof MediaToolError ? error.where : undefined, []));
       }
       const turned = { ...project, updated_at: new Date().toISOString() };
       try { await this.projects.save(turned); } catch { throw videoMergeStorageError(); }
@@ -482,10 +500,11 @@ export class LocalVideoMergeService {
     const material = await this.mergeMaterial(project);
     // Probing asks "is this a real video", which a still is not and never claims to be. Skipped for a card
     // rather than the probe being loosened for every clip in the app.
+    const clipAudioFacts: boolean[] = [];
     if (material.stillDurationSeconds === undefined) {
       const scenes = scenesFor(project);
       for (const [index, clip] of material.paths.entries()) {
-        try { await this.engine.probe(clip); }
+        try { clipAudioFacts[index] = (await this.engine.probe(clip)).hasAudio; }
         catch (error) {
           if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
           throw videoMergeClipsInvalid([scenes[index]!]);
@@ -493,7 +512,9 @@ export class LocalVideoMergeService {
       }
     }
     const renderedScenes = material.stillDurationSeconds === undefined ? scenesFor(project) : cardSceneNumbers(project);
-    const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout, audio.clipVolume);
+    const explicitClipVolume = isObject(request) && isObject(request.audio) && typeof request.audio.clipVolume === "number";
+    const clipVolume = explicitClipVolume ? audio.clipVolume : undefined;
+    const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout, clipVolume, clipAudioFacts);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
     try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
@@ -536,9 +557,11 @@ export class LocalVideoMergeService {
       if (usesBgm(audio.mode) && bgmPath) {
         await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath, audio.startSeconds);
       }
+      const dialogueDefaultCount = mergeScenes.filter((scene) => scene.spokenDialogue === true && scene.clipAudioVolume === 1).length;
       const usedAudio: StoredUsedAudio = {
         mode: audio.mode,
         ...(audio.clipVolume > 0 ? { clip_volume: audio.clipVolume } : {}),
+        ...(audio.clipVolume === 0 && dialogueDefaultCount > 0 ? { dialogue_audio_default_scene_count: dialogueDefaultCount } : {}),
         ...(usesBgm(audio.mode) ? { track_id: audio.trackId! } : {}),
         ...(bgmAttribution?.attributionRequired !== undefined ? { attribution_required: bgmAttribution.attributionRequired } : {}),
         ...(bgmAttribution?.attributionText !== undefined ? { attribution_text: bgmAttribution.attributionText } : {}),

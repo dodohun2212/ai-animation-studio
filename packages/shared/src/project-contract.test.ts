@@ -93,7 +93,7 @@ describe("project routes and DTO shape", () => {
     // (a page built before it existed does), while the response always states it. Absent on the way in means
     // off, so the answer is never 「we did not say」 about a setting that decides what a picture is drawn from.
     const response: GetProjectSettingsResponse = {
-      settings: { ...settings.settings, durationSeconds: 30, sceneImageContinuityEnabled: settings.settings.sceneImageContinuityEnabled ?? false },
+      settings: { ...settings.settings, durationSeconds: 30, sceneImageContinuityEnabled: settings.settings.sceneImageContinuityEnabled ?? false, characterDialogueEnabled: settings.settings.characterDialogueEnabled ?? false },
       sceneCountChangeable: true, aspectRatioChangeable: true,
     };
 

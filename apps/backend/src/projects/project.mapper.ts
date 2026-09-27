@@ -65,10 +65,11 @@ function narrationAvailableFor(stored: StoredProject): boolean {
 /** Snake_case-to-camelCase passthrough of the stored value — see ProjectSummary.usedAudio's own doc comment for what this represents and why it's a value copy. */
 function usedAudioFor(stored: StoredProject): ProjectSummary["usedAudio"] {
   if (!stored.used_audio) return undefined;
-  const { mode, clip_volume, track_id, attribution_required, attribution_text } = stored.used_audio;
+  const { mode, clip_volume, dialogue_audio_default_scene_count, track_id, attribution_required, attribution_text } = stored.used_audio;
   return {
     mode,
     ...(clip_volume !== undefined ? { clipVolume: clip_volume } : {}),
+    ...(dialogue_audio_default_scene_count !== undefined ? { dialogueAudioDefaultSceneCount: dialogue_audio_default_scene_count } : {}),
     ...(track_id !== undefined ? { trackId: track_id } : {}),
     ...(attribution_required !== undefined ? { attributionRequired: attribution_required } : {}),
     ...(attribution_text !== undefined ? { attributionText: attribution_text } : {}),

@@ -404,16 +404,19 @@ describe("local FFmpeg video merge", () => {
    */
   it("adds each scene's clip as measured on disk to a review, and leaves out what it cannot measure", async () => {
     const { projectsRoot, projects } = await setup();
+    const project = await projects.findById("video_merge");
+    project.video_generation_records = [1, 2, 3].map((scene_number) => ({ scene_number, generate_dialogue_audio: true }));
+    await projects.save(project);
     const probed: string[] = [];
     const runner: MediaCommandRunner = async (args) => {
       const file = args.at(-1)!; probed.push(file);
       if (file.endsWith("scene3.mp4")) throw new MediaToolError("invalid", "not a video");
       const scene = Number(/scene(\d)\.mp4$/.exec(file)?.[1]);
-      return { stdout: JSON.stringify({ streams: [{ codec_type: "video", width: 768, height: 1152 }, ...(scene === 1 ? [{ codec_type: "audio" }] : [])] }), stderr: "" };
+      return { stdout: JSON.stringify({ streams: [{ codec_type: "video", width: 768, height: 1152 }, ...([1, 4].includes(scene) ? [{ codec_type: "audio" }] : [])] }), stderr: "" };
     };
     const review = {
       project: { id: "video_merge" },
-      reviews: [1, 2, 3].map((scene) => ({ sceneNumber: scene as 1 | 2 | 3, status: "approved" as const, updatedAt: "2026-08-23T00:00:00.000Z" })),
+      reviews: [1, 2, 3, 4].map((scene) => ({ sceneNumber: scene as 1 | 2 | 3 | 4, status: "approved" as const, updatedAt: "2026-08-23T00:00:00.000Z" })),
     };
 
     const measured = await new LocalVideoMergeService(projects, projectsRoot, runner).withClipFacts(review);
@@ -422,8 +425,10 @@ describe("local FFmpeg video merge", () => {
       { width: 768, height: 1152, hasAudio: true },
       { width: 768, height: 1152, hasAudio: false },
       undefined,
+      { width: 768, height: 1152, hasAudio: true },
     ]);
-    expect(probed.map((file) => path.relative(projectsRoot, file))).toEqual([1, 2, 3].map((scene) => path.join("video_merge", "videos", "runway", `scene${scene}.mp4`)));
+    expect(measured.reviews.map((item) => ("dialogueAudioDefault" in item ? item.dialogueAudioDefault : undefined))).toEqual([true, false, false, false]);
+    expect(probed.map((file) => path.relative(projectsRoot, file))).toEqual([1, 2, 3, 4].map((scene) => path.join("video_merge", "videos", "runway", `scene${scene}.mp4`)));
   });
 
   /*
@@ -467,6 +472,29 @@ describe("local FFmpeg video merge", () => {
     const merged = await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", { audio: { mode: "silent" } });
     expect(calls.filter((args) => args.includes("-vf")).every((call) => !call.join(" ").includes("[0:a]volume="))).toBe(true);
     expect(merged.project.usedAudio?.clipVolume).toBeUndefined();
+  });
+
+  it("defaults only requested dialogue tracks on, but applies an explicit clip level to every scene", async () => {
+    for (const [clipVolume, expectedFirst, expectedSecond] of [[undefined, "volume=1", undefined], [0.4, "volume=0.4", "volume=0.4"], [0, undefined, undefined]] as const) {
+      const { projectsRoot, projects } = await setup();
+      const project = await projects.findById("video_merge");
+      project.video_generation_records = [{ scene_number: 1, generate_dialogue_audio: true }];
+      await projects.save(project);
+      const calls: string[][] = [];
+      const baseRunner = runner({}, calls);
+      const media: MediaCommandRunner = (args) => args[0] === "ffprobe"
+        ? Promise.resolve({ stdout: JSON.stringify({ streams: [{ codec_type: "video" }, { codec_type: "audio" }], format: { duration: "5.0" } }), stderr: "" })
+        : baseRunner(args);
+      const result = await new LocalVideoMergeService(projects, projectsRoot, media).merge("video_merge", { audio: { mode: "silent", ...(clipVolume === undefined ? {} : { clipVolume }) } });
+      expect(result.project.usedAudio?.dialogueAudioDefaultSceneCount).toBe(clipVolume === undefined ? 1 : undefined);
+      expect((await projects.findById("video_merge")).used_audio?.dialogue_audio_default_scene_count).toBe(clipVolume === undefined ? 1 : undefined);
+      const graph = (scene: number) => {
+        const call = calls.find((args) => args[0] === "ffmpeg" && args.includes("-filter_complex") && args.some((arg) => arg.endsWith(`scene${scene}.mp4`)));
+        return call?.[call.indexOf("-filter_complex") + 1];
+      };
+      expect(graph(1)?.includes(expectedFirst ?? "[0:a]volume=") ?? false).toBe(expectedFirst !== undefined);
+      expect(graph(2)?.includes(expectedSecond ?? "[0:a]volume=") ?? false).toBe(expectedSecond !== undefined);
+    }
   });
 
   it("refuses a clip level out of range, and any clip level on a photo card", async () => {
@@ -972,8 +1000,9 @@ describe("turning a finished final video", () => {
   it("leaves the old cut and the finished state alone when the turn fails", async () => {
     const { projectsRoot, projects, finalPath } = await finished("16:9");
     await expect(new LocalVideoMergeService(projects, projectsRoot, sized(1920, 1080, [], { failRotate: true })).rotateFinal("video_merge"))
-      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED" } });
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED", details: { stage: "ffmpeg" } } });
     await expect(fs.readFile(finalPath, "utf8")).resolves.toBe("rendered");
+    await expect(fs.readdir(path.join(path.dirname(finalPath), "history"))).resolves.toEqual([]);
     expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
   });
 });

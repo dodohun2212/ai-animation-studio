@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { VideosController } from "./videos.controller.js";
 
@@ -18,5 +18,27 @@ describe("VideosController review routes", () => {
 
   it("measures the clips on an approval's review too", async () => {
     expect(await controller.approveReview("p", "job", "1", { approved: true })).toMatchObject({ measured: true });
+  });
+});
+
+describe("VideosController regeneration request", () => {
+  it("passes an explicitly approved end-frame omission to one scene only", async () => {
+    const regenerate = vi.fn(async () => ({ regeneratedSceneNumbers: [2] }));
+    const workflow = { regenerate, jobSceneNumbers: async () => [1, 2] };
+    const controller = new VideosController(undefined as never, undefined as never, workflow as never, undefined as never, undefined as never);
+
+    await controller.regenerate("p", "job", "2", { approved: true, omitLastFrame: true });
+
+    expect(regenerate).toHaveBeenCalledWith("p", "job", [2], undefined, true);
+  });
+
+  it("does not turn a false or unapproved omission into a provider request", async () => {
+    const regenerate = vi.fn(async () => ({ regeneratedSceneNumbers: [] }));
+    const workflow = { regenerate, jobSceneNumbers: async () => [1, 2] };
+    const controller = new VideosController(undefined as never, undefined as never, workflow as never, undefined as never, undefined as never);
+
+    await controller.regenerate("p", "job", "2", { approved: true, omitLastFrame: false });
+
+    expect(regenerate).toHaveBeenCalledWith("p", "job", []);
   });
 });

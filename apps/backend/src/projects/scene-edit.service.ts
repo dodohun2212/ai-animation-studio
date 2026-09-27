@@ -32,6 +32,7 @@ const EDITABLE_SCENE_FIELDS = [
   "visual_action", "shot_size", "camera_angle", "composition", "lens_feel", "focus_subject",
   "start_motion", "main_motion", "end_motion", "expression_change", "camera_motion", "environment_motion", "motion_speed", "motion_intensity", "continuity_hint",
   "narration",
+  "dialogue_speaker", "dialogue_text",
 ] as const;
 
 function scenesFor(project: StoredProject): SceneNumber[] {
@@ -66,6 +67,12 @@ export class SceneEditService {
     const sceneNumber = parsedNumber as SceneNumber;
     const current = project.scenes[sceneNumber - 1];
     if (!isObject(current)) throw invalidRequest("Scene data is invalid.");
+
+    const nextSpeaker = String(edits.dialogue_speaker ?? current.dialogue_speaker ?? "").trim();
+    const nextText = String(edits.dialogue_text ?? current.dialogue_text ?? "").trim();
+    if (Boolean(nextSpeaker) !== Boolean(nextText)) {
+      throw invalidRequest("dialogue_speaker and dialogue_text must both be filled or both be empty.");
+    }
 
     const updatedScenes = [...project.scenes];
     updatedScenes[sceneNumber - 1] = { ...current, ...edits };

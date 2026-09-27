@@ -156,7 +156,11 @@ const lines = [
   "docs/00_NOW.md 요약 (머리말만 — 고른 항목은 원문을 읽는다; 옛 ⬜·🟡 는 낡았을 수 있다):",
   ...nowHeadlines(),
   "",
-  "→ 이 브리핑을 캡틴D 에게 한국어로 10줄 안에 전하고, 어떤 항목부터 할지 물어라. 자기 자리에 필요한 문서(AGENTS.md 「Read first」)를 읽고, 캡틴D 가 고르기 전에는 작업을 시작하지 마라.",
+  "→ 답하기 전에, 지금 자기 자리 문서를 읽어라 — 첫 메시지가 인사든 질문이든 똑같다:",
+  "    모두: AI_GUIDELINES.md · docs/03_TEAM_WORKFLOW.md · docs/01_CURRENT_PRODUCT_SPEC.md",
+  "    백엔드·통합은 + docs/04_INTERNAL_API_CONTRACT.md · 프론트는 + docs/05_DESIGN_SYSTEM.md",
+  "    (PowerShell: Get-Content -Raw -Encoding UTF8 <파일>)",
+  "→ 그다음 캡틴D 에게 한국어로 10줄 안에 브리핑하고 어떤 항목부터 할지 물어라. 고르기 전에는 작업을 시작하지 마라.",
 ];
 
 console.log(lines.join("\n"));

@@ -110,7 +110,9 @@ function renderScreen(options: {
    * `updatedAt` — that later stamp is the whole point: without it the player keeps replaying the
    * pre-rotate file, because the final video's address never changes.
    */
-  rotate?: "ok" | "VIDEO_FINAL_ALREADY_ROTATED" | "VIDEO_FINAL_ALREADY_PUBLISHED" | "VIDEO_MERGE_BUSY";
+  rotate?: "ok" | "VIDEO_FINAL_ALREADY_ROTATED" | "VIDEO_FINAL_ALREADY_PUBLISHED" | "VIDEO_MERGE_BUSY" | "VIDEO_MERGE_FAILED";
+  /** Holds the rotate's answer until the test settles it, so a test can look at the screen mid-request. */
+  rotateGate?: Promise<void>;
   episodes?: ReturnType<typeof libraryEpisode>[];
   /**
    * "fails" takes the long project's settings away, leaving the library row as the ONLY thing that knows an
@@ -181,6 +183,7 @@ function renderScreen(options: {
       return jsonResponse(200, { project: makeProject({ id: "p1", ...options.project, instagramPost: undefined }) });
     }
     if (url === "/projects/p1/videos/final/rotate") {
+      if (options.rotateGate) await options.rotateGate;
       if (options.rotate && options.rotate !== "ok") {
         return jsonResponse(409, { code: options.rotate, message: "raw backend detail C:/Users/someone/project" });
       }
@@ -658,6 +661,32 @@ describe("InstagramPostScreen", () => {
     const call = fetchMock.mock.calls.find(([url]) => String(url) === ROTATE_URL) as [string, RequestInit];
     expect(call[1].method).toBe("POST");
     expect(call[1].body).toBeUndefined();
+  });
+
+  /**
+   * 🔴 CLI Round 1119: 화면의 플레이어가 완성본을 열고 있으면 Windows 에서 서버가 그 파일을 바꿔 끼우지 못해
+   * `VIDEO_MERGE_FAILED` 가 났습니다(캡틴D 2026-09-27, `미지의공간2`). 돌리는 요청이 떠 있는 동안에는 플레이어가
+   * 화면에 **없어야** 하고, 요청이 나가기 **전에** 이미 없어야 합니다.
+   */
+  it.each([["ok"], ["VIDEO_MERGE_FAILED"]] as const)("takes the player off screen before the rotate leaves, and puts it back after (%s)", async (outcome) => {
+    let settle: () => void = () => undefined;
+    const rotateGate = new Promise<void>((resolve) => { settle = resolve; });
+    const { fetchMock } = renderScreen({ projects: [libraryProject({ aspectRatio: "16:9" })], project: { aspectRatio: "16:9" }, rotate: outcome, rotateGate });
+    await pickProject();
+    expect(screen.getByTestId("post-video-player")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("post-rotate-final"));
+    fireEvent.click(screen.getByTestId("post-rotate-confirm-button"));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => String(url) === ROTATE_URL)).toHaveLength(1);
+    });
+    expect(screen.queryByTestId("post-video-player")).toBeNull();
+    expect(screen.getByTestId("post-video-released")).toBeTruthy();
+
+    settle();
+    await waitFor(() => { expect(screen.getByTestId("post-video-player")).toBeTruthy(); });
+    expect(screen.queryByTestId("post-video-released")).toBeNull();
   });
 
   /** 돌아가기는 확인만 닫습니다 — 아무것도 보내지 않은 채로. */

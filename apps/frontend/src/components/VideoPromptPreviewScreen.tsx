@@ -391,6 +391,31 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                       이 클립은 <span className="text-slate-300">{preview.lastFrameSceneNumber}번 장면 그림</span>으로 끝납니다 — 다음 클립이 그 그림에서 시작합니다.
                     </p>
                   )}
+                  {/* 이 장면에 대사가 있으면 무엇을 요청하는지 확인할 수 있게 보여 줍니다.
+                      generateDialogueAudio / dialogueSpeaker / dialogueText 는 서버가 미리보기에 넣어 보낸
+                      값이므로 여기서는 읽기만 합니다. */}
+                  {(preview.generateDialogueAudio !== undefined || preview.dialogueSpeaker !== undefined || preview.dialogueText !== undefined) && (
+                    <dl data-testid={`preview-dialogue-${preview.sceneNumber}`} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-slate-300">
+                      {preview.generateDialogueAudio !== undefined && (
+                        <>
+                          <dt className="text-slate-400">대사 음성</dt>
+                          <dd data-testid={`preview-dialogue-audio-${preview.sceneNumber}`}>{preview.generateDialogueAudio ? "생성" : "생성 안 함"}</dd>
+                        </>
+                      )}
+                      {preview.dialogueSpeaker !== undefined && (
+                        <>
+                          <dt className="text-slate-400">화자</dt>
+                          <dd data-testid={`preview-dialogue-speaker-${preview.sceneNumber}`}>{preview.dialogueSpeaker}</dd>
+                        </>
+                      )}
+                      {preview.dialogueText !== undefined && (
+                        <>
+                          <dt className="text-slate-400">대사</dt>
+                          <dd data-testid={`preview-dialogue-text-${preview.sceneNumber}`} className="whitespace-pre-wrap break-words">{preview.dialogueText}</dd>
+                        </>
+                      )}
+                    </dl>
+                  )}
                   <label className="block text-sm text-slate-300" htmlFor={`prompt-${preview.sceneNumber}`}>
                     Runway 프롬프트
                     <textarea

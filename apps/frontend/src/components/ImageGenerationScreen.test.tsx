@@ -1,9 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ImageReview, Scene } from "@ai-animation-studio/shared";
 import { WorkflowState } from "@ai-animation-studio/shared";
 
-import { jsonResponse, makeProject, sceneStaleness } from "../api/testUtils.js";
+import { jsonResponse, makeProject, sceneStaleness, stubFetchByRoute } from "../api/testUtils.js";
 import { ImageGenerationScreen } from "./ImageGenerationScreen.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
 import { workflowStateLabel } from "../utils/workflowStateLabels.js";
@@ -971,4 +971,184 @@ describe("ImageGenerationScreen", () => {
     expect(screen.queryByTestId("scene-image-gallery")).toBeNull();
   });
 
+});
+
+/*
+ * 제공자 인용(Cowork 1108 · CLI 1110) 짝. 2026-09-27 에 이 파일이 이 블록만 남기고 덮어써져 위의 기존 짝 45개가
+ * 사라졌었고(CLI 1128), HEAD 의 원본을 그대로 되살린 뒤 이 블록을 뒤에 붙였다. 기존 짝을 지우지 않는다.
+ */
+describe("ImageGenerationScreen — provider detail", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+  });
+
+  async function loadAndConfirm(fetchMock: ReturnType<typeof vi.fn>): Promise<void> {
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ImageGenerationScreen projectId="sample_project" onBack={() => {}} />);
+    // Wait for the project to load and the start button to appear.
+    expect(await screen.findByRole("button", { name: "이미지 생성 시작" })).toBeTruthy();
+    // Open the confirmation panel.
+    fireEvent.click(screen.getByRole("button", { name: "이미지 생성 시작" }));
+    expect(await screen.findByTestId("generate-confirm-panel")).toBeTruthy();
+    // Fire the POST.
+    fireEvent.click(screen.getByRole("button", { name: /예, 이미지 생성을 시작합니다/ }));
+  }
+
+  it("shows providerMessage as a verbatim quotation and providerRequestId below the failure sentence", async () => {
+    const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved });
+    await loadAndConfirm(
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (typeof url === "string" && init?.method === "POST") {
+          return jsonResponse(500, {
+            code: "IMAGE_PROVIDER_ERROR",
+            message: "OpenAI 이미지 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+            details: {
+              category: "safety_policy",
+              sceneNumber: 1,
+              scope: "scene",
+              billedOnFailure: false,
+              providerMessage: "Your request was rejected as a safety violation.",
+              providerRequestId: "req-abc123def456",
+            },
+          });
+        }
+        return jsonResponse(200, { project });
+      }),
+    );
+
+    const errorDiv = await screen.findByTestId("generate-error");
+    expect(errorDiv).toHaveAttribute("data-error-code", "IMAGE_PROVIDER_ERROR");
+
+    // The main failure sentence is present.
+    expect(errorDiv.textContent).toContain("OpenAI 안전 정책에 따라 요청이 거부되었습니다");
+
+    // The provider's own message appears verbatim in a blockquote.
+    const quote = screen.getByTestId("generate-error-provider-message");
+    expect(quote.textContent).toBe("Your request was rejected as a safety violation.");
+    expect(quote.tagName.toLowerCase()).toBe("blockquote");
+
+    // The provider request id appears.
+    const reqId = screen.getByTestId("generate-error-provider-request-id");
+    expect(reqId.textContent).toContain("req-abc123def456");
+  });
+
+  it("omits provider detail elements when IMAGE_PROVIDER_ERROR carries no providerMessage or providerRequestId", async () => {
+    const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved });
+    await loadAndConfirm(
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (typeof url === "string" && init?.method === "POST") {
+          return jsonResponse(500, {
+            code: "IMAGE_PROVIDER_ERROR",
+            message: "OpenAI 이미지 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+            details: { category: "server", sceneNumber: 1, scope: "scene", billedOnFailure: false },
+          });
+        }
+        return jsonResponse(200, { project });
+      }),
+    );
+
+    await screen.findByTestId("generate-error");
+    expect(screen.queryByTestId("generate-error-provider-message")).toBeNull();
+    expect(screen.queryByTestId("generate-error-provider-request-id")).toBeNull();
+  });
+
+  /** Minimal valid GetImageReviewResponse that the imageReviewApi contract guard accepts. */
+  function makeReviewResponse(project: ReturnType<typeof makeProject>) {
+    return {
+      project,
+      reviews: [{ sceneNumber: 1, status: "pending", updatedAt: "2026-09-27T00:00:00.000Z" }],
+      budget: { monthlyLimitUsd: 10, spentUsd: 0, remainingUsd: 10, estimatedRequestCostUsd: 0.25, canSpend: true },
+      staleness: sceneStaleness(),
+    };
+  }
+
+  it("shows provider message and request ID when a scene regeneration is refused by the provider", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview });
+    vi.stubGlobal(
+      "fetch",
+      stubFetchByRoute(
+        {
+          "GET /projects/sample_project": { project },
+          "GET /projects/sample_project/images/review": makeReviewResponse(project),
+        },
+        {
+          "POST /projects/sample_project/images/review/1/regenerate": {
+            status: 500,
+            body: {
+              code: "IMAGE_REVIEW_PROVIDER_ERROR",
+              message: "OpenAI 이미지 요청을 완료하지 못했습니다.",
+              details: {
+                providerMessage: "Content policy violation: explicit violence",
+                providerRequestId: "req-review-xyz789",
+              },
+            },
+          },
+        },
+      ),
+    );
+    render(<ImageGenerationScreen projectId="sample_project" onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-1"));
+    await screen.findByTestId("regenerate-confirm-panel-1");
+    fireEvent.click(screen.getByRole("button", { name: "예, 다시 생성합니다" }));
+
+    const errorDiv = await screen.findByTestId("review-regenerate-error-1");
+    expect(errorDiv).toHaveAttribute("data-error-code", "IMAGE_REVIEW_PROVIDER_ERROR");
+
+    const quote = screen.getByTestId("review-regenerate-error-provider-message-1");
+    expect(quote.textContent).toBe("Content policy violation: explicit violence");
+    expect(quote.tagName.toLowerCase()).toBe("blockquote");
+
+    const reqId = screen.getByTestId("review-regenerate-error-provider-request-id-1");
+    expect(reqId.textContent).toContain("req-review-xyz789");
+  });
+
+  it("omits provider detail elements when regeneration error carries no providerMessage or providerRequestId", async () => {
+    const project = makeProject({ workflowState: WorkflowState.ImagesReview });
+    vi.stubGlobal(
+      "fetch",
+      stubFetchByRoute(
+        {
+          "GET /projects/sample_project": { project },
+          "GET /projects/sample_project/images/review": makeReviewResponse(project),
+        },
+        {
+          "POST /projects/sample_project/images/review/1/regenerate": {
+            status: 500,
+            body: { code: "IMAGE_REVIEW_PROVIDER_ERROR", message: "OpenAI 이미지 요청을 완료하지 못했습니다." },
+          },
+        },
+      ),
+    );
+    render(<ImageGenerationScreen projectId="sample_project" onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByTestId("review-regenerate-1"));
+    await screen.findByTestId("regenerate-confirm-panel-1");
+    fireEvent.click(screen.getByRole("button", { name: "예, 다시 생성합니다" }));
+
+    await screen.findByTestId("review-regenerate-error-1");
+    expect(screen.queryByTestId("review-regenerate-error-provider-message-1")).toBeNull();
+    expect(screen.queryByTestId("review-regenerate-error-provider-request-id-1")).toBeNull();
+  });
+
+  it("omits provider detail elements on a non-provider error code", async () => {
+    const project = makeProject({ workflowState: WorkflowState.AssetMappingApproved });
+    await loadAndConfirm(
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (typeof url === "string" && init?.method === "POST") {
+          return jsonResponse(500, {
+            code: "IMAGE_GENERATION_FAILED",
+            message: "이미지 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+          });
+        }
+        return jsonResponse(200, { project });
+      }),
+    );
+
+    const errorDiv = await screen.findByTestId("generate-error");
+    expect(errorDiv).toHaveAttribute("data-error-code", "IMAGE_GENERATION_FAILED");
+    expect(screen.queryByTestId("generate-error-provider-message")).toBeNull();
+    expect(screen.queryByTestId("generate-error-provider-request-id")).toBeNull();
+  });
 });

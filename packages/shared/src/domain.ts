@@ -340,6 +340,12 @@ export const VIDEO_MODEL_OPTIONS: readonly VideoModelOption[] = [
 /** The one used when nobody has chosen — today's behaviour, unchanged. */
 export const DEFAULT_VIDEO_MODEL: VideoModel = "gen4_turbo";
 
+/** Models connected through Runway whose image-to-video endpoint can produce speech in the clip audio. */
+export function videoModelSupportsDialogueAudio(model: VideoModel): boolean {
+  return model.startsWith("seedance2") || model.startsWith("wan3_")
+    || model.startsWith("grok_imagine_") || model === "gemini_omni_flash";
+}
+
 /**
  * The option for one of our model names.
  *
@@ -658,6 +664,9 @@ export interface Scene {
   generatedVideoPath?: string;
   /** This project type's narration/subtitle sentence — Long Episodes have their own separate LongEpisodeScene.narration field (api.ts), not this one, since a long-form Episode never uses this Scene type at all. Optional: absent on scenes stored before this field existed. Present regardless of ShortProjectSettings.narrationEnabled — only actually turned into TTS audio when that flag is on. */
   narration?: string;
+  /** Spoken by a visible character in the generated clip. Empty/absent means no spoken line in this scene. */
+  dialogue_speaker?: string;
+  dialogue_text?: string;
   /**
    * The 16 remaining short-project scene fields PATCH /projects/:id/scenes/:sceneNumber can edit
    * (`description` is Story's own narrated-script text, display-only — nothing downstream reads it;
@@ -826,8 +835,10 @@ export interface ProjectSummary {
  */
 export interface UsedAudio {
   mode: AudioMode;
-  /** The clips' own sound under `mode`, when the merge used it (MergeAudioSettings.clipVolume); absent when it did not. */
+  /** Explicit level applied to every clip's sound during the merge; absent when omitted, including when dialogue scenes used their default level. */
   clipVolume?: number;
+  /** Number of scenes whose requested dialogue audio track was used at 100% because clipVolume was omitted. Absent when none; not a claim that the spoken words matched the script. */
+  dialogueAudioDefaultSceneCount?: number;
   trackId?: string;
   attributionRequired?: boolean;
   attributionText?: string;

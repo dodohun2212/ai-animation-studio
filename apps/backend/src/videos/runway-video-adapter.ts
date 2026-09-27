@@ -1,4 +1,4 @@
-import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODEL_OPTIONS, VIDEO_MODELS, videoModelTakesRatio, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODEL_OPTIONS, VIDEO_MODELS, videoModelSupportsDialogueAudio, videoModelTakesRatio, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
 // Types only — erased at build, so no SDK code ever runs here (see `requestBodyFor` below for why that matters).
 import type { ImageToVideoCreateParams } from "@runwayml/sdk/resources/image-to-video";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
@@ -55,7 +55,7 @@ export function recordedVideoModel(value: unknown): VideoModel {
   return VIDEO_MODELS.includes(value as VideoModel) ? value as VideoModel : DEFAULT_VIDEO_MODEL;
 }
 
-interface RequestParts { promptImage: string; promptText: string; ratio: RunwayVideoRatio; duration: number; lastFrameImage?: string }
+interface RequestParts { promptImage: string; promptText: string; ratio: RunwayVideoRatio; duration: number; lastFrameImage?: string; generateDialogueAudio?: boolean }
 
 /** The keyframe list for models that take first/last frames: the picture first, and the last frame when there is one. */
 function keyframes(promptImage: string, lastFrameImage: string | undefined) {
@@ -128,8 +128,8 @@ const SEEDANCE_1080P = { "720:1280": "1080:1920", "1280:720": "1920:1080", "960:
  * Like WAN, a bare image string is a reference image there, so the picture goes as the first keyframe; and its
  * audio defaults to ON, which the merge would throw away, so it is switched off.
  */
-function seedanceParts<const R extends string>({ promptImage, promptText, duration, ratio, lastFrameImage }: RequestParts, frames: Record<RunwayVideoRatio, R>) {
-  return { promptImage: keyframes(promptImage, lastFrameImage), promptText, duration, ratio: frames[ratio], audio: false };
+function seedanceParts<const R extends string>({ promptImage, promptText, duration, ratio, lastFrameImage, generateDialogueAudio }: RequestParts, frames: Record<RunwayVideoRatio, R>) {
+  return { promptImage: keyframes(promptImage, lastFrameImage), promptText, duration, ratio: frames[ratio], audio: generateDialogueAudio === true };
 }
 
 /**
@@ -152,8 +152,8 @@ export function textRuleFor(model: VideoModel): string {
  * first frame goes as a keyframe, and keyframe requests must use an `auto_*` ratio (the shape follows the frame).
  * `audio: false`: the merge keeps only the picture (`-map 0:v:0`), so a soundtrack would be generated for nothing.
  */
-function wan3Body({ promptImage, promptText, duration, lastFrameImage }: RequestParts, ratio: "auto_480p" | "auto_720p" | "auto_1080p"): ImageToVideoCreateParams {
-  return { model: "wan3", promptImage: keyframes(promptImage, lastFrameImage), promptText, duration, ratio, audio: false } satisfies ImageToVideoCreateParams.Wan3;
+function wan3Body({ promptImage, promptText, duration, lastFrameImage, generateDialogueAudio }: RequestParts, ratio: "auto_480p" | "auto_720p" | "auto_1080p"): ImageToVideoCreateParams {
+  return { model: "wan3", promptImage: keyframes(promptImage, lastFrameImage), promptText, duration, ratio, audio: generateDialogueAudio === true } satisfies ImageToVideoCreateParams.Wan3;
 }
 
 /**
@@ -161,9 +161,10 @@ function wan3Body({ promptImage, promptText, duration, lastFrameImage }: Request
  * reject it) or a frame shape outside this app's vocabulary is an `invalid_request` here — no task is created, so
  * nothing is billed.
  */
-export function requestBodyFor(model: VideoModel, parts: { promptImage: string; promptText: string; ratio: string; duration: number; lastFrameImage?: string }): ImageToVideoCreateParams {
+export function requestBodyFor(model: VideoModel, parts: { promptImage: string; promptText: string; ratio: string; duration: number; lastFrameImage?: string; generateDialogueAudio?: boolean }): ImageToVideoCreateParams {
   const option = VIDEO_MODEL_OPTIONS.find((candidate) => candidate.id === model);
   if (!option) throw new RunwayAdapterError("invalid_request", `알 수 없는 영상 모델입니다: ${model}`);
+  if (parts.generateDialogueAudio === true && !videoModelSupportsDialogueAudio(model)) throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 캐릭터 대사 음성을 생성할 수 없습니다.`);
   // Refused, not dropped: a last frame reaching a model that takes none means the job was confirmed as something
   // this request cannot be, and sending it quietly without one would buy a different clip than the one confirmed.
   if (parts.lastFrameImage !== undefined && !option.acceptsLastFrame) throw new RunwayAdapterError("invalid_request", `${option.label}은(는) 끝 프레임을 받지 않습니다.`);
@@ -338,7 +339,7 @@ export async function createRunwayImageToVideoTask(
   imageBytes: Buffer,
   imageMimeType: string,
   prompt: string,
-  options: RetryOptions & { model?: VideoModel; ratio?: string; durationSeconds?: number; lastFrame?: { imageBytes: Buffer; imageMimeType: string } } = {},
+  options: RetryOptions & { model?: VideoModel; ratio?: string; durationSeconds?: number; lastFrame?: { imageBytes: Buffer; imageMimeType: string }; generateDialogueAudio?: boolean } = {},
 ): Promise<{ taskId: string }> {
   // Appended here rather than at either caller: this is the one door to Runway, both pipelines come through it,
   // and a third caller cannot forget it. The prompt a person confirmed is what gets recorded; this line is only
@@ -352,6 +353,7 @@ ${textRuleFor(model)}`;
   if (utf16Length(text) > RUNWAY_PROMPT_MAX_LENGTH) throw new RunwayAdapterError("invalid_request", `Runway 프롬프트가 ${RUNWAY_PROMPT_MAX_LENGTH} UTF-16 코드 유닛을 초과했습니다.`);
   const requestBody = requestBodyFor(model, {
     promptImage: imageDataUri(imageBytes, imageMimeType), promptText: text, ratio: options.ratio ?? "720:1280", duration: options.durationSeconds ?? 5,
+    generateDialogueAudio: options.generateDialogueAudio === true,
     ...(options.lastFrame ? { lastFrameImage: imageDataUri(options.lastFrame.imageBytes, options.lastFrame.imageMimeType) } : {}),
   });
   const response = await requestWithRetry(`${RUNWAY_BASE_URL}/v1/image_to_video`, {
