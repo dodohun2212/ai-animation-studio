@@ -208,6 +208,13 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    * side recording that it had changed. The way out of that one is a new card, and the copy says so.
    */
   const [published, setPublished] = useState(false);
+  /**
+   * 지웠던 게시 기록이 있는가(`previousInstagramPosts`). **막지 않고 알립니다** — 캡틴D 결정(2026-09-27, Cowork 1134):
+   * 게시 기록을 지우는 것이 「다시 자른 영상을 다시 올릴 수 있게 하는 길」이고(`ProjectSummary.previousInstagramPosts`
+   * 주석), 막으면 캡틴D 가 실제로 다시 만들려던 `미지의공간2` 가 못 들어옵니다. 막는 것은 지금 게시 기록(`published`)
+   * 하나뿐이고, 포토카드와 같은 규칙입니다.
+   */
+  const [hadPost, setHadPost] = useState(false);
   /** Set only by the person pressing "다시 만들기" — the finished result stays on screen until they do. */
   const [remaking, setRemaking] = useState(false);
   /** null until the project settings load, and stays null if they fail — the copy then claims nothing. */
@@ -226,6 +233,16 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
      저장되지 않는 이 렌더 한 번의 선택이라, 꺼진 채로는 칸 자체를 보내지 않습니다(계약의 `rotateClockwise`
      주석, 캡틴D Cowork Round 866/868). 16:9 가 아니면 서버가 거절하므로 아래에서 그 모양일 때만 보여줍니다. */
   const [rotateClockwise, setRotateClockwise] = useState(false);
+  /**
+   * 일반 영상 릴을 다시 만들 때, 지금 완성본이 **어떤 맞춤·회전으로 만들어졌는지 모르면** 사람이 둘 다 직접 골라야
+   * 합니다(CLI Round 1138). 옛 완성본에는 그 값이 저장돼 있지 않고(`finalVideoFrameFit`·`finalVideoRotatedClockwise`
+   * 없음), 기본값(여백·안 돌림)을 조용히 넣으면 이미 돌린 `미지의공간2` 같은 영상이 소리만 바꾸려다 **가로로 돌아갑니다.**
+   * null = 이번 다시 만들기에서 아직 안 고름(모름). 값이 있으면 그 값으로 칸을 채웁니다.
+   */
+  const [remakeFitUnknown, setRemakeFitUnknown] = useState(false);
+  const [remakeRotateUnknown, setRemakeRotateUnknown] = useState(false);
+  const [fitChosen, setFitChosen] = useState(true);
+  const [rotateChosen, setRotateChosen] = useState(true);
   /* 클립을 **만든** 모델들 — 오늘 설정이 아니라 작업 기록에서(`VideoReview.model`, CLI Round 813). 둘은 다를 수
      있고, 띠를 만드는 것은 설정이 아니라 이미 만들어진 클립입니다. 여러 개인 것도 실제 상태입니다: 설정을
      바꾼 뒤 일부 장면만 다시 만들면 한 릴 안에 모양이 다른 클립이 섞입니다. */
@@ -306,6 +323,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         );
         setAspectRatio(isAspectRatio(response.project.aspectRatio) ? response.project.aspectRatio : "9:16");
         setPublished(Boolean(response.project.instagramPost));
+        setHadPost((response.project.previousInstagramPosts?.length ?? 0) > 0);
         // Derived, not assumed: a project that never generated narration cannot merge "narration only", and
         // defaulting to it would label a silent video as a narrated one (docs/06_DECISIONS.md D-011).
         setNarrationAvailable(response.project.narrationAvailable);
@@ -397,6 +415,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       if (sceneSubtitleAdjustable) setSavedSceneLayout(sceneLayout);
       // Back to showing the finished video: the request the button existed for has been made.
       setRemaking(false);
+      setRemakeFitUnknown(false);
+      setRemakeRotateUnknown(false);
+      setFitChosen(true);
+      setRotateChosen(true);
       setUnplayable(false);
       setConfirmOpen(false);
     } catch (caught) {
@@ -453,6 +475,8 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    * 버튼이 아니라 **어느 문장을 보여 줄지**만 정합니다 — 그건 틀려도 최악이 「설명이 어긋남」입니다.
    */
   const audioUnready = audioSettings === null;
+  /* 다시 만들기에서 모르는 값을 아직 안 골랐으면 못 누릅니다(CLI Round 1138). 첫 병합과 값을 아는 재병합은 해당 없음. */
+  const remakeChoiceMissing = remaking && !photoCard && (!fitChosen || !rotateChosen);
   /* 🔴 잰 값이 먼저입니다. 모델 표는 「이 모델이면 이렇게 될 것이다」이고 `clip` 은 「이 파일이 이렇다」라,
      둘이 갈리면 이기는 쪽이 정해져 있습니다 — 그리고 잰 값에는 「확인 안 됨」이 없어서 단정해도 됩니다. */
   const clipFrameNote = measuredFrameNote(clipFacts, aspectRatio, clipSceneCount) ?? frameNoteFor(clipModels, aspectRatio);
@@ -532,6 +556,11 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       {(!result || remaking) && !pictureCard && (
         <fieldset data-testid="merge-frame-fit" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-100">화면 맞춤</legend>
+          {remakeFitUnknown && (
+            <p data-testid="merge-frame-fit-unknown" className="text-xs text-amber-300">
+              지금 영상을 어떤 맞춤으로 만들었는지 기록이 없습니다 — 다시 만들 맞춤을 직접 골라 주세요.
+            </p>
+          )}
           {FRAME_FITS.map((value) => (
             <label key={value} className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
               <input
@@ -539,9 +568,9 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
                 name="merge-frame-fit"
                 className="mt-1"
                 value={value}
-                checked={frameFit === value}
+                checked={fitChosen && frameFit === value}
                 disabled={pending || confirmOpen}
-                onChange={() => setFrameFit(value)}
+                onChange={() => { setFrameFit(value); setFitChosen(true); }}
                 data-testid={`merge-frame-fit-${value}`}
               />
               <span>
@@ -573,6 +602,27 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       {(!result || remaking) && rotatable && (
         <fieldset data-testid="merge-rotate" className="space-y-2 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-4">
           <legend className="px-1 text-sm font-semibold text-slate-100">화면 회전</legend>
+          {/* 모를 때는 체크박스로 물을 수 없습니다 — 「안 돌림」을 고르는 동작이 없으니까요. 그래서 둘 중 하나를
+              누르게 합니다(CLI Round 1138: 사람이 명시적으로 고른 뒤에만). */}
+          {remakeRotateUnknown ? (
+            <div className="space-y-2" data-testid="merge-rotate-unknown">
+              <p className="text-xs text-amber-300">지금 영상을 돌렸는지 기록이 없습니다 — 다시 만들 방향을 직접 골라 주세요.</p>
+              {([false, true] as const).map((turn) => (
+                <label key={String(turn)} className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
+                  <input
+                    type="radio"
+                    name="merge-rotate-choice"
+                    className="mt-1"
+                    checked={rotateChosen && rotateClockwise === turn}
+                    disabled={pending || confirmOpen}
+                    onChange={() => { setRotateClockwise(turn); setRotateChosen(true); }}
+                    data-testid={turn ? "merge-rotate-choice-turn" : "merge-rotate-choice-keep"}
+                  />
+                  <span className="text-slate-100">{turn ? "돌려서 세로 릴로 내보내기" : "가로 그대로"}</span>
+                </label>
+              ))}
+            </div>
+          ) : (
           <label className="flex cursor-pointer items-start gap-2.5 text-sm text-slate-300">
             <input
               type="checkbox"
@@ -589,6 +639,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
               </span>
             </span>
           </label>
+          )}
         </fieldset>
       )}
 
@@ -662,15 +713,33 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
             className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50"
             data-testid="open-merge-confirm-button"
             onClick={openConfirmation}
-            disabled={confirmOpen || pending || blocked || audioUnready}
+            disabled={confirmOpen || pending || blocked || audioUnready || remakeChoiceMissing}
           >
             {mergeButtonLabel(audioMode, clipVolumeForLabel)}
           </button>
+          {/* 다시 만들기를 열었다가 그만두는 길 — 없으면 화면을 떠나야만 지금 영상 미리보기가 돌아옵니다
+              (2026-09-29 개발 서버에서 `미지의공간2` 로 열어 보고 확인). */}
+          {remaking && !confirmOpen && (
+            <button
+              type="button"
+              data-testid="merge-remake-cancel"
+              className="ml-3 rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
+              disabled={pending}
+              onClick={() => { setRemaking(false); setError(null); }}
+            >
+              그만두기
+            </button>
+          )}
           {/* 🟠 못 누르는 이유를 **이유별로** 말합니다. 버튼이 닫힌 채 아무 말도 없으면 화면이 고장 난 것으로
               읽히고, 두 이유를 한 문장으로 뭉개면 「음악을 고르라」는 말이 아직 불러오는 중인 사람에게 갑니다. */}
           {audioUnready && !modeUnready && (
             <p data-testid="merge-audio-not-ready" className="text-xs text-slate-400">
               프로젝트를 아직 읽는 중입니다. 다 읽으면 소리를 고르실 수 있습니다.
+            </p>
+          )}
+          {remakeChoiceMissing && (
+            <p data-testid="merge-remake-choice-required" className="text-xs text-amber-300">
+              화면 맞춤과 방향을 고르면 다시 만들 수 있습니다.
             </p>
           )}
           {modeUnready && (
@@ -754,6 +823,43 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           <p className="text-xs text-slate-500">지금 영상은 보관되고, 새로 만든 것이 최종 영상이 됩니다. 비용은 들지 않습니다.</p>
         </div>
       )}
+      {/* 캡틴D 2026-09-27 「한번 정하면 못 바꾼다」 — 일반 영상 릴도 병합 뒤에 소리·자막·화면 맞춤·회전을 바꿔
+          다시 구울 수 있습니다(CLI Round 1131 이 서버를 열었습니다). 장면 영상은 그대로 쓰니 비용은 없습니다. */}
+      {result && !photoCard && !remaking && !published && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            data-testid="video-remake"
+            className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
+            onClick={() => {
+              /* 지금 완성본의 실제 사용값으로 칸을 채웁니다(CLI Round 1136). 모르는 값은 채우지 않고 고르게 합니다(1138). */
+              const usedFit = result?.project.finalVideoFrameFit;
+              const usedRotate = result?.project.finalVideoRotatedClockwise;
+              if (usedFit !== undefined) setFrameFit(usedFit);
+              if (usedRotate !== undefined) setRotateClockwise(usedRotate);
+              setRemakeFitUnknown(usedFit === undefined);
+              setFitChosen(usedFit !== undefined);
+              setRemakeRotateUnknown(rotatable && usedRotate === undefined);
+              setRotateChosen(!rotatable || usedRotate !== undefined);
+              setRemaking(true);
+              setError(null);
+            }}
+          >
+            설정 바꿔서 다시 만들기
+          </button>
+          <p className="text-xs text-slate-500">장면 영상은 그대로 두고 소리·자막·화면 맞춤·회전만 바꿔 다시 합칩니다. 지금 영상은 보관되고, 비용은 들지 않습니다.</p>
+          {hadPost && (
+            <p data-testid="video-remake-had-post" className="text-xs text-amber-300">
+              이 영상은 전에 인스타그램에 올린 적이 있습니다. 그 게시물을 지우지 않으셨다면 계정에 옛 영상이 그대로 남아 있습니다 — 새로 만든 영상을 올리면 게시물이 두 개가 됩니다.
+            </p>
+          )}
+        </div>
+      )}
+      {result && !photoCard && published && (
+        <p data-testid="video-remake-published" className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          인스타그램에 올라가 있는 영상이라 지금은 다시 만들 수 없습니다. 지금 영상을 바꾸면 올라간 게시물과 파일이 말없이 달라지기 때문입니다. 바꾸시려면 「게시물 준비」에서 「다시 올릴 수 있게 하기」를 먼저 눌러 주세요.
+        </p>
+      )}
       {result && photoCard && published && (
         /*
          * 🔴 이 문장은 **막는 이유**만 말하고 **지나가는 길**은 엉뚱한 곳을 가리키고 있었습니다.
@@ -797,7 +903,14 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           )}
           <AttributionNotice usedAudio={result.project.usedAudio} />
           <FinalVideoGenerationSourceNotice source={result.project.finalVideoGenerationSource} testId="final-video-generation-source-notice" />
-          {unplayable ? (
+          {remaking ? (
+            /* 🔴 다시 만드는 동안에는 완성본 플레이어를 **아예 두지 않습니다.** 플레이어가 파일을 열고 있으면
+               Windows 에서 서버가 새 영상으로 바꿔 끼우지 못합니다 — 게시 화면의 「세로로 돌리기」가 실제로 그렇게
+               실패했습니다(CLI Round 1119). 「다시 만들기」를 누르는 순간 닫히니, 요청은 한참 뒤에 나갑니다. */
+            <p data-testid="final-video-released" role="status" className="text-xs text-slate-400">
+              다시 만드는 동안 지금 영상 미리보기를 닫아 두었습니다.
+            </p>
+          ) : unplayable ? (
             <p data-testid="final-video-missing" className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
               최종 영상 파일을 재생할 수 없습니다. 장면 영상 중에 내용이 비어 있는 것이 섞여 있을 수 있습니다 — 장면 영상 화면에서 하나씩 재생해 확인해 주세요.
             </p>

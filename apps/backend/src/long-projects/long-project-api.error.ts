@@ -69,7 +69,7 @@ export const longEpisodeVideoJobNotFound = () => new LongProjectApiException("LO
 export const longAudioStartOutOfRange = (durationSeconds: number) => new LongProjectApiException("AUDIO_START_OUT_OF_RANGE", "The chosen music start is past the end of the track.", HttpStatus.BAD_REQUEST, { durationSeconds });
 /** Same meaning as the short project's videoMergeBusy: something else holds this Episode's final video right now, nothing was rendered, and waiting is the whole fix. */
 export const longEpisodeMergeBusy = () => new LongProjectApiException("LONG_EPISODE_MERGE_BUSY", "This Episode's final video is busy - another window is publishing or rendering it.", HttpStatus.CONFLICT);
-/** Same reasoning as the short project's videoMergeAlreadyCompleted: a completed Episode has every scene approved, so the approval sentence names a cause that is not the cause. */
+/** A completed Episode has every scene approved, so the approval sentence would name a cause that is not the cause. Short reels now permit safe pre-publish recuts; Episodes still do not. */
 export const longEpisodeMergeAlreadyCompleted = () => new LongProjectApiException("LONG_EPISODE_MERGE_ALREADY_COMPLETED", "This Episode's final video has already been rendered.", HttpStatus.CONFLICT);
 export const longEpisodeMergeNotAllowed = () => new LongProjectApiException("LONG_EPISODE_MERGE_NOT_ALLOWED", "Final rendering requires every Episode scene video to be approved.", HttpStatus.CONFLICT);
 export const longEpisodeVideoVersionNotFound = () => new LongProjectApiException("LONG_EPISODE_VIDEO_VERSION_NOT_FOUND", "That saved copy of the Episode scene video was not found.", HttpStatus.NOT_FOUND);

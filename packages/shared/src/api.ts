@@ -2540,7 +2540,7 @@ export interface MergeVideosRequest {
    * Ordinary projects only: whether clips whose shape differs from the reel's get bars or fill the frame — see
    * FRAME_FITS. Omitted is `pad`, the merge as it always was.
    *
-   * Not stored: it is a choice about this render, and the screen sends it each time. Refused on a photo card,
+   * Recorded with the completed final so a later recut can start from the choice actually used. Refused on a photo card,
    * which is drawn to the frame already — a control there would change nothing about the video.
    */
   frameFit?: FrameFit;
@@ -2552,8 +2552,8 @@ export interface MergeVideosRequest {
    *
    * Not a FRAME_FITS value: those fit a clip into the reel's frame, and this changes which way the frame faces —
    * the two combine (a turned reel still fits its clips as `frameFit` says). Refused, not ignored, on any shape but
-   * 16:9, where a turn would not make a Reel frame. Omitted is no turn. Not stored, like `frameFit`: the file is
-   * what carries it, and every screen that shows the finished video sizes itself from the file.
+   * 16:9, where a turn would not make a Reel frame. Omitted is no turn. Recorded with the completed final for
+   * later recuts; the file remains the authority for how the finished video is displayed.
    */
   rotateClockwise?: boolean;
 }

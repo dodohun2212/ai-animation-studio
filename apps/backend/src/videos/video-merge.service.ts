@@ -2,6 +2,7 @@ import type { VideoReview } from "@ai-animation-studio/shared";
 import { FRAME_FITS, isFrameFit, type FrameFit } from "@ai-animation-studio/shared";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
+import { randomUUID } from "node:crypto";
 import { isUsableClip, wasPaidRun } from "./placeholder-clip.js";
 import { PLACEHOLDER_ADAPTER } from "../narration/placeholder-narration.js";
 import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "./project-lock.js";
@@ -19,7 +20,7 @@ import type { StoredProject, StoredUsedAudio } from "../projects/project-storage
 import { sceneValue } from "../images/image-prompt.js";
 import { AudioLibraryService } from "../audio/audio-library.service.js";
 import { FfmpegMergeEngine, MediaToolError, mergeFailedDetails, probeClipFacts, runMediaCommand, sampleCardSubtitleColors, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
-import { audioStartOutOfRange, ffmpegUnavailable, videoFinalAlreadyPublished, videoFinalAlreadyRotated, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeAlreadyCompleted, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
+import { audioStartOutOfRange, ffmpegUnavailable, videoFinalAlreadyPublished, videoFinalAlreadyRotated, videoMergeAlreadyPublished, videoMergeBusy, videoMergeClipsInvalid, videoMergeContentUnavailable, videoMergeFailed, videoMergeInvalidRequest, videoMergeNotAllowed, videoMergeStorageError } from "./video-merge-api.error.js";
 import { shortProjectAspectRatio } from "../projects/project-aspect.js";
 
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved" };
@@ -334,24 +335,21 @@ export class LocalVideoMergeService {
   /**
    * The material this project's final cut is made of, and whether it is held rather than played.
    *
-   * The state gate is the same for both kinds and means the same thing — the material is settled, or a previous
-   * merge failed and retrying is all that is left. What differs is *what is checked*, and that is the whole
+   * The state gate accepts settled, failed, or completed-but-unpublished material. What differs is *what is checked*, and that is the whole
    * reason this branches instead of a photo card being dressed up as an approved video run: a card has no
    * clips and no scene reviews, so demanding an approved reviews file would mean writing one that says six
    * scenes were reviewed when none were. A gate that has to be lied to is not a gate.
    */
   private async mergeMaterial(project: StoredProject): Promise<{ paths: string[]; stillDurationSeconds?: number }> {
-    // A finished photo card may be made again, and an ordinary project may not. The gate exists to stop a
-    // completed run being overwritten, and for a card there is nothing of that kind to overwrite: no paid
-    // clips, no approvals, one picture and one line of text, and the previous final video is archived before
-    // the new one is written. What it was actually stopping was a person changing their own subtitle — the
-    // card would have had to be created again, under a new name, to move one number (Cowork Round 440).
-    //
-    // Published is the one exception, and it is its own refusal: see videoMergeAlreadyPublished.
-    const remakeableCard = project.workflow_state === WorkflowState.Completed && pictureCardFor(project);
-    if (remakeableCard && project.instagram_post) throw videoMergeAlreadyPublished();
-    if (project.workflow_state === WorkflowState.Completed && !remakeableCard) throw videoMergeAlreadyCompleted();
-    if (!remakeableCard && project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
+    // A completed reel may be recut from the same approved clips. A current post blocks it; a forgotten post
+    // is warned about by the screen, since clearing the current post is how a recut becomes publishable again.
+    const completed = project.workflow_state === WorkflowState.Completed;
+    if (completed && project.instagram_post) throw videoMergeAlreadyPublished();
+    if (completed && !pictureCardFor(project)) {
+      const previous = await fs.stat(this.final(project.project_id)).catch(() => undefined);
+      if (project.final_video_path !== FINAL_VIDEO_RELATIVE_PATH || !previous || previous.size <= 0) throw videoMergeContentUnavailable();
+    }
+    if (!completed && project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
     if (pictureCardFor(project)) {
       /*
        * Every picture, in scene order. A card used to be one picture and one scene; it is now one scene per
@@ -376,8 +374,7 @@ export class LocalVideoMergeService {
   private async approvedClips(project: StoredProject): Promise<string[]> {
     // Same as the Episode side: Failed is written in one place, by a merge that did not finish, and nothing
     // was published when it did not. Retrying is the only sensible thing left, and it was refused.
-    if (project.workflow_state === WorkflowState.Completed) throw videoMergeAlreadyCompleted();
-    if (project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
+    if (project.workflow_state !== WorkflowState.Completed && project.workflow_state !== WorkflowState.VideosApproved && project.workflow_state !== WorkflowState.Failed) throw videoMergeNotAllowed();
     let reviews: unknown;
     try { reviews = JSON.parse(await fs.readFile(path.join(this.projectDirectory(project.project_id), "generated_video_reviews.json"), "utf8")); }
     catch { throw videoMergeClipsInvalid(); }
@@ -400,9 +397,8 @@ export class LocalVideoMergeService {
   }
 
   /**
-   * Preserves whatever final video already exists before this merge overwrites it — a project only reaches
-   * merge() again after a scene-video restore reopens VideosApproved (see video-library.service.ts's restore()),
-   * so without this, a user who restores an old scene and re-merges would silently lose the previous final cut
+   * Preserves whatever final video already exists before this merge overwrites it — a user can return here after
+   * changing merge settings or restoring an old scene, and must not silently lose the previous final cut.
    * Mirrors local-video-workflow.service.ts's private archive(), generalized to the
    * final video's own directory — see video-library.service.ts's historyFileName() for the matching read side.
    */
@@ -424,7 +420,7 @@ export class LocalVideoMergeService {
 
   /**
    * RotateFinalVideoResponse: the finished final, turned a quarter clockwise in place, the previous cut kept as a
-   * version. Nothing about the project changes but `updated_at` — the state stays Completed and a failure leaves the
+   * version. The saved rotation choice and `updated_at` change — the state stays Completed and a failure leaves the
    * old file where it was, so there is nothing to mark failed.
    */
   async rotateFinal(projectId: string): Promise<MergeVideosResponse> {
@@ -445,8 +441,16 @@ export class LocalVideoMergeService {
         if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
         throw videoMergeFailed(mergeFailedDetails(error instanceof MediaToolError ? error.where : undefined, []));
       }
-      const turned = { ...project, updated_at: new Date().toISOString() };
-      try { await this.projects.save(turned); } catch { throw videoMergeStorageError(); }
+      const turned = { ...project, lore_context: { ...project.lore_context, final_video_rotated_clockwise: true }, updated_at: new Date().toISOString() };
+      try { await this.projects.save(turned); } catch {
+        // The rotation choice and the video bytes must describe the same final. If the record cannot be saved,
+        // put the archived bytes back; keep the archive if even that recovery fails.
+        if (archivedPath) {
+          const restored = await fs.copyFile(archivedPath, finalPath).then(() => true).catch(() => false);
+          if (restored) await fs.unlink(archivedPath).catch(() => undefined);
+        }
+        throw videoMergeStorageError();
+      }
       return { project: toApiProject(turned), finalVideoPath: FINAL_VIDEO_RELATIVE_PATH };
     }, this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch((error: unknown) => { throw error instanceof ProjectLockTimeoutError ? videoMergeBusy() : error; });
@@ -516,16 +520,26 @@ export class LocalVideoMergeService {
     const clipVolume = explicitClipVolume ? audio.clipVolume : undefined;
     const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout, clipVolume, clipAudioFacts);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
-    const rendering = { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
-    try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
+    const remake = project.workflow_state === WorkflowState.Completed && !pictureCardFor(project);
+    const rendering = remake ? project : { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
+    if (!remake) {
+      try { await this.projects.save(rendering); } catch { throw videoMergeStorageError(); }
+    }
     // Held across the render and the save that follows it. The Instagram publish takes this same key while it
     // reads the file, so a post can never be built from a cut this merge is in the middle of replacing — the
     // one action in this app that cannot be undone must not race the one that rewrites what it sends.
-    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, () => this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes, frameFit, rotateClockwise), this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
+    return withProjectLock(this.projectDirectory(project.project_id), FINAL_VIDEO_LOCK_KEY, async () => {
+      if (remake) {
+        const current = await this.projects.findById(project.project_id);
+        if (current.instagram_post) throw videoMergeAlreadyPublished();
+        if (current.workflow_state !== WorkflowState.Completed) throw videoMergeNotAllowed();
+      }
+      return this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes, frameFit, rotateClockwise);
+    }, this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch(async (error: unknown) => {
         if (!(error instanceof ProjectLockTimeoutError)) throw error;
-        // Nothing was rendered, so the project must not be left saying it is rendering.
-        await this.projects.save({ ...project, updated_at: new Date().toISOString() }).catch(() => undefined);
+        // Nothing was rendered; only a first merge changed state before acquiring the lock.
+        if (!remake) await this.projects.save({ ...project, updated_at: new Date().toISOString() }).catch(() => undefined);
         throw videoMergeBusy();
       });
   }
@@ -546,16 +560,26 @@ export class LocalVideoMergeService {
     rotateClockwise: boolean,
   ): Promise<MergeVideosResponse> {
     const project = rendering;
+    const remake = rendering.workflow_state === WorkflowState.Completed && !pictureCardFor(rendering);
+    const finalPath = this.final(project.project_id);
+    const temporaryFinal = remake ? path.join(path.dirname(finalPath), `.instagram_reel.${randomUUID()}.remake.mp4`) : finalPath;
+    let archivedPath: string | undefined;
+    let replaced = false;
     try {
-      await this.archiveExistingFinal(project.project_id);
-      const finalPath = this.final(project.project_id);
+      if (!remake) await this.archiveExistingFinal(project.project_id);
       await fs.mkdir(path.dirname(finalPath), { recursive: true });
       // The project's own setting, read from where it is actually stored (project-aspect.ts). This passed
       // `style_profile.aspect` until that field turned out to be written by nothing, so every merge padded to a
       // portrait canvas — including landscape footage, which came out pillarboxed.
-      await this.engine.merge(mergeScenes, clipDurationSeconds, finalPath, shortProjectAspectRatio(rendering), { frameFit, rotateClockwise });
+      await this.engine.merge(mergeScenes, clipDurationSeconds, temporaryFinal, shortProjectAspectRatio(rendering), { frameFit, rotateClockwise });
       if (usesBgm(audio.mode) && bgmPath) {
-        await this.engine.mixBackgroundMusic(finalPath, bgmPath, audio.volume, audio.fadeSeconds, finalPath, audio.startSeconds);
+        await this.engine.mixBackgroundMusic(temporaryFinal, bgmPath, audio.volume, audio.fadeSeconds, temporaryFinal, audio.startSeconds);
+      }
+      if (remake) {
+        archivedPath = await this.archiveExistingFinal(project.project_id);
+        if (!archivedPath) throw videoMergeContentUnavailable();
+        await fs.rename(temporaryFinal, finalPath);
+        replaced = true;
       }
       const dialogueDefaultCount = mergeScenes.filter((scene) => scene.spokenDialogue === true && scene.clipAudioVolume === 1).length;
       const usedAudio: StoredUsedAudio = {
@@ -568,16 +592,27 @@ export class LocalVideoMergeService {
       };
       // Written only here, after the render that used it: a layout the person tried and abandoned never comes
       // back to change a later video, and a card merged again starts from what it actually looks like.
-      const loreContext = photoCardFor(rendering)
+      const baseLoreContext = photoCardFor(rendering)
         ? { ...rendering.lore_context, subtitle_scale: subtitleLayout.scale, subtitle_center: subtitleLayout.center }
         : { ...rendering.lore_context, scene_subtitle_scale: sceneSubtitleLayout.scale, scene_subtitle_center: sceneSubtitleLayout.center };
+      const loreContext = pictureCardFor(rendering) ? baseLoreContext : {
+        ...baseLoreContext, final_video_frame_fit: frameFit, final_video_rotated_clockwise: rotateClockwise,
+      };
       const completed = { ...rendering, lore_context: loreContext, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, used_audio: usedAudio };
       await this.projects.save(completed);
       return { project: toApiProject(completed), finalVideoPath: FINAL_VIDEO_RELATIVE_PATH };
     } catch (error) {
-      await this.saveFailure(rendering);
+      if (remake) {
+        // A failed recut keeps the old completed project and playable file, even when rendering finished but
+        // the project save failed. Keep the archive if rollback itself fails so the old bytes are recoverable.
+        let restored = !replaced;
+        if (replaced && archivedPath) restored = await fs.copyFile(archivedPath, finalPath).then(() => true).catch(() => false);
+        if (restored && archivedPath) await fs.unlink(archivedPath).catch(() => undefined);
+      } else await this.saveFailure(rendering);
       if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
       throw videoMergeFailed(mergeFailedDetails(error instanceof MediaToolError ? error.where : undefined, renderedScenes));
+    } finally {
+      if (remake) await fs.unlink(temporaryFinal).catch(() => undefined);
     }
   }
 }

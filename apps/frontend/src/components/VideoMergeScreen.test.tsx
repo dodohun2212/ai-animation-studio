@@ -1110,12 +1110,131 @@ describe("VideoMergeScreen", () => {
     expect(notice).toContain("소리 없이 다른 영상으로 바뀌기 때문");
   });
 
-  // An ordinary finished project keeps its one-way door: there are paid clips behind that file.
+  // (2026-09-27) An ordinary finished project no longer keeps a one-way door — it has its own remake
+  // (`video-remake`, below). This still holds: the CARD's remake, with its subtitle wording, is not offered here.
   it("offers no remake on an ordinary finished project", async () => {
     renderScreen(vi.fn(), { workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" });
 
     await screen.findByTestId("merge-success");
     expect(screen.queryByTestId("photo-card-remake")).toBeNull();
+  });
+
+  /**
+   * 캡틴D 2026-09-27 「한번 정하면 못 바꾼다」 — 일반 영상 릴도 병합 뒤에 설정을 바꿔 다시 합칩니다(CLI Round 1131).
+   * 누르는 순간 완성본 플레이어가 **사라져야** 합니다: 파일을 열고 있으면 Windows 에서 서버가 바꿔 끼우지 못합니다.
+   */
+  it("lets a finished video reel be merged again, with the player closed first", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    // 맞춤이 기록된 완성본 — 기록이 없는 경우는 아래 「makes the person choose…」가 봅니다.
+    renderScreen(mergeFetch, { workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4", finalVideoFrameFit: "pad" });
+
+    await screen.findByTestId("merge-success");
+    expect(screen.getByTestId("final-video-player")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("video-remake"));
+
+    expect(screen.queryByTestId("final-video-player")).toBeNull();
+    expect(screen.getByTestId("final-video-released")).toBeTruthy();
+    fireEvent.click(await screen.findByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("final-video-player")).toBeTruthy());
+    expect(screen.queryByTestId("video-remake")).toBeTruthy();
+  });
+
+  /** 지금 완성본의 실제 맞춤·회전이 기록돼 있으면 그 값으로 칸이 채워지고, 그대로 보내면 그 값이 나갑니다(CLI Round 1136). */
+  it("fills the remake with the fit and turn the current video was made with", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, {
+      aspectRatio: "16:9", workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4",
+      finalVideoFrameFit: "fill", finalVideoRotatedClockwise: true,
+    });
+
+    await screen.findByTestId("merge-success");
+    fireEvent.click(screen.getByTestId("video-remake"));
+
+    expect((await screen.findByTestId("merge-frame-fit-fill") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId("merge-rotate-toggle") as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByTestId("merge-frame-fit-unknown")).toBeNull();
+    expect(screen.queryByTestId("merge-rotate-unknown")).toBeNull();
+    expect(screen.queryByTestId("merge-remake-choice-required")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const body = JSON.parse(String((mergeFetch.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(body.frameFit).toBe("fill");
+    expect(body.rotateClockwise).toBe(true);
+  });
+
+  /**
+   * 🔴 옛 완성본은 무엇으로 만들었는지 기록이 없습니다(CLI Round 1138). 기본값을 조용히 넣으면 이미 돌린 영상이
+   * 소리만 바꾸려다 가로로 돌아갑니다 — 그래서 **둘 다 고르기 전엔 못 누릅니다.** 고르면 그 값이 나갑니다.
+   */
+  it("makes the person choose fit and turn when the current video's were never recorded", async () => {
+    const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, { aspectRatio: "16:9", workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4" });
+
+    await screen.findByTestId("merge-success");
+    fireEvent.click(screen.getByTestId("video-remake"));
+
+    expect(await screen.findByTestId("merge-frame-fit-unknown")).toBeTruthy();
+    expect(screen.getByTestId("merge-rotate-unknown")).toBeTruthy();
+    expect((screen.getByTestId("merge-frame-fit-pad") as HTMLInputElement).checked, "모르는 값을 고른 것처럼 보이면 안 됩니다").toBe(false);
+    const button = screen.getByTestId("open-merge-confirm-button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByTestId("merge-remake-choice-required")).toBeTruthy();
+
+    // 그만두면 아무것도 안 보내고 지금 영상 미리보기로 돌아갑니다. 다시 열면 모르는 값은 여전히 모릅니다.
+    fireEvent.click(screen.getByTestId("merge-remake-cancel"));
+    expect(screen.getByTestId("final-video-player")).toBeTruthy();
+    expect(mergeFetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("video-remake"));
+    expect(await screen.findByTestId("merge-rotate-unknown")).toBeTruthy();
+
+    // 그만두기 → 다시 열기로 병합 버튼이 **새로 그려졌습니다** — 위의 `button` 은 떨어져 나간 옛 요소라 다시 찾습니다(CLI Round 1140).
+    const reopened = () => screen.getByTestId("open-merge-confirm-button") as HTMLButtonElement;
+    expect(reopened().disabled, "다시 열어도 모르는 값은 여전히 모릅니다").toBe(true);
+    fireEvent.click(screen.getByTestId("merge-frame-fit-pad"));
+    expect(reopened().disabled, "방향도 골라야 합니다").toBe(true);
+    fireEvent.click(screen.getByTestId("merge-rotate-choice-turn"));
+    expect(reopened().disabled).toBe(false);
+
+    fireEvent.click(reopened());
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(mergeFetch).toHaveBeenCalled());
+    const body = JSON.parse(String((mergeFetch.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(body.frameFit).toBeUndefined();
+    expect(body.rotateClockwise).toBe(true);
+  });
+
+  it("offers no remake on a video reel that is posted right now, and says the way past it", async () => {
+    renderScreen(vi.fn(), {
+      workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4",
+      instagramPost: { mediaId: "m1", igUserId: "1", publishedAt: "2026-09-02T00:00:00.000Z", caption: "" },
+    });
+
+    await screen.findByTestId("merge-success");
+    expect(screen.queryByTestId("video-remake")).toBeNull();
+    const notice = screen.getByTestId("video-remake-published").textContent ?? "";
+    expect(notice).toContain("올라가 있는 영상");
+    expect(notice).toContain("다시 올릴 수 있게 하기");
+  });
+
+  /**
+   * 캡틴D 결정(2026-09-27, Cowork 1134): 지운 게시 기록은 막지 않고 **알립니다.** 기록을 지우는 것이 다시 자른
+   * 영상을 다시 올리는 길이고, 막으면 캡틴D 가 실제로 다시 만들려던 릴(`미지의공간2`)이 못 들어옵니다.
+   */
+  it("offers the remake on a video reel whose post was forgotten, with a warning", async () => {
+    renderScreen(vi.fn(), {
+      workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4",
+      previousInstagramPosts: [{ mediaId: "m0", igUserId: "1", publishedAt: "2026-09-01T00:00:00.000Z", caption: "" }],
+    });
+
+    await screen.findByTestId("merge-success");
+    expect(screen.getByTestId("video-remake")).toBeTruthy();
+    expect(screen.queryByTestId("video-remake-published")).toBeNull();
+    expect(screen.getByTestId("video-remake-had-post").textContent).toContain("게시물이 두 개");
   });
 
   // An ordinary project has no card text to place, and the server refuses the field for one. Showing controls

@@ -110,13 +110,14 @@ describe("videoMergeApi", () => {
 
   /**
    * Two "already" refusals that send the reader to different places, which is why the backend keeps them apart.
-   * Already rendered is undone by tidying this project's video; already published is not — re-merging would
+   * (The "already rendered" refusal is gone since 2026-09-29 — a finished reel can be merged again.) Already published is not undone that way — re-merging would
    * make the file on disk stop being the file the post was made from, silently. The way past it is a new card.
    */
   it("does not send a published card back to the re-merge advice meant for an unpublished one", () => {
     const published = toVideoMergeDisplayError(new VideoMergeApiError("VIDEO_MERGE_ALREADY_PUBLISHED", "raw"));
     expect(published.code).toBe("VIDEO_MERGE_ALREADY_PUBLISHED");
-    expect(published.message).toContain("카드를 새로 만들어");
+    expect(published.message, "막힌 길 대신 지나가는 길(게시 기록 지우기)을 말합니다 — Cowork 1134").toContain("다시 올릴 수 있게 하기");
+    expect(published.message, "일반 영상 릴도 이 코드로 거절됩니다(CLI Round 1131) — 「카드」라고 부르면 안 됩니다").not.toContain("카드");
     expect(published.message).not.toContain("지금 영상을 정리해");
     expect(published.message).not.toContain("raw");
   });

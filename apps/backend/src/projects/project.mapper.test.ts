@@ -61,6 +61,16 @@ describe("toApiSummary / toApiProject", () => {
     expect(project.finalVideoGenerationSource).toBe("unknown_legacy");
   });
 
+  it("exposes recorded final fit and rotation only while that final is current", () => {
+    const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
+    stored.lore_context = { final_video_frame_fit: "fill", final_video_rotated_clockwise: true };
+    expect(toApiSummary(stored).finalVideoFrameFit).toBeUndefined();
+    stored.final_video_path = "videos/final/instagram_reel.mp4";
+    expect(toApiSummary(stored)).toMatchObject({ finalVideoFrameFit: "fill", finalVideoRotatedClockwise: true });
+    stored.lore_context.final_video_frame_fit = "invalid";
+    expect(toApiSummary(stored).finalVideoFrameFit).toBeUndefined();
+  });
+
   it("exposes paid and local-fake final-video origins only when video records provide evidence", () => {
     const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
     stored.final_video_path = "videos/final/instagram_reel.mp4";

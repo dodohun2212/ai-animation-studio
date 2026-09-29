@@ -393,7 +393,10 @@ export class VideoLibraryService {
       // Either branch invalidates ProjectSummary.usedAudio: a scene restore voids the final video entirely
       // (must re-merge to get a new one), and a restored final version's own audio was never recorded
       // per-history-version, so the project's single "most recent merge" record cannot correctly describe it.
-      let updated: StoredProject = { ...project, updated_at: new Date().toISOString(), used_audio: null };
+      // A history version predates per-version fit/rotation metadata; a scene restore invalidates the final.
+      // In either case these settings can no longer describe the current final.
+      const { final_video_frame_fit: _oldFit, final_video_rotated_clockwise: _oldTurn, ...loreContext } = project.lore_context;
+      let updated: StoredProject = { ...project, lore_context: loreContext, updated_at: new Date().toISOString(), used_audio: null };
       if (target.kind === "scene") {
         const hadFinal = updated.final_video_path !== null;
         updated = { ...updated, final_video_path: null };

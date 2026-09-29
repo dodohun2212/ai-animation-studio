@@ -296,15 +296,15 @@ describe("PhotoCardService", () => {
       .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_ALREADY_PUBLISHED" } });
   });
 
-  // The counterpart. An ordinary project's second merge is still refused, and still says why.
-  it("still refuses a finished ordinary project a second merge", async () => {
+  // An ordinary project's Completed flag alone is not enough to recut: the previous final must exist.
+  it("refuses a completed ordinary project whose final video is missing", async () => {
     const { projectsRoot, projects } = await setup();
     const ordinary = createStoredProject("ordinary", "topic", "2026-08-23T00:00:00.000Z");
     ordinary.workflow_state = WorkflowState.Completed;
     await projects.create(ordinary);
 
     await expect(new LocalVideoMergeService(projects, projectsRoot, runner([])).merge("ordinary"))
-      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_ALREADY_COMPLETED" } });
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_CONTENT_UNAVAILABLE" } });
   });
 
   // The merge takes the same lock the publish does, so the two cannot overlap. Refused, not queued: a merge

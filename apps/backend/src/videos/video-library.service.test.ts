@@ -414,6 +414,7 @@ describe("VideoLibraryService.restore", () => {
     await createProjectWithVideos(projectsRoot, projects, "p1", { scenes: [1], finalVideo: true, state: WorkflowState.Completed });
     const project = await projects.findById("p1");
     project.used_audio = { mode: "narration+bgm", track_id: "TRACK-1", attribution_required: true, attribution_text: "Music by Jane Doe" };
+    project.lore_context = { ...project.lore_context, final_video_frame_fit: "fill", final_video_rotated_clockwise: true };
     await projects.save(project);
     const history = path.join(projectsRoot, "p1", "videos", "history");
     await fs.mkdir(history, { recursive: true });
@@ -422,6 +423,8 @@ describe("VideoLibraryService.restore", () => {
     await service.restore("p1", "1", "v001", { approved: true });
 
     expect((await projects.findById("p1")).used_audio).toBeNull();
+    expect((await projects.findById("p1")).lore_context).not.toHaveProperty("final_video_frame_fit");
+    expect((await projects.findById("p1")).lore_context).not.toHaveProperty("final_video_rotated_clockwise");
   });
 
   it("clears usedAudio on a final-version restore too, since per-version audio was never recorded", async () => {
@@ -429,6 +432,7 @@ describe("VideoLibraryService.restore", () => {
     await createProjectWithVideos(projectsRoot, projects, "p1", { scenes: [], finalVideo: true });
     const project = await projects.findById("p1");
     project.used_audio = { mode: "silent" };
+    project.lore_context = { ...project.lore_context, final_video_frame_fit: "fill", final_video_rotated_clockwise: true };
     await projects.save(project);
     const history = path.join(projectsRoot, "p1", "videos", "final", "history");
     await fs.mkdir(history, { recursive: true });
@@ -437,6 +441,8 @@ describe("VideoLibraryService.restore", () => {
     await service.restore("p1", "final", "v001", { approved: true });
 
     expect((await projects.findById("p1")).used_audio).toBeNull();
+    expect((await projects.findById("p1")).lore_context).not.toHaveProperty("final_video_frame_fit");
+    expect((await projects.findById("p1")).lore_context).not.toHaveProperty("final_video_rotated_clockwise");
   });
 
   it("costs nothing — never touches the Runway budget ledger", async () => {

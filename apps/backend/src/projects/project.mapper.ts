@@ -1,4 +1,4 @@
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, WorkflowState, type NewsReelCard, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isFrameFit, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, WorkflowState, type NewsReelCard, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
 
 import { generationSourceOfVideoRecords } from "../videos/generation-source.js";
 import { LEGACY_VIDEO_JOB_ID } from "../videos/legacy-job.js";
@@ -190,6 +190,10 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
       : newsReelCard !== undefined
         ? { newsReelCard }
         : { sceneSubtitleLayout: storedSceneSubtitleLayout(stored) }),
+    ...(stored.final_video_path && isFrameFit(stored.lore_context.final_video_frame_fit)
+      ? { finalVideoFrameFit: stored.lore_context.final_video_frame_fit } : {}),
+    ...(stored.final_video_path && typeof stored.lore_context.final_video_rotated_clockwise === "boolean"
+      ? { finalVideoRotatedClockwise: stored.lore_context.final_video_rotated_clockwise } : {}),
     ...(usedAudioFor(stored) !== undefined ? { usedAudio: usedAudioFor(stored) } : {}),
     ...(stored.instagram_post ? { instagramPost: {
       mediaId: stored.instagram_post.media_id,

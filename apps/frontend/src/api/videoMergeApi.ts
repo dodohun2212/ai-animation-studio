@@ -18,16 +18,14 @@ const SAFE_ERRORS: Record<string, string> = {
   INVALID_REQUEST: "요청 형식이 올바르지 않습니다.",
   PROJECT_NOT_FOUND: "프로젝트를 찾을 수 없습니다.",
   VIDEO_MERGE_NOT_ALLOWED: "모든 장면 영상이 승인된 뒤에만 최종 병합을 진행할 수 있습니다.",
-  // Not a failure to fix — the work is already done. The gate that produces this used to answer with the
-  // "approve every scene first" sentence, which sent people to re-approve scenes that were already approved.
-  // Whether a re-merge should be allowed at all is a separate, product question; until it is, saying the true
-  // reason is the least this can do.
-  VIDEO_MERGE_ALREADY_COMPLETED: "이미 최종 영상이 만들어진 프로젝트입니다. 다시 만들려면 먼저 지금 영상을 정리해 주세요.",
+  // (VIDEO_MERGE_ALREADY_COMPLETED 는 2026-09-29 에 뺐습니다 — 서버가 완료된 릴의 재병합을 허용하게 되어 더는
+  // 그 코드를 보내지 않습니다. 백엔드 `error-code-reach.test.ts` 가 남은 문장을 잡았습니다(CLI Round 1137).)
   /* Deliberately not the sentence above, for the reason the backend's own comment gives: the two send the
      reader to different places. "Already rendered" is undone by tidying this project's video; a card that is
      already public is not, because re-merging would quietly make the file on disk stop being the file the post
      was made from. The way past this one is a new card. */
-  VIDEO_MERGE_ALREADY_PUBLISHED: "이미 인스타그램에 게시된 카드입니다. 지금 영상을 바꾸면 올라간 것과 달라집니다 — 고치시려면 카드를 새로 만들어 주세요.",
+  // 2026-09-27 부터 카드만의 말이 아닙니다 — 일반 영상 릴의 재병합도 같은 코드로 거절됩니다(CLI Round 1131).
+  VIDEO_MERGE_ALREADY_PUBLISHED: "인스타그램에 올라가 있는 영상입니다. 지금 영상을 바꾸면 올라간 것과 달라집니다 — 바꾸시려면 「게시물 준비」에서 「다시 올릴 수 있게 하기」를 먼저 눌러 주세요.",
   /* Not a refusal to fix — nothing is wrong and nothing changed. Something else is holding this exact file
      right now (a publish reading its bytes, or another render writing them), and the only correct move is to
      wait a moment. Saying "다시 시도" without saying that reads as "it failed", which sends people looking for

@@ -758,6 +758,10 @@ export interface ProjectSummary {
    * {@link SCENE_SUBTITLE_CENTER} for the numbers and what is measured about them.
    */
   sceneSubtitleLayout?: SceneSubtitleLayout;
+  /** Settings used for the current final video. Absent for an older merge or a restored history version whose settings were not recorded. */
+  finalVideoFrameFit?: FrameFit;
+  /** Includes a later "turn final" action. Absent when the current final's rotation was never recorded. */
+  finalVideoRotatedClockwise?: boolean;
   /**
    * Same source and priority as video-preview.service.ts's ratioFor()/image-prompt.ts's imageSizeFor()
    * (style_profile.aspect, "16:9" vs anything else defaulting to vertical) — added here so every screen that

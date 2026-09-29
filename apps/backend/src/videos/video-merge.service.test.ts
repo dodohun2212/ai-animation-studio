@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_DURATIONS, SCENE_SUBTITLE_CENTER, WorkflowState } from "@ai-animation-studio/shared";
 
 import { MediaToolError, type MediaCommandRunner } from "./ffmpeg-merge.service.js";
@@ -55,27 +55,14 @@ async function captureAss(target: string, into: Map<string, string>): Promise<vo
 }
 
 describe("local FFmpeg video merge", () => {
-  /**
-   * Pressing merge on a project that already has its final video says so, instead of asking for approvals the
-   * person finished long ago.
-   *
-   * The screen re-offers the button: `result` is local to one visit (VideoMergeScreen.tsx), so reopening the
-   * project shows it again — which is how a person would try to swap the background music. The server refuses,
-   * correctly, but it refused with "Final rendering requires six approved scene videos", and every one of those
-   * six is approved. Measured by merging twice: state COMPLETED, then that sentence.
-   *
-   * Both ends, because one message covering two opposite states is the whole defect: an implementation that
-   * answered "already rendered" to everything would be just as wrong for a project that genuinely has nothing
-   * approved yet.
-   */
-  it("tells a completed project it is already rendered, and an unapproved one that it is not approved", async () => {
+  it("allows an unpublished completed project to merge again, but still rejects unapproved scenes", async () => {
     const { projectsRoot, projects } = await setup();
     const service = new LocalVideoMergeService(projects, projectsRoot, runner({}));
     await service.merge("video_merge");
     expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
 
-    const completed = await service.merge("video_merge").catch((error: { getResponse(): { code: string } }) => error.getResponse());
-    expect(completed).toMatchObject({ code: "VIDEO_MERGE_ALREADY_COMPLETED" });
+    const completed = await service.merge("video_merge");
+    expect(completed.project.workflowState).toBe(WorkflowState.Completed);
 
     // A real state, not a nonexistent one: WorkflowState.Draft does not exist, and at runtime that reads as
     // undefined — which is not VideosApproved either, so this half passed while checking nothing. The build
@@ -111,13 +98,6 @@ describe("local FFmpeg video merge", () => {
     const service = new LocalVideoMergeService(projects, projectsRoot, runnerThatVariesOutput);
 
     await service.merge("video_merge");
-    // Simulate what video-library.service.ts's restore() does to reopen merging (a scene-version restore
-    // clears finalVideoPath and reverts Completed -> VideosApproved) — this file only asserts the merge-side
-    // archiving, not the restore-side state transition (covered by video-library.service.test.ts).
-    const reopened = await projects.findById("video_merge");
-    reopened.workflow_state = WorkflowState.VideosApproved;
-    reopened.final_video_path = null;
-    await projects.save(reopened);
     round = 2;
 
     await service.merge("video_merge");
@@ -127,6 +107,69 @@ describe("local FFmpeg video merge", () => {
     const archived = await fs.readdir(historyDir);
     expect(archived).toEqual(["instagram_reel_v001.mp4"]);
     expect(await fs.readFile(path.join(historyDir, "instagram_reel_v001.mp4"), "utf8")).toBe("rendered-1");
+  });
+
+  it("keeps the completed file and state when a remake render fails", async () => {
+    const { projectsRoot, projects } = await setup();
+    let fail = false;
+    const localRunner: MediaCommandRunner = async (arguments_) => {
+      const args = [...arguments_];
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "video" }], format: { duration: "5.0" } }), stderr: "" };
+      if (fail) throw new MediaToolError("failed", "render failed");
+      await fs.writeFile(args.at(-1)!, Buffer.from("original"));
+      return { stdout: "", stderr: "" };
+    };
+    const service = new LocalVideoMergeService(projects, projectsRoot, localRunner);
+    await service.merge("video_merge");
+    fail = true;
+
+    await expect(service.merge("video_merge", { audio: { mode: "silent", clipVolume: 0.4 } })).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED" } });
+    const after = await projects.findById("video_merge");
+    expect(after.workflow_state).toBe(WorkflowState.Completed);
+    expect(after.used_audio?.clip_volume).toBeUndefined();
+    const finalDir = path.join(projectsRoot, "video_merge", "videos", "final");
+    expect(await fs.readFile(path.join(finalDir, "instagram_reel.mp4"), "utf8")).toBe("original");
+    await expect(fs.readdir(path.join(finalDir, "history"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("restores the old final if saving the completed remake fails after file replacement", async () => {
+    const { projectsRoot, projects } = await setup();
+    let round = 1;
+    const localRunner: MediaCommandRunner = async (arguments_) => {
+      const args = [...arguments_];
+      if (args[0] === "ffprobe") return { stdout: JSON.stringify({ streams: [{ codec_type: "video" }], format: { duration: "5.0" } }), stderr: "" };
+      await fs.writeFile(args.at(-1)!, Buffer.from(`rendered-${round}`));
+      return { stdout: "", stderr: "" };
+    };
+    const service = new LocalVideoMergeService(projects, projectsRoot, localRunner);
+    await service.merge("video_merge");
+    round = 2;
+    const save = vi.spyOn(projects, "save").mockRejectedValueOnce(new Error("save failed"));
+    try {
+      await expect(service.merge("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED" } });
+    } finally { save.mockRestore(); }
+    const finalDir = path.join(projectsRoot, "video_merge", "videos", "final");
+    expect(await fs.readFile(path.join(finalDir, "instagram_reel.mp4"), "utf8")).toBe("rendered-1");
+    expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
+    await expect(fs.readdir(path.join(finalDir, "history"))).resolves.toEqual([]);
+  });
+
+  it.each(["current", "forgotten"] as const)("handles a %s published reel", async (record) => {
+    const { projectsRoot, projects } = await setup();
+    const service = new LocalVideoMergeService(projects, projectsRoot, runner({}));
+    await service.merge("video_merge");
+    const completed = await projects.findById("video_merge");
+    const post = { media_id: "m1", ig_user_id: "u1", published_at: "2026-09-27T00:00:00.000Z", caption: "posted" };
+    await projects.save({ ...completed, instagram_post: record === "current" ? post : null, previous_instagram_posts: record === "forgotten" ? [post] : [] });
+
+    if (record === "current") {
+      await expect(service.merge("video_merge")).rejects.toMatchObject({ response: { code: "VIDEO_MERGE_ALREADY_PUBLISHED" } });
+    } else {
+      await expect(service.merge("video_merge")).resolves.toMatchObject({ project: { workflowState: WorkflowState.Completed } });
+    }
+    expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
+    if (record === "current") await expect(fs.readdir(path.join(projectsRoot, "video_merge", "videos", "final", "history"))).rejects.toMatchObject({ code: "ENOENT" });
+    else await expect(fs.readdir(path.join(projectsRoot, "video_merge", "videos", "final", "history"))).resolves.toContain("instagram_reel_v001.mp4");
   });
 
   it("serves the final merged video by canonical path once it exists, and rejects before that", async () => {
@@ -345,16 +388,17 @@ describe("local FFmpeg video merge", () => {
     expect(assFiles.get("scene2.ass")).toContain("장면 2 내레이션");
   });
 
-  /** FRAME_FITS: the request's choice reaches every scene's filter; omitted is the old pad; nothing is stored. */
+  /** FRAME_FITS: the request's choice reaches every scene's filter and is recorded for a later recut. */
   it("fits the clips the way the request asks, and pads when it does not ask", async () => {
     for (const [request, expected] of [[{ frameFit: "fill" }, "crop=1080:1920"], [{}, "pad=1080:1920"]] as const) {
       const { projectsRoot, projects } = await setup();
       const calls: string[][] = [];
-      await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", request);
+      const result = await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", request);
       const filters = calls.filter((args) => args.includes("-vf")).map((args) => args[args.indexOf("-vf") + 1]!);
       expect(filters, JSON.stringify(request)).toHaveLength(6);
       for (const filter of filters) expect(filter, JSON.stringify(request)).toContain(expected);
-      expect(JSON.stringify((await projects.findById("video_merge")).lore_context)).not.toContain("fill");
+      expect(result.project.finalVideoFrameFit).toBe("frameFit" in request ? request.frameFit : "pad");
+      expect((await projects.findById("video_merge")).lore_context.final_video_frame_fit).toBe("frameFit" in request ? request.frameFit : "pad");
     }
   });
 
@@ -365,10 +409,12 @@ describe("local FFmpeg video merge", () => {
       const project = await projects.findById("video_merge");
       await projects.save({ ...project, lore_context: { ...project.lore_context, style_notes: { aspect: "16:9" } } });
       const calls: string[][] = [];
-      await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", request);
+      const result = await new LocalVideoMergeService(projects, projectsRoot, runner({}, calls)).merge("video_merge", request);
       const filters = calls.filter((args) => args.includes("-vf")).map((args) => args[args.indexOf("-vf") + 1]!);
       expect(filters, JSON.stringify(request)).toHaveLength(6);
       for (const filter of filters) expect(filter.includes("transpose=clock"), JSON.stringify(request)).toBe(turns);
+      expect(result.project.finalVideoRotatedClockwise).toBe(turns);
+      expect((await projects.findById("video_merge")).lore_context.final_video_rotated_clockwise).toBe(turns);
     }
   });
 
@@ -731,6 +777,28 @@ describe("local FFmpeg video merge", () => {
       return { audioLibrary, uploaded, mergeRunner, calls };
     }
 
+    it("keeps the old completed reel when a remake's music mix fails after video rendering", async () => {
+      const { projectsRoot, projects, root } = await setup();
+      const { audioLibrary, uploaded, mergeRunner } = await withTrack(root);
+      let failMusic = false;
+      const wrappedRunner: MediaCommandRunner = async (arguments_) => {
+        if (failMusic && [...arguments_].includes("-stream_loop")) throw new MediaToolError("failed", "music mix failed");
+        return mergeRunner(arguments_);
+      };
+      const service = new LocalVideoMergeService(projects, projectsRoot, wrappedRunner, audioLibrary);
+      await service.merge("video_merge");
+      const finalDir = path.join(projectsRoot, "video_merge", "videos", "final");
+      const original = await fs.readFile(path.join(finalDir, "instagram_reel.mp4"));
+      failMusic = true;
+
+      await expect(service.merge("video_merge", { audio: { mode: "bgm", trackId: uploaded.track.trackId } }))
+        .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED" } });
+      expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
+      expect(await fs.readFile(path.join(finalDir, "instagram_reel.mp4"))).toEqual(original);
+      await expect(fs.readdir(path.join(finalDir, "history"))).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await fs.readdir(finalDir)).filter((name) => name.endsWith(".remake.mp4"))).toEqual([]);
+    });
+
     it("puts music on a project that has no narration at all — the case the old vocabulary could not say", async () => {
       // Before "bgm" every mode described narration, so a project without it could only reach silence. Music
       // alone was never forbidden; there was no word for it.
@@ -969,6 +1037,7 @@ describe("turning a finished final video", () => {
     await expect(fs.readFile(path.join(path.dirname(finalPath), "history", "instagram_reel_v001.mp4"), "utf8")).resolves.toBe("rendered");
     const after = await projects.findById("video_merge");
     expect(after.workflow_state).toBe(WorkflowState.Completed);
+    expect(result.project.finalVideoRotatedClockwise).toBe(true);
     expect(after.updated_at > before.updated_at, "the final's address busts on updatedAt").toBe(true);
     expect(result).toMatchObject({ finalVideoPath: "videos/final/instagram_reel.mp4", project: { updatedAt: after.updated_at } });
   });
@@ -1004,6 +1073,18 @@ describe("turning a finished final video", () => {
     await expect(fs.readFile(finalPath, "utf8")).resolves.toBe("rendered");
     await expect(fs.readdir(path.join(path.dirname(finalPath), "history"))).resolves.toEqual([]);
     expect((await projects.findById("video_merge")).workflow_state).toBe(WorkflowState.Completed);
+  });
+
+  it("restores the old cut when saving the turned final fails", async () => {
+    const { projectsRoot, projects, finalPath } = await finished("16:9");
+    const save = vi.spyOn(projects, "save").mockRejectedValueOnce(new Error("save failed"));
+    try {
+      await expect(new LocalVideoMergeService(projects, projectsRoot, sized(1920, 1080, [])).rotateFinal("video_merge"))
+        .rejects.toMatchObject({ response: { code: "VIDEO_STORAGE_ERROR" } });
+    } finally { save.mockRestore(); }
+    expect(await fs.readFile(finalPath, "utf8")).toBe("rendered");
+    expect((await projects.findById("video_merge")).lore_context.final_video_rotated_clockwise).toBe(false);
+    await expect(fs.readdir(path.join(path.dirname(finalPath), "history"))).resolves.toEqual([]);
   });
 });
 

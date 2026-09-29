@@ -4,7 +4,6 @@ import type { ApiError, MergeFailedDetails, SceneNumber } from "@ai-animation-st
 type VideoMergeErrorCode =
   | "INVALID_REQUEST"
   | "VIDEO_MERGE_NOT_ALLOWED"
-  | "VIDEO_MERGE_ALREADY_COMPLETED"
   | "VIDEO_MERGE_ALREADY_PUBLISHED"
   | "VIDEO_MERGE_BUSY"
   | "AUDIO_START_OUT_OF_RANGE"
@@ -27,27 +26,9 @@ export const videoMergeInvalidRequest = (message = "Request is invalid.") =>
   new VideoMergeApiException("INVALID_REQUEST", message, HttpStatus.BAD_REQUEST);
 export const videoMergeNotAllowed = () =>
   new VideoMergeApiException("VIDEO_MERGE_NOT_ALLOWED", "Final rendering requires six approved scene videos.", HttpStatus.CONFLICT);
-/**
- * Distinct from `videoMergeNotAllowed` because the two states are opposites and one message cannot honestly
- * serve both. A completed project has every scene approved — telling that person "approval is required" names
- * a cause that is not the cause and points them at work they already finished. Measured: merging twice returned
- * exactly that sentence.
- */
-export const videoMergeAlreadyCompleted = () =>
-  new VideoMergeApiException("VIDEO_MERGE_ALREADY_COMPLETED", "This project's final video has already been rendered.", HttpStatus.CONFLICT);
-/**
- * A photo card that has already been posted to Instagram.
- *
- * Every other completed card may be made again — a card costs nothing to render and its previous final video is
- * archived first, so "already done" was protecting nothing while it locked the person out of their own text
- * (Cowork Round 440). A published one is the exception: the file the post was made from would quietly stop
- * being the file on disk, and nothing on either side would say the two had diverged.
- *
- * Its own code, not the "already rendered" one, because the two send the person to different places: this one
- * is about a post that exists, and the way past it is a new card rather than a retry.
- */
+/** A final with a current Instagram post must not silently diverge from the published cut. */
 export const videoMergeAlreadyPublished = () =>
-  new VideoMergeApiException("VIDEO_MERGE_ALREADY_PUBLISHED", "This photo card has already been published to Instagram.", HttpStatus.CONFLICT);
+  new VideoMergeApiException("VIDEO_MERGE_ALREADY_PUBLISHED", "This reel has already been published to Instagram.", HttpStatus.CONFLICT);
 /**
  * Another operation is holding this project's final video — a publish reading it, a version being restored, or
  * a merge already running in another window.
