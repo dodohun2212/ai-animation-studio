@@ -20,7 +20,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function git(...args) {
   try {
-    return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    return execFileSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true }).trim();
   } catch {
     return "(git failed)";
   }
