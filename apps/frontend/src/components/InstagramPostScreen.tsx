@@ -116,6 +116,23 @@ function dateOnly(value: string): string {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString("ko-KR");
 }
 
+/**
+ * 「올릴 영상」 칸의 한 줄 — **프로젝트 이름이 먼저, 주제는 짧게.**
+ *
+ * 🔴 2026-10-01 캡틴D 「가독성이 너무 떨어진다」: 예전엔 주제 문장 전체를 그대로 적어서 ① 같은 주제로 만든 릴
+ * 다섯 개가 **글자 하나 다르지 않은 줄 다섯 개**로 나왔고(「끝없는 미지의 공간에서 거대한 황금 저울이…」×5)
+ * ② 긴 주제 한 줄 때문에 열린 목록이 화면 오른쪽 밖까지 뻗었습니다. 둘을 가르는 것은 폴더 이름(`projectId`)과
+ * 날짜이고, 주제는 알아보는 데 앞 몇 글자면 충분합니다.
+ */
+export function candidateLabel(candidate: { projectId: string; topic: string; updatedAt: string }): string {
+  const topic = candidate.topic.trim().replace(/\s+/g, " ");
+  const short = topic.length > TOPIC_PREVIEW_CHARS ? `${topic.slice(0, TOPIC_PREVIEW_CHARS).trimEnd()}…` : topic;
+  const parsed = new Date(candidate.updatedAt);
+  const day = Number.isNaN(parsed.getTime()) ? "" : ` · ${parsed.getMonth() + 1}/${parsed.getDate()}`;
+  return short && short !== candidate.projectId ? `${candidate.projectId}${day} — ${short}` : `${candidate.projectId}${day}`;
+}
+const TOPIC_PREVIEW_CHARS = 24;
+
 function durationLabel(seconds: number): string {
   const whole = Math.round(seconds);
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
@@ -813,11 +830,22 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
             onChange={(event) => setSelection(event.target.value)}
           >
             <option value="">고르지 않음</option>
-            {list.projects.map((candidate) => (
-              <option key={candidate.projectId} value={candidate.projectId}>
-                {candidate.topic || candidate.projectId}
-              </option>
-            ))}
+            {/* 최근 것이 위 — 막 합친 영상을 올리러 오는 화면이라서. 명언 카드는 따로 묶습니다(종류가 섞이면 이름만으로
+                무엇인지 알기 어렵습니다). */}
+            {([["단기 프로젝트", false], ["명언 카드", true]] as const).map(([groupLabel, cards]) => {
+              const rows = list.projects
+                .filter((candidate) => Boolean(candidate.photoCard) === cards)
+                .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+              return rows.length ? (
+                <optgroup key={groupLabel} label={groupLabel}>
+                  {rows.map((candidate) => (
+                    <option key={candidate.projectId} value={candidate.projectId} title={candidate.topic}>
+                      {candidateLabel(candidate)}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null;
+            })}
             {/* Episodes only appear once they have a merged final video, because that is exactly what the
                 publish route requires — a row that could be chosen and then refused is the shape this whole
                 separation exists to prevent. */}

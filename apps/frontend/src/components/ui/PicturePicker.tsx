@@ -36,7 +36,7 @@ interface PicturePickerProps {
    *
    * 🔴 캡틴D, 2026-09-22: *「난 이 기사가 어떤 내용의 기사인 줄도 몰라서 스포츠를 넣어야 할지 주식인지
    * 국회인지 몰라」* — 125장이 한 줄로 쏟아지면 주제를 정해도 그 주제의 그림을 찾는 게 다시 일입니다.
-   * 🟠 **없으면 안 그립니다.** 명언 카드는 폴더를 안 넘기니 그 화면은 한 글자도 안 바뀝니다.
+   * 🟠 **없으면 안 그립니다.** (명언 카드도 2026-10-01 부터 넘깁니다 — 캡틴D 「사진만 있으니까 고르기가 너무 힘들어」.)
    * 🟠 **넘기는 쪽이 골라서 넘깁니다** — 이 칸은 받은 것을 다 그립니다.
    */
   folders?: { assetId: string; displayName: string }[];
@@ -73,9 +73,55 @@ export function PicturePicker({
      「분명히 3장 골랐는데 격자에 하나밖에 없다」가 되므로, 몇 장이 숨었는지 아래에서 말합니다. */
   /* 🟠 **거르고 있을 때만 셉니다.** 안 거를 때 이 수는 「아직 목록을 못 읽었다」를 뜻하게 되고, 그건 주제
      때문에 숨은 것이 아닙니다 — 명언 카드처럼 폴더를 안 넘기는 화면에 엉뚱한 경고가 뜹니다. */
+  /* 「전체」일 때는 폴더별로 **제목을 달아 묶어서** 보여 줍니다(캡틴D 2026-10-01 「파일별로 분류해서 가독성 높여줘」).
+     한 줄로 쏟아 놓으면 고르개로 주제를 정하기 전까지는 어느 그림이 어느 폴더인지 알 길이 없습니다. */
+  const groups: { key: string; title: string; items: Asset[] }[] | null = showFolders && folderFilter === null
+    ? [
+      ...folderButtons.map((folder) => ({ key: folder.assetId, title: folder.displayName, items: (assets ?? []).filter((asset) => asset.parentFolderId === folder.assetId) })),
+      ...(looseCount > 0 ? [{ key: "", title: "폴더 없음", items: (assets ?? []).filter((asset) => asset.parentFolderId === "") }] : []),
+    ]
+    : null;
   const hiddenPicked = showFolders && folderFilter !== null
     ? assetIds.filter((id) => !(shown ?? []).some((asset) => asset.assetId === id)).length
     : 0;
+
+  function renderItem(asset: Asset) {
+    const order = assetIds.indexOf(asset.assetId);
+    const picked = order >= 0;
+    // 🔴 이미 고른 것은 상한과 무관하게 계속 누를 수 있습니다 — 그 누름은 「빼기」입니다.
+    const closed = disabled || (!picked && atLimit);
+    return (
+      <li key={asset.assetId}>
+        <button
+          type="button"
+          data-testid={`${testIdPrefix}-asset-${asset.assetId}`}
+          data-pick-order={picked ? order + 1 : undefined}
+          aria-pressed={picked}
+          disabled={closed}
+          className={`relative w-full space-y-1 rounded-xl border p-1.5 text-left disabled:opacity-40 ${picked ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 hover:bg-white/5"}`}
+          onClick={() => onToggle(asset.assetId)}
+        >
+          {asset.contentUrl && (
+            <img src={asset.contentUrl} alt={asset.displayName} loading="lazy" className="aspect-[3/4] w-full rounded-xl border border-white/10 object-cover" />
+          )}
+          {/*
+            * 🔴 번호는 「골랐다」가 아니라 **「몇 번째로 나온다」**를 말합니다. 체크 표시로 그리면
+            * 순서를 정한 줄도 모른 채 고르게 되고, 순서는 **되돌릴 수 없는 결과**(영상)에 그대로
+            * 실립니다. 색만으로 상태를 말하지 않는다는 §6 도 이 번호가 같이 지킵니다.
+            */}
+          {picked && (
+            <span
+              data-testid={`${testIdPrefix}-order-${asset.assetId}`}
+              className="type-mono absolute left-3 top-3 flex h-5 min-w-5 items-center justify-center rounded bg-ground/85 px-1 text-[11px] font-semibold text-bone"
+            >
+              {order + 1}
+            </span>
+          )}
+          <span className="block truncate text-xs text-slate-300">{asset.displayName}</span>
+        </button>
+      </li>
+    );
+  }
 
   return (
     <section aria-label="그림 고르기" className={cardSection}>
@@ -119,44 +165,16 @@ export function PicturePicker({
         </label>
       )}
       {assets && assets.length > 0 && (
-        <ul aria-label="그림 목록" className="grid max-h-[420px] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
-          {(shown ?? []).map((asset) => {
-            const order = assetIds.indexOf(asset.assetId);
-            const picked = order >= 0;
-            // 🔴 이미 고른 것은 상한과 무관하게 계속 누를 수 있습니다 — 그 누름은 「빼기」입니다.
-            const closed = disabled || (!picked && atLimit);
-            return (
-              <li key={asset.assetId}>
-                <button
-                  type="button"
-                  data-testid={`${testIdPrefix}-asset-${asset.assetId}`}
-                  data-pick-order={picked ? order + 1 : undefined}
-                  aria-pressed={picked}
-                  disabled={closed}
-                  className={`relative w-full space-y-1 rounded-xl border p-1.5 text-left disabled:opacity-40 ${picked ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 hover:bg-white/5"}`}
-                  onClick={() => onToggle(asset.assetId)}
-                >
-                  {asset.contentUrl && (
-                    <img src={asset.contentUrl} alt={asset.displayName} className="w-full rounded-xl border border-white/10 object-cover" />
-                  )}
-                  {/*
-                    * 🔴 번호는 「골랐다」가 아니라 **「몇 번째로 나온다」**를 말합니다. 체크 표시로 그리면
-                    * 순서를 정한 줄도 모른 채 고르게 되고, 순서는 **되돌릴 수 없는 결과**(영상)에 그대로
-                    * 실립니다. 색만으로 상태를 말하지 않는다는 §6 도 이 번호가 같이 지킵니다.
-                    */}
-                  {picked && (
-                    <span
-                      data-testid={`${testIdPrefix}-order-${asset.assetId}`}
-                      className="type-mono absolute left-3 top-3 flex h-5 min-w-5 items-center justify-center rounded bg-ground/85 px-1 text-[11px] font-semibold text-bone"
-                    >
-                      {order + 1}
-                    </span>
-                  )}
-                  <span className="block truncate text-xs text-slate-300">{asset.displayName}</span>
-                </button>
-              </li>
-            );
-          })}
+        <ul aria-label="그림 목록" className="grid max-h-[520px] grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-5">
+          {groups
+            ? groups.flatMap((group) => [
+              <li key={`group-${group.key}`} className="col-span-full flex items-baseline gap-2 pt-2 first:pt-0" data-testid={`${testIdPrefix}-group-${group.key || "loose"}`}>
+                <span className="text-sm font-semibold text-slate-100">{group.title}</span>
+                <span className="text-xs tabular-nums text-slate-400">{group.items.length}장</span>
+              </li>,
+              ...group.items.map(renderItem),
+            ])
+            : (shown ?? []).map(renderItem)}
         </ul>
       )}
 

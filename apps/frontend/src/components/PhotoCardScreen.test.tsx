@@ -49,6 +49,30 @@ describe("PhotoCardScreen", () => {
    * **장수 × 한 장당 길이**가 완성 길이인데, 화면이 그 말을 안 하면 세 장을 고른 사람은 10초짜리를 기대하고
    * 30초를 받습니다 — 그리고 그건 **다 구워진 뒤에야** 압니다.
    */
+  /**
+   * 캡틴D 2026-10-01 「사진만 있으니까 그림 고르기가 너무 힘들어 — 파일별로 분류해 줘」. 보관함 폴더별로 제목을 달아
+   * 묶고, 위의 주제 고르개로 한 폴더만 볼 수도 있습니다. 폴더 줄 자체는 그림이 아니라 격자에 안 나옵니다.
+   */
+  it("groups the pictures under their library folders, with a folder filter", async () => {
+    const economy = makeAssetFolder({ assetId: "F-ECO", displayName: "경제" });
+    const nature = makeAssetFolder({ assetId: "F-NAT", displayName: "자연" });
+    const a = makeAsset({ assetId: "A1", displayName: "경제1", imageAvailable: true, contentUrl: "/assets/A1/content", parentFolderId: "F-ECO" });
+    const b = makeAsset({ assetId: "A2", displayName: "견인불발", imageAvailable: true, contentUrl: "/assets/A2/content", parentFolderId: "F-NAT" });
+    const loose = makeAsset({ assetId: "A3", displayName: "ㄱ", imageAvailable: true, contentUrl: "/assets/A3/content", parentFolderId: "" });
+    stub(jsonResponse(200, { assets: [economy, nature, a, b, loose] }));
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
+
+    expect((await screen.findByTestId("photo-card-group-F-ECO")).textContent).toContain("경제");
+    expect(screen.getByTestId("photo-card-group-F-NAT").textContent).toContain("1장");
+    expect(screen.getByTestId("photo-card-group-loose").textContent).toContain("폴더 없음");
+    expect(screen.queryByTestId("photo-card-asset-F-ECO"), "폴더는 고를 그림이 아닙니다").toBeNull();
+
+    fireEvent.change(screen.getByTestId("photo-card-folder"), { target: { value: "F-NAT" } });
+    expect(screen.getByTestId("photo-card-asset-A2")).toBeTruthy();
+    expect(screen.queryByTestId("photo-card-asset-A1")).toBeNull();
+    expect(screen.queryByTestId("photo-card-group-F-NAT"), "한 폴더만 볼 때는 제목 줄이 필요 없습니다").toBeNull();
+  });
+
   describe("사진 여러 장", () => {
     const many = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((n) =>
       makeAsset({ assetId: `P${n}`, displayName: `그림${n}`, imageAvailable: true, contentUrl: `/assets/P${n}/content` }));

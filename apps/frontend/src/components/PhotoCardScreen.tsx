@@ -48,6 +48,7 @@ const field =
  */
 export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
   const [assets, setAssets] = useState<Asset[] | null>(null);
+  const [folders, setFolders] = useState<{ assetId: string; displayName: string }[]>([]);
   const [listError, setListError] = useState<DisplayError | null>(null);
   /**
    * 고른 그림들 — **순서가 곧 장면 순서**입니다.
@@ -91,7 +92,12 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
   useEffect(() => {
     let cancelled = false;
     listAssets()
-      .then((response) => { if (!cancelled) setAssets(response.assets.filter((asset) => !asset.isFolder && asset.imageAvailable)); })
+      .then((response) => {
+        if (cancelled) return;
+        setAssets(response.assets.filter((asset) => !asset.isFolder && asset.imageAvailable));
+        // 그림 고르개가 폴더별로 묶어 보여 주도록(캡틴D 2026-10-01). 고르개가 그림 든 폴더만 남깁니다.
+        setFolders(response.assets.filter((asset) => asset.isFolder).map((asset) => ({ assetId: asset.assetId, displayName: asset.displayName })));
+      })
       .catch((caught: unknown) => { if (!cancelled) setListError(toAssetDisplayError(caught)); });
     return () => { cancelled = true; };
   }, []);
@@ -183,6 +189,7 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
           max={PHOTO_CARD_MAX_PICTURES}
           seconds={seconds}
           disabled={pending}
+          folders={folders}
         />
 
         <section aria-label="문장과 길이" className={cardSection}>

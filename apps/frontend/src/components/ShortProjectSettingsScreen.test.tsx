@@ -218,7 +218,8 @@ describe("ShortProjectSettingsScreen", () => {
     const first = render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
     const note = await screen.findByTestId("settings-continuity-model-note");
     expect(note.textContent).toContain(cannot.label);
-    expect(note.textContent).toContain("클립 사이는 이어지지 않습니다");
+    expect(note.textContent).toContain("끝 프레임을 지원하지 않습니다");
+    expect(note.textContent).toContain("영상 끝이 다음 장면 그림에 맞춰지지는 않습니다");
     first.unmount();
 
     const can = VIDEO_MODEL_OPTIONS.find((option) => option.acceptsLastFrame)!;
@@ -856,7 +857,13 @@ describe("ShortProjectSettingsScreen", () => {
     render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
 
     await screen.findByDisplayValue("별의 지도");
-    expect(screen.getByText(/장면마다 장소가 바뀌는 이야기라면 꺼 두세요/)).toBeTruthy();
+    const help = screen.getByTestId("settings-scene-image-continuity-help").textContent ?? "";
+    expect(help).toContain("장면마다 장소나 대상이 바뀌면 끄세요");
+    // 켜면 일어나는 일 **둘** 다 말합니다 — 그림, 그리고 (지원 모델에서) 영상 끝(CLI Round 1144).
+    expect(help).toContain("앞 장면 그림을 참고해 다음 장면 그림을 만듭니다");
+    expect(help).toContain("끝 프레임을 지원하면");
+    // 🔴 앞 영상의 실제 마지막 프레임을 보내는 기능이 아닙니다 — 그렇게 읽히는 말을 쓰지 않습니다.
+    expect(help).not.toContain("마지막 프레임");
   });
 
   it("reopens an existing project with narration already on", async () => {

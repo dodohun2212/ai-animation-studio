@@ -1340,7 +1340,13 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                 turn it on, and a story that changes place between scenes is held back by the previous
                 picture — the same reason the server defaults it to off (Cowork Round 625 ⑤, whose wording
                 this is). */}
-            <p className="text-xs leading-relaxed text-slate-400">앞 장면 그림을 참고해서 다음 장면을 그립니다. 같은 사물이 계속 나오는 영상에 켜세요. 장면마다 장소가 바뀌는 이야기라면 꺼 두세요.</p>
+            {/* 2026-10-02 캡틴D 「설명이 헷갈린다」(CLI Round 1144). 켜면 일어나는 일이 **둘**인데 예전 문장은 그림 쪽만
+                말했고, 영상 쪽(끝 프레임)은 못 받는 모델의 경고에만 있었습니다. 두 번째 효과의 조건은
+                `video-preview.service.ts` 의 `sceneImageContinuityEnabled && acceptsLastFrame` 그대로입니다.
+                🔴 「앞 영상의 실제 마지막 프레임을 다음 영상에 보낸다」가 **아닙니다** — 보내는 것은 다음 장면 *그림*입니다. */}
+            <p data-testid="settings-scene-image-continuity-help" className="text-xs leading-relaxed text-slate-400">
+              앞 장면 그림을 참고해 다음 장면 그림을 만듭니다. 선택한 영상 모델이 끝 프레임을 지원하면, 지금 장면 영상이 다음 장면 그림으로 끝나도록 요청합니다. 장면마다 장소나 대상이 바뀌면 끄세요.
+            </p>
             <label className="flex items-start gap-2.5 text-sm text-slate-300">
               <input
                 type="checkbox"
@@ -1358,7 +1364,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                     하면, 「이어 그리기를 켰는데 컷이 뒤로 돌아간다」가 됩니다(2026-09-11 에 실제로 그랬습니다). */}
                 {videoModel && !videoModel.acceptsLastFrame && (
                   <span data-testid="settings-continuity-model-note" className="mt-1 block text-xs text-amber-300/90">
-                    지금 고른 영상 모델({videoModel.label})은 끝 그림을 받지 못합니다 — 켜도 그림만 이어지고, 클립 사이는 이어지지 않습니다.
+                    지금 고른 영상 모델({videoModel.label})은 끝 프레임을 지원하지 않습니다 — 켜도 그림만 이어지고, 영상 끝이 다음 장면 그림에 맞춰지지는 않습니다.
                   </span>
                 )}
               </span>

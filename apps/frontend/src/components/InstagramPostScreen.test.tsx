@@ -259,6 +259,34 @@ describe("InstagramPostScreen", () => {
     expect(select.textContent).not.toContain("미완성");
   });
 
+  /**
+   * 🔴 캡틴D 2026-10-01: 같은 주제로 만든 릴 다섯 개가 똑같은 긴 문장 다섯 줄로 나와 구별이 안 됐고, 긴 줄이
+   * 목록을 화면 밖까지 늘렸습니다. 이름(폴더)이 앞에 와서 갈리고, 주제는 짧게 잘립니다. 전체 문장은 `title` 에.
+   */
+  it("labels each video by its project name first and keeps the topic short", async () => {
+    const longTopic = "끝없는 미지의 공간에서 거대한 황금 저울이 움직이고, 그 순간 시간이 거꾸로 흐르기 시작한다.";
+    renderScreen({
+      projects: [
+        libraryProject({ projectId: "미지의공간", topic: longTopic, updatedAt: "2026-09-20T00:00:00.000Z" }),
+        libraryProject({ projectId: "미지의공간2", topic: longTopic, updatedAt: "2026-09-27T00:00:00.000Z" }),
+        libraryProject({ projectId: "명언_불광불급", topic: "불광불급", photoCard: true }),
+      ],
+    });
+
+    const select = await screen.findByTestId("post-project");
+    const labels = Array.from(select.querySelectorAll("option")).map((option) => option.textContent ?? "");
+    const reels = labels.filter((label) => label.includes("미지의공간"));
+    expect(reels, "최근 것이 위").toEqual([expect.stringMatching(/^미지의공간2 · 9\/27 — /), expect.stringMatching(/^미지의공간 · 9\/20 — /)]);
+    expect(new Set(reels).size, "같은 주제라도 줄이 서로 달라야 합니다").toBe(2);
+    for (const label of reels) {
+      expect(label.endsWith("…")).toBe(true);
+      expect(label).not.toContain("거꾸로");
+    }
+    expect(select.querySelector('option[value="미지의공간2"]')?.getAttribute("title")).toBe(longTopic);
+    const groups = Array.from(select.querySelectorAll("optgroup")).map((group) => group.getAttribute("label"));
+    expect(groups).toEqual(["단기 프로젝트", "명언 카드"]);
+  });
+
   it("says so when nothing has been merged yet", async () => {
     renderScreen({ projects: [] });
     expect(await screen.findByTestId("post-empty")).toBeTruthy();
