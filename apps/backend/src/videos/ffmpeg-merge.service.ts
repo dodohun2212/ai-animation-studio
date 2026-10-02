@@ -1,4 +1,4 @@
-import { ASPECT_RATIOS, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, isAspectRatio, MERGE_FRAME_FOR_ASPECT, RUNWAY_RATIO_FOR_ASPECT, type FrameFit, type NewsReelCard, type VideoClipFacts } from "@ai-animation-studio/shared";
+import { ASPECT_RATIOS, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, isAspectRatio, MERGE_FRAME_FOR_ASPECT, RUNWAY_RATIO_FOR_ASPECT, type FrameFit, type NewsReelCard, type StillMotion, type VideoClipFacts } from "@ai-animation-studio/shared";
 import { newsReelCardAss } from "./news-reel-card-ass.js";
 import { CARD_BAND_SAMPLE, cardSubtitleColors, type CardSubtitleColors } from "./card-palette.js";
 import * as crypto from "node:crypto";
@@ -65,8 +65,9 @@ export const runMediaCommand: MediaCommandRunner = async (arguments_) => new Pro
   if (!binary) { reject(new MediaToolError("unavailable", "Media tool is missing.")); return; }
   const child = spawn(binary, args, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = ""; let stderr = "";
+  const maxStderrChars = 1_048_576; // A damaged input can repeat a decoder warning for every frame.
   child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-  child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+  child.stderr?.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-maxStderrChars); });
   child.on("error", (error: NodeJS.ErrnoException) => reject(new MediaToolError(error.code === "ENOENT" ? "unavailable" : "failed", "Media tool could not start.")));
   child.on("close", (code: number | null) => code === 0 ? resolve({ stdout, stderr }) : reject(new MediaToolError("failed", "Media command failed.")));
 });
@@ -113,6 +114,8 @@ export interface MergeSceneInput {
    * skips the probe for these scenes rather than the probe being loosened for everything.
    */
   stillDurationSeconds?: number;
+  /** Held-picture reels only; omission preserves the original centre zoom. */
+  stillMotion?: StillMotion;
   /** Photo cards only, alongside stillDurationSeconds: where this card's text goes. Absent means the defaults. */
   subtitleLayout?: PhotoCardSubtitleLayout;
   /**
@@ -140,6 +143,8 @@ export interface MergeSceneInput {
    * scenes, and what kind of card this is belongs to whoever assembled them.
    */
   newsReelCard?: NewsReelCard;
+  /** The original picture index when rendering one scene alone for a preview. */
+  newsReelPictureIndex?: number;
   /**
    * Ordinary scenes only: where this scene's subtitle goes. Absent means the defaults.
    *
@@ -228,11 +233,18 @@ const CLIP_AUDIO_EDGE_FADE_SECONDS = 0.15;
  */
 const CLIP_AUDIO_CROSSFADE_SECONDS = 0.5;
 
-function kenBurns(width: number, height: number, seconds: number): string {
+export function kenBurns(width: number, height: number, seconds: number, motion: StillMotion = "zoom_in"): string {
   const frames = Math.max(1, Math.round(seconds * 30));
   const scaled = (value: number) => Math.round(value * 1.2 / 2) * 2; // even dimensions: yuv420p needs them
+  const progress = `on/${frames}`;
+  const zoom = motion === "zoom_out" ? `max(1.15-0.15*${progress},1)`
+    : motion === "pan_left" || motion === "pan_right" ? "1.15"
+      : motion === "still" ? "1" : `min(1+0.15*${progress},1.15)`;
+  const x = motion === "pan_right" ? `(iw-iw/zoom)*${progress}`
+    : motion === "pan_left" ? `(iw-iw/zoom)*(1-${progress})`
+      : "iw/2-(iw/zoom/2)";
   return `scale=${scaled(width)}:${scaled(height)}:force_original_aspect_ratio=increase,`
-    + `zoompan=z='min(1+0.15*on/${frames},1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=30`;
+    + `zoompan=z='${zoom}':d=1:x='${x}':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=30`;
 }
 
 /**
@@ -331,7 +343,7 @@ export class FfmpegMergeEngine {
           /* 🔴 The card brings its whole overlay, bands included, so none of the photo card's questions are
              asked for it. Sampling colours off the picture in particular would be a free but pointless ffmpeg
              pass whose answer nothing reads: this card's colours are its own design, not the picture's. */
-          await fs.writeFile(assPath, newsReelCardAss(scene.newsReelCard, index, clipDurationSeconds, width, height), "utf8");
+          await fs.writeFile(assPath, newsReelCardAss(scene.newsReelCard, scene.newsReelPictureIndex ?? index, clipDurationSeconds, width, height), "utf8");
         } else {
           // A still is a photo card (see the input shape below), and a card's text is the whole point of the
           // frame rather than a caption under the action — it gets its own layout. Nothing new has to be
@@ -353,7 +365,7 @@ export class FfmpegMergeEngine {
       // `-framerate 30` before the input, so the loop produces exactly the frames the output keeps. Without it the
       // image demuxer loops at its own 25, and every later step is counting in a rate nothing else uses.
       const input = stillSeconds === undefined ? ["-i", scene.clip] : ["-loop", "1", "-framerate", "30", "-t", String(stillSeconds), "-i", scene.clip];
-      const sceneFilter = stillSeconds === undefined ? filter : `${kenBurns(width, height, stillSeconds)},${filter}`;
+      const sceneFilter = stillSeconds === undefined ? filter : `${kenBurns(width, height, stillSeconds, scene.stillMotion)},${filter}`;
       const sounding = (candidate: MergeSceneInput | undefined): number | undefined =>
         candidate && candidate.stillDurationSeconds === undefined && candidate.clipAudioVolume !== undefined && candidate.clipAudioVolume > 0
           ? candidate.clipAudioVolume : undefined;

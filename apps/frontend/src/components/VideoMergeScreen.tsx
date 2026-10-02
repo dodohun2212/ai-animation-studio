@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AspectRatio, AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, NewsReelCard, PhotoCardSubtitleLayout, SceneSubtitleLayout, VideoClipFacts, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
+import type { AspectRatio, AudioLibraryTrack, FrameFit, MergeAudioSettings, MergeVideosResponse, NewsReelCard, PhotoCardSubtitleLayout, SceneSubtitleLayout, StillMotion, VideoClipFacts, VideoModel, VideoModelOption } from "@ai-animation-studio/shared";
 import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, FINAL_VIDEO_RELATIVE_PATH, FRAME_FITS, isAspectRatio, MERGE_FRAME_FOR_ASPECT, VIDEO_MODEL_OPTIONS, WorkflowState } from "@ai-animation-studio/shared";
 import { FRAME_FIT_NOTES, frameFitOutcome } from "../utils/videoModelFacts.js";
 
@@ -11,6 +11,7 @@ import { finalVideoContentUrl, mergeVideos, toVideoMergeDisplayError } from "../
 import { getVideoReview, sceneImageContentUrl } from "../api/videoWorkflowApi.js";
 import { hasElectronBridge, openProjectPathInExplorer } from "../api/electronBridge.js";
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
+import { StillMotionFieldset } from "./StillMotionFieldset.js";
 import { SceneSubtitleFieldset, type SubtitledScene } from "./SceneSubtitleFieldset.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { FinalVideoGenerationSourceNotice } from "./GenerationSourceNotice.js";
@@ -163,6 +164,11 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    * 🔴 **깃발 하나 더가 아니라 카드 자체입니다** — 불리언 둘은 서로 어긋날 수 있고 사실 하나는 못 어긋납니다(D-052).
    */
   const [newsReelCard, setNewsReelCard] = useState<NewsReelCard | undefined>(undefined);
+  /* 멈춘 그림 릴의 사진별 움직임(CLI Round 1148). `savedStillMotions` 는 서버가 돌려준 「마지막으로 성공한 값」이고,
+     병합 요청에는 **바뀌었을 때만** 실립니다 — 생략하면 서버가 그 값을 그대로 쓰니 결과가 같고, 바꾸지 않은 카드의
+     요청은 예전과 바이트 그대로입니다(`frameFit` 과 같은 규칙). */
+  const [stillMotions, setStillMotions] = useState<StillMotion[]>([]);
+  const [savedStillMotions, setSavedStillMotions] = useState<StillMotion[]>([]);
   /**
    * The card's own subtitle size and height, and the line they lay out.
    *
@@ -307,6 +313,10 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         }
         setPhotoCard(response.project.photoCard === true);
         setNewsReelCard(response.project.newsReelCard);
+        if (response.project.stillMotions) {
+          setStillMotions(response.project.stillMotions);
+          setSavedStillMotions(response.project.stillMotions);
+        }
         if (response.project.subtitleLayout) {
           setLayout(response.project.subtitleLayout);
           setSavedLayout(response.project.subtitleLayout);
@@ -405,6 +415,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         sceneSubtitleAdjustable ? sceneLayout : undefined,
         pictureCard || frameFit === "pad" ? undefined : frameFit,
         rotatable && rotateClockwise ? true : undefined,
+        stillMotionsChanged ? stillMotions : undefined,
       );
       setResult(response);
       /* 🔴 방금 구운 값이 이제 「지금 영상의 값」입니다. 안 옮기면 「지금 영상의 값으로」 버튼이 **한 판 전**
@@ -413,6 +424,11 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       /* 카드와 같은 이유입니다 — 방금 구운 값이 이제 「지금 영상의 값」이고, 안 옮기면 그 버튼이 **한 판 전**
          값으로 되돌려 놓습니다. */
       if (sceneSubtitleAdjustable) setSavedSceneLayout(sceneLayout);
+      if (pictureCard) {
+        const used = response.project.stillMotions ?? stillMotions;
+        setStillMotions(used);
+        setSavedStillMotions(used);
+      }
       // Back to showing the finished video: the request the button existed for has been made.
       setRemaking(false);
       setRemakeFitUnknown(false);
@@ -445,6 +461,8 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    * 뉴스 릴은 슬라이더가 없고 자기 색이 설계라, 여기에 섞으면 **없는 조절기를 뉴스 릴이 받는 것처럼** 보입니다.
    */
   const pictureCard = photoCard || newsReelCard !== undefined;
+  const stillMotionsChanged = pictureCard && stillMotions.length > 0
+    && (stillMotions.length !== savedStillMotions.length || stillMotions.some((motion, index) => motion !== savedStillMotions[index]));
   const sceneSubtitleAdjustable = !pictureCard && subtitledScenes.length > 0 && mediaMode?.subtitlesEnabled === true;
   /* 서버는 16:9 가 아닌 프로젝트에서 `rotateClockwise: true` 를 받으면 렌더 전에 거절합니다(계약 주석) — 그래서
      그 모양일 때만 선택지를 보여줍니다. 포토카드는 `frameFit`과 같은 이유로 뺍니다: 틀에 맞춰 그려지는 쪽이라
@@ -476,7 +494,9 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
    */
   const audioUnready = audioSettings === null;
   /* 다시 만들기에서 모르는 값을 아직 안 골랐으면 못 누릅니다(CLI Round 1138). 첫 병합과 값을 아는 재병합은 해당 없음. */
-  const remakeChoiceMissing = remaking && !photoCard && (!fitChosen || !rotateChosen);
+  /* 🟠 뉴스 릴(멈춘 그림)에는 화면 맞춤 칸이 없습니다(`!pictureCard` 일 때만 그림) — 그 칸을 「골라야 열림」 조건에
+     넣으면 뉴스 릴의 다시 만들기가 영영 안 열립니다. 맞춤은 영상 릴에서만 따집니다(2026-10-02 실화면 점검 중 발견). */
+  const remakeChoiceMissing = remaking && !photoCard && ((!pictureCard && !fitChosen) || !rotateChosen);
   /* 🔴 잰 값이 먼저입니다. 모델 표는 「이 모델이면 이렇게 될 것이다」이고 `clip` 은 「이 파일이 이렇다」라,
      둘이 갈리면 이기는 쪽이 정해져 있습니다 — 그리고 잰 값에는 「확인 안 됨」이 없어서 단정해도 됩니다. */
   const clipFrameNote = measuredFrameNote(clipFacts, aspectRatio, clipSceneCount) ?? frameNoteFor(clipModels, aspectRatio);
@@ -525,6 +545,16 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           layout={layout}
           savedLayout={savedLayout}
           onChange={setLayout}
+          disabled={pending || confirmOpen}
+        />
+      )}
+
+      {(!result || remaking) && pictureCard && stillMotions.length > 0 && (
+        <StillMotionFieldset
+          projectId={projectId}
+          motions={stillMotions}
+          onChange={(index, motion) => setStillMotions((current) => current.map((one, at) => (at === index ? motion : one)))}
+          subtitleLayout={photoCard ? layout : undefined}
           disabled={pending || confirmOpen}
         />
       )}

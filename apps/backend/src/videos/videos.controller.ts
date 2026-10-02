@@ -138,6 +138,12 @@ export class VideosController {
   @Post(`${API_ROUTES.projects}/:projectId/videos/merge`)
   merge(@Param("projectId") projectId: string, @Body() body: unknown): Promise<MergeVideosResponse> { return this.mergeService.merge(projectId, body); }
 
+  @Post(`${API_ROUTES.projects}/:projectId/videos/still-motion-preview`)
+  async stillMotionPreview(@Param("projectId") projectId: string, @Body() body: unknown): Promise<StreamableFile> {
+    const bytes = await this.mergeService.previewStillMotion(projectId, body);
+    return new StreamableFile(bytes, { type: "video/mp4", disposition: "inline" });
+  }
+
   @Get(`${API_ROUTES.projects}/:projectId/photo-card/subtitle-colors`)
   subtitleColors(@Param("projectId") projectId: string, @Query("center") center?: string): Promise<GetPhotoCardSubtitleColorsResponse> { return this.mergeService.subtitleColors(projectId, center); }
 

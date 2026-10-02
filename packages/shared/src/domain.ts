@@ -163,6 +163,11 @@ export const FRAME_FITS = ["pad", "fill"] as const;
 export type FrameFit = (typeof FRAME_FITS)[number];
 export const isFrameFit = (value: unknown): value is FrameFit => FRAME_FITS.includes(value as FrameFit);
 
+/** Local motion for one held picture in a photo card or news reel. The old render is zoom_in. */
+export const STILL_MOTIONS = ["zoom_in", "zoom_out", "pan_left", "pan_right", "still"] as const;
+export type StillMotion = (typeof STILL_MOTIONS)[number];
+export const isStillMotion = (value: unknown): value is StillMotion => STILL_MOTIONS.includes(value as StillMotion);
+
 /**
  * What a merge does about background music when the request does not say.
  *
@@ -733,6 +738,8 @@ export interface ProjectSummary {
    * none), and do not offer the scene subtitle (the card draws its own text). See docs/06_DECISIONS.md D-052.
    */
   newsReelCard?: NewsReelCard;
+  /** One motion per picture, in scene order. Present only for held-picture reels; older reels read as zoom_in. */
+  stillMotions?: StillMotion[];
   /**
    * Where this card's text sits and how big it is — the values its last merge used, or the defaults for a card
    * that has never been merged with a choice.

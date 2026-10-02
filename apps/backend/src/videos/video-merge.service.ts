@@ -9,10 +9,10 @@ import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, MERGE_FRAME_FOR_ASPECT, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type GetPhotoCardSubtitleColorsResponse, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, isStillMotion, MERGE_FRAME_FOR_ASPECT, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type GetPhotoCardSubtitleColorsResponse, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber, type SceneSubtitleLayout, type StillMotion } from "@ai-animation-studio/shared";
 
 import { cardImagePath } from "../projects/card-image-path.js";
-import { newsReelCardFor, photoCardFor, pictureCardFor, storedSceneSubtitleLayout, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
+import { newsReelCardFor, photoCardFor, pictureCardFor, storedSceneSubtitleLayout, storedStillMotions, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
 import { cssColour } from "./card-palette.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
 import { toShortProjectSettings } from "../projects/project-settings.js";
@@ -184,7 +184,7 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
   const defaultMode: AudioMode = narrationAvailable && toShortProjectSettings(project).narrationEnabled ? "narration" : "silent";
   const fallback: ResolvedAudioSettings = { mode: defaultMode, volume: DEFAULT_BGM_VOLUME, fadeSeconds: DEFAULT_BGM_FADE_SECONDS, startSeconds: 0, clipVolume: 0 };
   if (request === undefined) return fallback;
-  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout" && key !== "sceneSubtitleLayout" && key !== "frameFit" && key !== "rotateClockwise")) throw videoMergeInvalidRequest();
+  if (!isObject(request) || Object.keys(request).some((key) => key !== "audio" && key !== "subtitleLayout" && key !== "sceneSubtitleLayout" && key !== "frameFit" && key !== "rotateClockwise" && key !== "stillMotions")) throw videoMergeInvalidRequest();
   if (request.audio === undefined) return fallback;
   const audio = request.audio;
   if (!isObject(audio) || Object.keys(audio).some((key) => !["mode", "trackId", "volume", "fadeSeconds", "startSeconds", "clipVolume"].includes(key))) throw videoMergeInvalidRequest();
@@ -223,6 +223,18 @@ function resolveAudioSettings(project: StoredProject, request: unknown): Resolve
 function cardSceneNumbers(project: StoredProject): SceneNumber[] {
   const count = Math.max(1, project.scenes.length);
   return Array.from({ length: count }, (_, index) => (index + 1) as SceneNumber);
+}
+
+/** A full ordered list, validated before rendering; omission keeps the last render's choices. */
+function resolveStillMotions(project: StoredProject, request: unknown): StillMotion[] {
+  const stored = storedStillMotions(project);
+  if (!isObject(request) || request.stillMotions === undefined) return stored;
+  if (!pictureCardFor(project)) throw videoMergeInvalidRequest("stillMotions applies to photo cards and news reels only.");
+  const asked = request.stillMotions;
+  if (!Array.isArray(asked) || asked.length !== stored.length || !asked.every(isStillMotion)) {
+    throw videoMergeInvalidRequest(`stillMotions must contain one known motion for each of the ${stored.length} pictures.`);
+  }
+  return [...asked] as StillMotion[];
 }
 
 @Injectable()
@@ -283,7 +295,7 @@ export class LocalVideoMergeService {
    * ShortProjectSettings.subtitlesEnabled's doc comment): a scene gets a subtitle whenever subtitlesEnabled is on
    * AND that scene has narration text, regardless of whether narration audio exists for it.
    */
-  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number, subtitleLayout?: PhotoCardSubtitleLayout, sceneSubtitleLayout?: SceneSubtitleLayout, clipVolume?: number, clipAudioFacts?: readonly boolean[]): Promise<MergeSceneInput[]> {
+  private async mergeScenes(project: StoredProject, clips: readonly string[], scenes: readonly SceneNumber[], includeNarration: boolean, stillDurationSeconds?: number, subtitleLayout?: PhotoCardSubtitleLayout, sceneSubtitleLayout?: SceneSubtitleLayout, clipVolume?: number, clipAudioFacts?: readonly boolean[], stillMotions?: readonly StillMotion[]): Promise<MergeSceneInput[]> {
     const settings = toShortProjectSettings(project);
     return Promise.all(scenes.map(async (scene, index) => {
       const file = project.generated_narrations[scene - 1];
@@ -313,7 +325,7 @@ export class LocalVideoMergeService {
          * text is the content — but the line-by-line reveal must not start over each time the picture
          * changes, or somebody reading loses their place three times in a row.
          */
-        ? { clip: clips[index]!, narrationAudioPath, subtitleText, stillDurationSeconds, revealSubtitle: index === 0, ...(subtitleLayout ? { subtitleLayout } : {}), ...(newsReelCard ? { newsReelCard } : {}) }
+        ? { clip: clips[index]!, narrationAudioPath, subtitleText, stillDurationSeconds, stillMotion: stillMotions?.[scene - 1], revealSubtitle: scene === 1, ...(subtitleLayout ? { subtitleLayout } : {}), ...(newsReelCard ? { newsReelCard, newsReelPictureIndex: scene - 1 } : {}) }
         : { clip: clips[index]!, narrationAudioPath, subtitleText, spokenDialogue, ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}), ...(clipAudioVolume !== undefined ? { clipAudioVolume } : {}) };
     }));
   }
@@ -330,6 +342,40 @@ export class LocalVideoMergeService {
       throw videoMergeContentUnavailable();
     }
     return { path: file };
+  }
+
+  /** A silent, disposable one-picture render; the same merge engine draws the final's motion and overlay. */
+  async previewStillMotion(projectId: string, body: unknown): Promise<Buffer> {
+    const project = await this.projects.findById(projectId.trim());
+    if (!pictureCardFor(project)) throw videoMergeInvalidRequest("Still motion preview applies to photo cards and news reels only.");
+    if (!isObject(body) || Object.keys(body).some((key) => !["sceneNumber", "motion", "subtitleLayout"].includes(key))) throw videoMergeInvalidRequest();
+    const number = body.sceneNumber;
+    if (typeof number !== "number" || !Number.isInteger(number) || !cardSceneNumbers(project).includes(number as SceneNumber)) throw videoMergeInvalidRequest("sceneNumber must name a picture in this card.");
+    if (!isStillMotion(body.motion)) throw videoMergeInvalidRequest("motion must be a known still motion.");
+    const scene = number as SceneNumber;
+    const motion = body.motion;
+    const layout = resolveSubtitleLayout(project, body);
+    const image = this.cardImage(project.project_id, scene);
+    if (!(await fs.stat(image).then((stat) => stat.size > 0).catch(() => false))) throw videoMergeClipsInvalid([scene]);
+    const duration = toShortProjectSettings(project).clipDurationSeconds;
+    const motions = storedStillMotions(project);
+    motions[scene - 1] = motion;
+    const [input] = await this.mergeScenes(project, [image], [scene], false, duration, layout, undefined, undefined, undefined, motions);
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "still-motion-preview-"));
+    try {
+      const output = path.join(root, "preview.mp4");
+      await this.engine.merge([input!], duration, output, shortProjectAspectRatio(project));
+      return await fs.readFile(output);
+    } catch (error) {
+      if (error instanceof MediaToolError && error.kind === "unavailable") throw ffmpegUnavailable();
+      throw videoMergeFailed(mergeFailedDetails(error instanceof MediaToolError ? error.where : undefined, [scene]));
+    } finally {
+      const resolvedRoot = await fs.realpath(root).catch(() => undefined);
+      const resolvedTemp = await fs.realpath(os.tmpdir()).catch(() => undefined);
+      if (resolvedRoot && resolvedTemp && resolvedRoot.toLowerCase().startsWith(`${resolvedTemp.toLowerCase()}${path.sep}`)) {
+        await fs.rm(resolvedRoot, { recursive: true, force: true });
+      }
+    }
   }
 
   /**
@@ -485,6 +531,7 @@ export class LocalVideoMergeService {
     const audio = resolveAudioSettings(project, request);
     const subtitleLayout = resolveSubtitleLayout(project, request);
     const sceneSubtitleLayout = resolveSceneSubtitleLayout(project, request);
+    const stillMotions = resolveStillMotions(project, request);
     const frameFit = resolveFrameFit(project, request);
     const rotateClockwise = resolveRotateClockwise(project, request);
     // Resolved before any state changes or rendering work starts — an unknown/unavailable track should fail
@@ -518,7 +565,7 @@ export class LocalVideoMergeService {
     const renderedScenes = material.stillDurationSeconds === undefined ? scenesFor(project) : cardSceneNumbers(project);
     const explicitClipVolume = isObject(request) && isObject(request.audio) && typeof request.audio.clipVolume === "number";
     const clipVolume = explicitClipVolume ? audio.clipVolume : undefined;
-    const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout, clipVolume, clipAudioFacts);
+    const mergeScenes = await this.mergeScenes(project, material.paths, renderedScenes, audio.mode !== "silent", material.stillDurationSeconds, subtitleLayout, sceneSubtitleLayout, clipVolume, clipAudioFacts, stillMotions);
     const clipDurationSeconds = toShortProjectSettings(project).clipDurationSeconds;
     const remake = project.workflow_state === WorkflowState.Completed && !pictureCardFor(project);
     const rendering = remake ? project : { ...project, workflow_state: WorkflowState.Rendering, updated_at: new Date().toISOString() };
@@ -534,7 +581,7 @@ export class LocalVideoMergeService {
         if (current.instagram_post) throw videoMergeAlreadyPublished();
         if (current.workflow_state !== WorkflowState.Completed) throw videoMergeNotAllowed();
       }
-      return this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes, frameFit, rotateClockwise);
+      return this.render(rendering, audio, subtitleLayout, sceneSubtitleLayout, bgmPath, bgmAttribution, mergeScenes, clipDurationSeconds, renderedScenes, frameFit, rotateClockwise, stillMotions);
     }, this.lockTimeoutMs === undefined ? undefined : { timeoutMs: this.lockTimeoutMs })
       .catch(async (error: unknown) => {
         if (!(error instanceof ProjectLockTimeoutError)) throw error;
@@ -558,6 +605,7 @@ export class LocalVideoMergeService {
     renderedScenes: readonly SceneNumber[],
     frameFit: FrameFit,
     rotateClockwise: boolean,
+    stillMotions: readonly StillMotion[],
   ): Promise<MergeVideosResponse> {
     const project = rendering;
     const remake = rendering.workflow_state === WorkflowState.Completed && !pictureCardFor(rendering);
@@ -595,7 +643,7 @@ export class LocalVideoMergeService {
       const baseLoreContext = photoCardFor(rendering)
         ? { ...rendering.lore_context, subtitle_scale: subtitleLayout.scale, subtitle_center: subtitleLayout.center }
         : { ...rendering.lore_context, scene_subtitle_scale: sceneSubtitleLayout.scale, scene_subtitle_center: sceneSubtitleLayout.center };
-      const loreContext = pictureCardFor(rendering) ? baseLoreContext : {
+      const loreContext = pictureCardFor(rendering) ? { ...baseLoreContext, still_motions: [...stillMotions] } : {
         ...baseLoreContext, final_video_frame_fit: frameFit, final_video_rotated_clockwise: rotateClockwise,
       };
       const completed = { ...rendering, lore_context: loreContext, workflow_state: WorkflowState.Completed, updated_at: new Date().toISOString(), final_video_path: FINAL_VIDEO_RELATIVE_PATH, used_audio: usedAudio };

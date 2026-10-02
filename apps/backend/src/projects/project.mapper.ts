@@ -1,4 +1,4 @@
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isFrameFit, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, WorkflowState, type NewsReelCard, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, isFrameFit, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, isStillMotion, WorkflowState, type NewsReelCard, type PhotoCardSubtitleLayout, type SceneSubtitleLayout, type StillMotion, type Project, type ProjectSummary, type ProjectType, type Scene } from "@ai-animation-studio/shared";
 
 import { generationSourceOfVideoRecords } from "../videos/generation-source.js";
 import { LEGACY_VIDEO_JOB_ID } from "../videos/legacy-job.js";
@@ -124,6 +124,15 @@ export function pictureCardFor(stored: StoredProject): boolean {
   return photoCardFor(stored) || newsReelCardFor(stored) !== undefined;
 }
 
+/** The choices used by this card's last successful render; older cards keep their original centre zoom. */
+export function storedStillMotions(stored: StoredProject): StillMotion[] {
+  const value = stored.lore_context.still_motions;
+  const count = Math.max(1, stored.scenes.length);
+  return Array.isArray(value) && value.length === count && value.every(isStillMotion)
+    ? [...value] as StillMotion[]
+    : Array.from({ length: count }, () => "zoom_in" as const);
+}
+
 /**
  * The subtitle layout this card is using: what its last merge stored, filled in with the defaults for anything
  * it has never set.
@@ -190,6 +199,7 @@ export function toApiSummary(stored: StoredProject): ProjectSummary {
       : newsReelCard !== undefined
         ? { newsReelCard }
         : { sceneSubtitleLayout: storedSceneSubtitleLayout(stored) }),
+    ...(pictureCardFor(stored) ? { stillMotions: storedStillMotions(stored) } : {}),
     ...(stored.final_video_path && isFrameFit(stored.lore_context.final_video_frame_fit)
       ? { finalVideoFrameFit: stored.lore_context.final_video_frame_fit } : {}),
     ...(stored.final_video_path && typeof stored.lore_context.final_video_rotated_clockwise === "boolean"

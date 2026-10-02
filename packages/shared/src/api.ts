@@ -1,4 +1,4 @@
-import type { RunwayVideoRatio, AspectRatio, AudioMode, FrameFit, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, PhotoCardDurationSeconds, SceneNumber, SceneSubtitleLayout, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
+import type { RunwayVideoRatio, AspectRatio, AudioMode, FrameFit, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, PhotoCardDurationSeconds, SceneNumber, SceneSubtitleLayout, StillMotion, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
 import { FINAL_VIDEO_RELATIVE_PATH, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -2509,6 +2509,8 @@ export interface MergeAudioSettings {
 /** Omitted entirely (not just `audio` omitted) falls back to the same narrationAvailable-derived default as an explicit request would compute server-side — see MergeAudioSettings's doc comment. */
 export interface MergeVideosRequest {
   audio?: MergeAudioSettings;
+  /** Photo cards and news reels only. One choice per picture in scene order; omission keeps the last used choices, or the old zoom_in default. */
+  stillMotions?: StillMotion[];
   /**
    * Photo cards only: where the card's text goes in the video this merge is about to make.
    *
@@ -2556,6 +2558,14 @@ export interface MergeVideosRequest {
    * later recuts; the file remains the authority for how the finished video is displayed.
    */
   rotateClockwise?: boolean;
+}
+
+/** Render one held picture with the same FFmpeg filter and text overlay as the final merge. Local and never paid. */
+export interface PreviewStillMotionRequest {
+  sceneNumber: SceneNumber;
+  motion: StillMotion;
+  /** Photo card only: preview an unsaved subtitle adjustment alongside the chosen motion. */
+  subtitleLayout?: { scale?: number; center?: number };
 }
 
 /** The local FFmpeg render result never exposes an absolute filesystem path. */
@@ -3895,6 +3905,7 @@ export const API_ROUTES = {
   videoReview: (projectId: string, jobId: string) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/review`,
   videoReviewApproval: (projectId: string, jobId: string, sceneNumber: SceneNumber) => `/projects/${encodeURIComponent(projectId)}/videos/generations/${encodeURIComponent(jobId)}/review/${sceneNumber}/approve`,
   videoMerge: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/merge`,
+  stillMotionPreview: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/still-motion-preview`,
   videoContent: (projectId: string, sceneNumber: SceneNumber) => `/projects/${encodeURIComponent(projectId)}/videos/${sceneNumber}/content`,
   videoFinalContent: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/content`,
   videoFinalRotate: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/videos/final/rotate`,

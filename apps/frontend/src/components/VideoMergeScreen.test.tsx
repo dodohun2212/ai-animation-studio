@@ -949,6 +949,39 @@ describe("VideoMergeScreen", () => {
     expect(screen.queryByTestId("merge-used-clip-audio")).toBeNull();
   });
 
+  /**
+   * 사진별 움직임(CLI Round 1148) — 서버가 돌려준 마지막 값으로 칸이 채워지고, **바꿨을 때만** 사진 수만큼의 전체
+   * 배열이 병합에 실립니다. 안 바꾸면 요청은 예전과 같습니다(생략 = 서버가 마지막 값 유지).
+   */
+  it("fills each picture's motion from the project and sends the whole list only once one is changed", async () => {
+    const twoPictures: Scene[] = [
+      { number: 1, script: "", motionPrompt: "", narration: "첫 줄" },
+      { number: 2, script: "", motionPrompt: "", narration: "둘째 줄" },
+    ];
+    const first = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    const { render: firstRender } = renderScreen(first, { photoCard: true, scenes: twoPictures, stillMotions: ["zoom_in", "pan_left"] }, undefined, undefined, []);
+    expect(((await screen.findByTestId("merge-still-motion-2")) as HTMLSelectElement).value).toBe("pan_left");
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(first).toHaveBeenCalled());
+    expect(Object.keys(JSON.parse(String((first.mock.calls[0] as [string, RequestInit])[1].body))), "안 바꿨으면 안 보냅니다").not.toContain("stillMotions");
+    firstRender.unmount();
+
+    const second = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    renderScreen(second, { photoCard: true, scenes: twoPictures, stillMotions: ["zoom_in", "pan_left"] }, undefined, undefined, []);
+    fireEvent.change(await screen.findByTestId("merge-still-motion-1"), { target: { value: "still" } });
+    fireEvent.click(screen.getByTestId("open-merge-confirm-button"));
+    fireEvent.click(await screen.findByTestId("confirm-merge-button"));
+    await waitFor(() => expect(second).toHaveBeenCalled());
+    expect(JSON.parse(String((second.mock.calls[0] as [string, RequestInit])[1].body)).stillMotions).toEqual(["still", "pan_left"]);
+  });
+
+  it("offers no picture motions on an ordinary video reel", async () => {
+    renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, makeResponse())), { scenes: sixScenes() });
+    await screen.findByTestId("merge-frame-fit");
+    expect(screen.queryByTestId("merge-still-motion")).toBeNull();
+  });
+
   it("sends a photo card's adjusted subtitle layout with the merge", async () => {
     const mergeFetch = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
     const still: Scene[] = [{ number: 1, script: "", motionPrompt: "", narration: "불광불급(不狂不及)\n미치도록 몰입한 사람만이," }];
@@ -1744,5 +1777,34 @@ describe("VideoMergeScreen 뉴스 릴", () => {
     expect(Object.keys(body)).not.toContain("frameFit");
     /* 🟠 포토카드 자막 슬라이더 값도 안 갑니다 — 그 조절기는 포토카드 것이고, 뉴스 릴에 보내면 거절됩니다. */
     expect(Object.keys(body)).not.toContain("subtitleLayout");
+  });
+
+  /**
+   * 🔴 뉴스 릴(사진 릴, `photoCard` 아님)의 「다시 만들기」는 화면 맞춤 칸이 없는데도 「맞춤을 골라야 열림」에 걸려
+   * **영영 안 열렸습니다**(Cowork 1150 에서 고침, CLI 1151 이 짝을 요청). 사진별 움직임 칸이 나오고, 병합 단추가
+   * 열려 있고, 미리보기에는 포토카드 자막 값(`subtitleLayout`)이 실리지 않아야 합니다.
+   */
+  it("reopens a finished news reel with its picture motions, never blocked on a frame fit it has no control for", async () => {
+    URL.createObjectURL = (() => "blob:news-preview") as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => undefined) as typeof URL.revokeObjectURL;
+    const mergeFetch = vi.fn(async (input: RequestInfo | URL) => String(input).includes("still-motion-preview")
+      ? new Response(new Uint8Array([1, 2]), { status: 200, headers: { "content-type": "video/mp4" } })
+      : jsonResponse(200, makeResponse()));
+    renderScreen(mergeFetch, {
+      newsReelCard: card, photoCard: false, scenes: still, aspectRatio: "9:16",
+      workflowState: WorkflowState.Completed, finalVideoPath: "videos/final/instagram_reel.mp4", stillMotions: ["zoom_in"],
+    }, undefined, undefined, []);
+
+    await screen.findByTestId("merge-success");
+    fireEvent.click(screen.getByTestId("video-remake"));
+    expect(((await screen.findByTestId("merge-still-motion-1")) as HTMLSelectElement).value).toBe("zoom_in");
+    expect(screen.queryByTestId("merge-frame-fit")).toBeNull();
+    expect(screen.queryByTestId("merge-remake-choice-required")).toBeNull();
+    expect((screen.getByTestId("open-merge-confirm-button") as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByTestId("merge-still-motion-preview-1"));
+    await waitFor(() => expect(mergeFetch.mock.calls.some(([url]) => String(url).includes("still-motion-preview"))).toBe(true));
+    const [, init] = mergeFetch.mock.calls.find(([url]) => String(url).includes("still-motion-preview")) as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ sceneNumber: 1, motion: "zoom_in" });
   });
 });

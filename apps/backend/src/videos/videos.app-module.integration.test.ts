@@ -5,11 +5,12 @@ import * as path from "node:path";
 import { NestFactory } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
 import { afterEach, describe, expect, it } from "vitest";
-import { WorkflowState } from "@ai-animation-studio/shared";
+import { API_ROUTES, WorkflowState } from "@ai-animation-studio/shared";
 
 import { AppModule } from "../app.module.js";
 import { createStoredProject } from "../projects/project.mapper.js";
 import { LocalProjectRepository } from "../projects/projects.repository.js";
+import { runMediaCommand } from "./ffmpeg-merge.service.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 let app: INestApplication | undefined;
@@ -24,6 +25,42 @@ afterEach(async () => {
   previousLearningRoot = undefined; previousSettingsRoot = undefined;
   if (root) await fs.rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }); root = undefined;
 });
+
+it("streams a news picture's local motion preview without changing its saved choices or final video", async ({ skip }) => {
+  if (!(await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false))) skip();
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "still-motion-http-"));
+  const projectsRoot = path.join(root, "projects");
+  const projects = new LocalProjectRepository(projectsRoot);
+  const project = createStoredProject("news_motion_http", "topic", "2026-08-22T00:00:00.000Z");
+  project.scenes = [{ number: 1 }, { number: 2 }];
+  project.lore_context = { ...project.lore_context, news_reel_card: {
+    publisher: "연합뉴스", headline: { line1: "첫 제목", line2: "둘째 제목" },
+    captions: [{ line1: "첫 사진", line2: null }, { line1: "둘째 사진", line2: null }],
+    creditRequired: false,
+  } };
+  await projects.create(project);
+  const images = path.join(projectsRoot, project.project_id, "images");
+  await fs.mkdir(images, { recursive: true });
+  await runMediaCommand(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=teal:s=1080x1920", "-frames:v", "1", path.join(images, "scene1.png")]);
+  await fs.copyFile(path.join(images, "scene1.png"), path.join(images, "scene2.png"));
+  previousLearningRoot = process.env.LEARNING_DATA_ROOT; process.env.LEARNING_DATA_ROOT = root;
+  previousSettingsRoot = process.env.PROVIDER_SETTINGS_ROOT; process.env.PROVIDER_SETTINGS_ROOT = root;
+  app = await NestFactory.create(AppModule, { logger: false }); await app.listen(0, "127.0.0.1");
+  const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
+  const response = await fetch(`${base}${API_ROUTES.stillMotionPreview(project.project_id)}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sceneNumber: 2, motion: "pan_left" }),
+  });
+  expect(response.status).toBe(201);
+  expect(response.headers.get("content-type")).toContain("video/mp4");
+  expect(Buffer.from(await response.arrayBuffer()).toString("ascii", 4, 8)).toBe("ftyp");
+  const invalid = await fetch(`${base}${API_ROUTES.stillMotionPreview(project.project_id)}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sceneNumber: 2, motion: "unknown" }),
+  });
+  expect(invalid.status).toBe(400);
+  const stored = await projects.findById(project.project_id);
+  expect(stored.lore_context.still_motions).toBeUndefined();
+  expect(stored.final_video_path).toBeNull();
+}, 60000);
 
 it("serves a restart-safe local video preview and explicit fake submission without paths or provider work", async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "video-preview-http-"));

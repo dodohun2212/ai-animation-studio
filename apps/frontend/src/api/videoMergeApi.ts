@@ -1,4 +1,4 @@
-import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type FrameFit, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout, type RotateFinalVideoResponse, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { API_ROUTES, FINAL_VIDEO_RELATIVE_PATH, type FrameFit, type MergeAudioSettings, type MergeVideosResponse, type PhotoCardSubtitleLayout, type PreviewStillMotionRequest, type RotateFinalVideoResponse, type SceneSubtitleLayout, type StillMotion } from "@ai-animation-studio/shared";
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 import { mergeClipsInvalidMessage, mergeFailureMessage } from "../utils/sceneFailureAdvice.js";
 
@@ -163,6 +163,11 @@ export async function mergeVideos(
    * 16:9 가 아닌 프로젝트에서 `true` 를 받으면 렌더 전에 거절하므로, 여기서도 16:9 가 아니면 화면이 안 보냅니다.
    */
   rotateClockwise?: boolean,
+  /**
+   * 멈춘 그림 릴(명언 카드·뉴스 릴)의 사진별 움직임 — 사진 순서대로 **전체 배열**(CLI Round 1148). 생략하면 서버가
+   * 마지막으로 성공한 값을 그대로 씁니다. 일반 영상 릴에는 보내지 않습니다.
+   */
+  stillMotions?: StillMotion[],
 ): Promise<MergeVideosResponse> {
   let response: Response;
   try {
@@ -175,6 +180,7 @@ export async function mergeVideos(
       ...(sceneSubtitleLayout ? { sceneSubtitleLayout } : {}),
       ...(frameFit ? { frameFit } : {}),
       ...(rotateClockwise ? { rotateClockwise } : {}),
+      ...(stillMotions ? { stillMotions } : {}),
     };
     response = await fetch(API_ROUTES.videoMerge(projectId), Object.keys(payload).length > 0
       ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }
@@ -194,6 +200,34 @@ export async function mergeVideos(
   }
   if (!isMergeVideosResponse(body)) throw new VideoMergeApiError(MALFORMED.code, MALFORMED.message);
   return body;
+}
+
+/**
+ * 사진 한 장을 고른 움직임으로 **최종 합성과 같은 경로**로 구워 돌려받습니다(`video/mp4` 바이너리, CLI Round 1148).
+ * 이 컴퓨터에서만 돌고 유료 요청은 없으며, 서버는 파일을 저장하지 않습니다. 소리는 없습니다.
+ * 받은 Blob 은 부르는 쪽이 `URL.createObjectURL` 로 틀고, 바꾸거나 화면을 떠날 때 `revokeObjectURL` 합니다.
+ */
+export async function previewStillMotion(projectId: string, request: PreviewStillMotionRequest): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(API_ROUTES.stillMotionPreview(projectId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+  } catch {
+    throw new VideoMergeApiError(NETWORK.code, NETWORK.message);
+  }
+  if (!response.ok) {
+    const apiError = toApiErrorShape(await readJsonBody(response));
+    if (isServerUnavailable(response.status, apiError.code)) {
+      throw new VideoMergeApiError(SERVER_UNAVAILABLE_ERROR.code, SERVER_UNAVAILABLE_ERROR.message);
+    }
+    throw new VideoMergeApiError(apiError.code, apiError.message, apiError.details);
+  }
+  const type = response.headers.get("content-type") ?? "";
+  if (!type.startsWith("video/")) throw new VideoMergeApiError(MALFORMED.code, MALFORMED.message);
+  return response.blob();
 }
 
 /**

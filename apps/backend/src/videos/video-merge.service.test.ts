@@ -1154,6 +1154,91 @@ describe("a photo card's subtitle colours, for the preview", () => {
     }
   });
 
+  it("uses and remembers each picture's motion, while old cards still use the original zoom", async () => {
+    const { projectsRoot, projects } = await card(3);
+    const calls: string[][] = [];
+    const service = new LocalVideoMergeService(projects, projectsRoot, sampling(calls));
+    const before = await projects.findById("video_merge");
+    expect(before.lore_context.still_motions).toBeUndefined();
+    const selected = ["zoom_out", "pan_right", "still"] as const;
+    const merged = await service.merge("video_merge", { stillMotions: selected });
+    expect(merged.project.stillMotions).toEqual(selected);
+    const filters = calls.filter((args) => args.includes("-loop")).map((args) => args[args.indexOf("-vf") + 1]!);
+    expect(filters).toHaveLength(3);
+    expect(filters[0]).toContain("zoompan=z='max(1.15-0.15*on/150,1)'");
+    expect(filters[1]).toContain("x='(iw-iw/zoom)*on/150'");
+    expect(filters[2]).toContain("zoompan=z='1'");
+    expect((await projects.findById("video_merge")).lore_context.still_motions).toEqual(selected);
+
+    calls.length = 0;
+    const again = await service.merge("video_merge");
+    expect(again.project.stillMotions).toEqual(selected);
+    expect(calls.filter((args) => args.includes("-loop"))[1]![calls.filter((args) => args.includes("-loop"))[1]!.indexOf("-vf") + 1]).toContain("x='(iw-iw/zoom)*on/150'");
+  });
+
+  it("refuses missing or unknown picture motions before any render", async () => {
+    const { projectsRoot, projects } = await card(2);
+    const calls: string[][] = [];
+    const service = new LocalVideoMergeService(projects, projectsRoot, sampling(calls));
+    for (const stillMotions of [["pan_left"], ["zoom_in", "unlisted"]]) {
+      await expect(service.merge("video_merge", { stillMotions })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
+    expect(calls).toHaveLength(0);
+    expect((await projects.findById("video_merge")).lore_context.still_motions).toBeUndefined();
+  });
+
+  it("keeps the last successful motion choices when a later render fails", async () => {
+    const { projectsRoot, projects } = await card(2);
+    let fail = false;
+    const base = sampling([]);
+    const service = new LocalVideoMergeService(projects, projectsRoot, async (args) => {
+      if (fail && args.includes("-loop")) throw new MediaToolError("failed", "render failed");
+      return base(args);
+    });
+    await service.merge("video_merge", { stillMotions: ["pan_left", "still"] });
+    fail = true;
+    await expect(service.merge("video_merge", { stillMotions: ["zoom_out", "pan_right"] }))
+      .rejects.toMatchObject({ response: { code: "VIDEO_MERGE_FAILED" } });
+    expect((await projects.findById("video_merge")).lore_context.still_motions).toEqual(["pan_left", "still"]);
+  });
+
+  it("previews a later picture with its chosen motion and fixed quote, without changing the project", async () => {
+    const { projectsRoot, projects } = await card(2);
+    const calls: string[][] = [];
+    const ass = new Map<string, string>();
+    const service = new LocalVideoMergeService(projects, projectsRoot, sampling(calls, ass));
+    const bytes = await service.previewStillMotion("video_merge", { sceneNumber: 2, motion: "pan_left", subtitleLayout: { center: 0.3 } });
+    expect(bytes.toString()).toBe("rendered");
+    const filter = calls.find((args) => args.includes("-loop"))!;
+    expect(filter[filter.indexOf("-vf") + 1]).toContain("x='(iw-iw/zoom)*(1-on/150)'");
+    expect(ass.get("scene1.ass")).toContain("\\pos(540,517)");
+    expect(ass.get("scene1.ass")).toContain("\\pos(540,634)");
+    expect(await projects.findById("video_merge")).toMatchObject({ workflow_state: WorkflowState.VideosApproved, final_video_path: null });
+  });
+
+  it("previews a news reel's selected picture with that picture's caption and fixed bands", async () => {
+    const { projectsRoot, projects } = await card(2);
+    const project = await projects.findById("video_merge");
+    await projects.save({ ...project, lore_context: {
+      ...project.lore_context, photo_card: false,
+      news_reel_card: {
+        publisher: "연합뉴스", headline: { line1: "첫 제목", line2: "둘째 제목" },
+        captions: [{ line1: "첫 사진", line2: null }, { line1: "둘째 사진", line2: null }],
+        creditRequired: false,
+      },
+    } });
+    const calls: string[][] = [];
+    const ass = new Map<string, string>();
+    const service = new LocalVideoMergeService(projects, projectsRoot, sampling(calls, ass));
+    await service.previewStillMotion("video_merge", { sceneNumber: 2, motion: "zoom_out" });
+    const filter = calls.find((args) => args.includes("-loop"))!;
+    expect(filter[filter.indexOf("-vf") + 1]).toContain("z='max(1.15-0.15*on/150,1)'");
+    expect(ass.get("scene1.ass")).toContain("Style: Band,");
+    expect(ass.get("scene1.ass")).toContain("둘째 사진");
+    expect(ass.get("scene1.ass")).not.toContain("첫 사진");
+    expect((await projects.findById("video_merge")).lore_context.still_motions).toBeUndefined();
+  });
+
 
   it("answers the colours as CSS, from the band at the card's own centre or the one asked for", async () => {
     const { projectsRoot, projects } = await card();

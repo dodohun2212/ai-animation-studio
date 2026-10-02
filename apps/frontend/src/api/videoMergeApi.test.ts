@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   finalVideoContentUrl,
   mergeVideos,
+  previewStillMotion,
   rotateFinalVideo,
   toVideoMergeDisplayError,
   VideoMergeApiError,
@@ -34,6 +35,41 @@ describe("videoMergeApi", () => {
     expect(init.method).toBe("POST");
     expect(init.body).toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  /** 멈춘 그림 릴의 사진별 움직임은 **넘겼을 때만** 실립니다 — 안 넘기면 서버가 마지막 값을 씁니다(CLI Round 1148). */
+  it("carries the still-picture motions only when given", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, makeResponse()));
+    vi.stubGlobal("fetch", fetchMock);
+    await mergeVideos("sample_project", { mode: "silent" }, undefined, undefined, undefined, undefined, ["zoom_out", "still"]);
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))).toEqual({ audio: { mode: "silent" }, stillMotions: ["zoom_out", "still"] });
+
+    await mergeVideos("sample_project", { mode: "silent" });
+    expect(JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body))).toEqual({ audio: { mode: "silent" } });
+  });
+
+  it("previews one picture's motion as a video blob, and maps a refusal to our own sentence", async () => {
+    // 본문을 바이트 그대로 줍니다 — `new Blob([...])` 를 감싸면 이 테스트 환경에서 크기가 달라집니다(CLI Round 1151).
+    const video = new Response(new Uint8Array([0, 0, 0, 24]), { status: 200, headers: { "content-type": "video/mp4" } });
+    const fetchMock = vi.fn().mockResolvedValue(video);
+    vi.stubGlobal("fetch", fetchMock);
+    const blob = await previewStillMotion("sample_project", { sceneNumber: 2, motion: "pan_left" });
+    expect(blob.size).toBe(4);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/projects/sample_project/videos/still-motion-preview");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ sceneNumber: 2, motion: "pan_left" });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { code: "VIDEO_MERGE_FAILED", message: "raw" })));
+    const refused = await previewStillMotion("sample_project", { sceneNumber: 1, motion: "still" }).catch((caught: unknown) => caught);
+    expect(toVideoMergeDisplayError(refused).code).toBe("VIDEO_MERGE_FAILED");
+    expect(toVideoMergeDisplayError(refused).message).not.toContain("raw");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ not: "a video" }), { status: 200, headers: { "content-type": "application/json" } })),
+    );
+    await expect(previewStillMotion("sample_project", { sceneNumber: 1, motion: "still" })).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 
   it("only calls fetch when explicitly invoked — never as a side effect of import", () => {

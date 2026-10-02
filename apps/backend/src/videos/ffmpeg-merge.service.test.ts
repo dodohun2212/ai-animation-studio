@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { FfmpegMergeEngine, MediaToolError, probeClipFacts, runMediaCommand, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
+import { FfmpegMergeEngine, kenBurns, MediaToolError, probeClipFacts, runMediaCommand, type MediaCommandRunner, type MergeSceneInput } from "./ffmpeg-merge.service.js";
 import { escapeForFfmpegFilterPath } from "./subtitle-file.js";
 
 const roots: string[] = [];
@@ -581,6 +581,13 @@ describe("FfmpegMergeEngine.mixBackgroundMusic", () => {
 });
 
 describe("FfmpegMergeEngine.merge holds a still for the time it was asked for", () => {
+  it("keeps the old centre zoom by default and bounds every photo motion to the picture", () => {
+    expect(kenBurns(1080, 1920, 5)).toContain("zoompan=z='min(1+0.15*on/150,1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'");
+    expect(kenBurns(1080, 1920, 5, "zoom_out")).toContain("z='max(1.15-0.15*on/150,1)'");
+    expect(kenBurns(1080, 1920, 5, "pan_left")).toContain("z='1.15':d=1:x='(iw-iw/zoom)*(1-on/150)'");
+    expect(kenBurns(1080, 1920, 5, "pan_right")).toContain("z='1.15':d=1:x='(iw-iw/zoom)*on/150'");
+    expect(kenBurns(1080, 1920, 5, "still")).toContain("z='1':d=1:x='iw/2-(iw/zoom/2)'");
+  });
   /**
    * `zoompan`'s `d` is output frames **per input frame**, and the still arrives looped — so `d = seconds * 30`
    * multiplied instead of setting a length.

@@ -18,6 +18,14 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 - API 키와 Secret은 응답과 로그에 포함하지 않는다.
 - 필요한 기능을 구현할 때만 endpoint를 추가한다.
 
+## 사진별 로컬 카메라 움직임
+
+명언 카드와 뉴스 릴의 `ProjectSummary.stillMotions`는 사진 순서의 전체 배열이다. 과거 프로젝트에 저장값이 없으면 각 사진이 기존 `zoom_in`으로 응답한다. 가능한 값은 `zoom_in`, `zoom_out`, `pan_left`, `pan_right`, `still`이며 공통 타입은 `packages/shared/src/domain.ts`에 있다. 일반 영상 릴에는 이 필드가 없다.
+
+`POST /projects/:projectId/videos/merge`의 `MergeVideosRequest.stillMotions`는 카드의 모든 사진에 대한 값을 순서대로 받는다. 생략하면 마지막 성공한 병합의 선택을 유지한다. 사진 수가 다르거나 알 수 없는 값, 일반 영상 릴의 요청은 거절한다. 선택은 FFmpeg 병합과 프로젝트 저장이 성공한 뒤에만 보존한다.
+
+`POST /projects/:projectId/videos/still-motion-preview`는 `{ sceneNumber, motion, subtitleLayout? }`을 받는다. `sceneNumber`는 1부터 시작한다. `subtitleLayout`은 명언 카드에만 허용되며 저장하지 않은 자막 크기·위치도 미리 보는 값이다. 응답은 한 사진 길이의 무음 `video/mp4` 바이너리다. 최종 병합과 같은 로컬 FFmpeg 필터·글자/뉴스 띠를 사용하며 프로젝트와 완성 영상을 바꾸지 않고 유료 Provider를 호출하지 않는다. 프론트는 응답을 Blob으로 읽는다.
+
 ## 대표 Route (예시, 전체 목록 아님)
 
 마이그레이션 초기에 작성된 예시 목록이다. 지금은 단기·장기 프로젝트, Story,
