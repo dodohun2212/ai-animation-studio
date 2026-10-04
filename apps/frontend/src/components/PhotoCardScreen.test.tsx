@@ -73,6 +73,23 @@ describe("PhotoCardScreen", () => {
     expect(screen.queryByTestId("photo-card-group-F-NAT"), "한 폴더만 볼 때는 제목 줄이 필요 없습니다").toBeNull();
   });
 
+  /** 캡틴D 2026-10-04 「이미지 순서를 내가 추가한 순서로 하면 안돼?」 — 폴더 안 그림은 폴더가 기억하는 순서(넣은 순서)로. */
+  it("lays out a folder's pictures in the order the folder keeps, not the list order", async () => {
+    const quotes = makeAssetFolder({ assetId: "F-Q", displayName: "명언_이미지", childAssetIds: ["Q3", "Q1", "Q2"] });
+    const q1 = makeAsset({ assetId: "Q1", displayName: "견인불발", imageAvailable: true, contentUrl: "/assets/Q1/content", parentFolderId: "F-Q" });
+    const q2 = makeAsset({ assetId: "Q2", displayName: "금석위개", imageAvailable: true, contentUrl: "/assets/Q2/content", parentFolderId: "F-Q" });
+    const q3 = makeAsset({ assetId: "Q3", displayName: "파죽지세", imageAvailable: true, contentUrl: "/assets/Q3/content", parentFolderId: "F-Q" });
+    stub(jsonResponse(200, { assets: [quotes, q1, q2, q3] }));
+    render(<PhotoCardScreen onBack={() => {}} onCreated={() => {}} onOpenCard={() => {}} />);
+
+    await screen.findByTestId("photo-card-asset-Q3");
+    const order = () => [...document.querySelectorAll("[data-testid^='photo-card-asset-Q']")].map((node) => node.getAttribute("data-testid"));
+    expect(order()).toEqual(["photo-card-asset-Q3", "photo-card-asset-Q1", "photo-card-asset-Q2"]);
+
+    fireEvent.change(screen.getByTestId("photo-card-folder"), { target: { value: "F-Q" } });
+    expect(order()).toEqual(["photo-card-asset-Q3", "photo-card-asset-Q1", "photo-card-asset-Q2"]);
+  });
+
   describe("사진 여러 장", () => {
     const many = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((n) =>
       makeAsset({ assetId: `P${n}`, displayName: `그림${n}`, imageAvailable: true, contentUrl: `/assets/P${n}/content` }));

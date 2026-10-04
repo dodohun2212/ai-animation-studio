@@ -280,6 +280,42 @@ describe("AssetLibraryScreen", () => {
    * 🔴 캡틴D, 2026-09-22: *「여기서 사진 누르면은 사진 크게 보여주면 안되나」* — 40px 사각형으로는 두 그림을
    * 구별할 수는 있어도 **무엇이 찍혔는지는 알 수 없습니다.** 그림에 이름을 붙이려면 먼저 봐야 합니다.
    */
+  /**
+   * 🔴 캡틴D, 2026-10-03: 「이미지 보관함 UI 가 너무 불편함」 — 폴더 마흔 개가 40px 썸네일 한 줄씩 세로로
+   * 늘어서 그림 보관함인데 그림이 거의 안 보였습니다. 아무것도 안 열었을 땐 큰 표지 카드 격자, 폴더를 열면
+   * 왼쪽 좁은 목록으로 돌아가고, 폴더 안 그림은 크게 보입니다.
+   */
+  it("shows folders as a picture grid until one is opened, then a compact list beside a folder with large pictures", async () => {
+    const child = makeAsset({ assetId: "CHILD-1", displayName: "국회 본회의장", parentFolderId: "FOLDER-NEWS", sortOrder: 0, contentUrl: "/assets/CHILD-1/content" });
+    const folder = makeAssetFolder({ assetId: "FOLDER-NEWS", displayName: "뉴스릴스", childAssetIds: ["CHILD-1"], thumbnailAssetId: "CHILD-1" });
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": { assets: [folder, child] },
+      "GET /assets/FOLDER-NEWS": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "GET /assets/CHILD-1": { asset: child, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+    });
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    expect(list.getAttribute("data-layout")).toBe("grid");
+    const card = within(list).getByRole("button", { name: /뉴스릴스/ });
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(coverUrl(folder));
+
+    fireEvent.click(card);
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    expect(screen.getByRole("list", { name: "에셋 목록" }).getAttribute("data-layout")).toBe("list");
+    const set = within(detail).getByRole("region", { name: "폴더 구성" });
+    const picture = (await within(set).findByTestId("folder-child-zoom-CHILD-1")).querySelector("img") as HTMLImageElement;
+    expect(picture.className).toContain("h-32");
+
+    /* 캡틴D: 「새 이미지 등록이 아래에 있어서 불편함」 — 등록 두 가지가 그림 목록보다 **위**에 있습니다. */
+    const pictures = within(set).getByRole("list", { name: "순서가 있는 참고 이미지" });
+    const upload = within(set).getByRole("form", { name: "이 폴더에 새 이미지 등록" });
+    expect(upload.compareDocumentPosition(pictures) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const linkSummary = within(set).getByText("+ 이미 등록된 이미지 넣기");
+    expect(linkSummary.compareDocumentPosition(pictures) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("opens a picture full size from the folder list, and closes it without losing the screen", async () => {
     const child = makeAsset({ assetId: "CHILD-1", displayName: "국회 본회의장", parentFolderId: "FOLDER-NEWS", sortOrder: 0, contentUrl: "/assets/CHILD-1/content" });
     const folder = makeAssetFolder({ assetId: "FOLDER-NEWS", displayName: "뉴스릴스", childAssetIds: ["CHILD-1"], thumbnailAssetId: "CHILD-1" });
@@ -1269,6 +1305,92 @@ describe("AssetLibraryScreen", () => {
     expect(JSON.parse(String(patchInit.body))).toEqual({ description: "정면, 웃는 표정" });
     await waitFor(() => expect((within(set).getByLabelText("개별 특징") as HTMLInputElement).value).toBe("정면, 웃는 표정"));
     expect(screen.getByTestId("child-description-save-CHAR-1")).toBeDisabled(); // draft consumed after save
+  });
+
+  /** 캡틴D, 2026-10-03: 「이미지 이름을 바꾸는 기능이 왜 없는거야」 — 폴더 안 낱장마다 이름 칸과 「이름 저장」. */
+  it("renames a picture inside a folder, sending only the new name", async () => {
+    const child = makeAsset({ assetId: "CHILD-1", displayName: "명언_일심불란", parentFolderId: "FOLDER-NEWS", sortOrder: 0, contentUrl: "/assets/CHILD-1/content" });
+    const folder = makeAssetFolder({ assetId: "FOLDER-NEWS", displayName: "명언_이미지", childAssetIds: ["CHILD-1"], thumbnailAssetId: "CHILD-1" });
+    const renamed = { ...child, displayName: "폭포 위 검객" };
+    const fetchMock = stubFetchByRoute({
+      "GET /assets": { assets: [folder, child] },
+      "GET /assets/FOLDER-NEWS": { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "GET /assets/CHILD-1": { asset: child, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true },
+      "PATCH /assets/CHILD-1": { asset: renamed },
+    });
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("명언_이미지"));
+    const nameInput = (await screen.findByTestId("child-name-CHILD-1")) as HTMLInputElement;
+    expect(nameInput.value).toBe("명언_일심불란");
+    const save = screen.getByTestId("child-name-save-CHILD-1");
+    expect(save).toBeDisabled();
+
+    fireEvent.change(nameInput, { target: { value: "   " } });
+    expect(save).toBeDisabled(); // 빈 이름은 저장하지 않습니다
+    fireEvent.change(nameInput, { target: { value: " 폭포 위 검객 " } });
+    expect(save).not.toBeDisabled();
+    fireEvent.click(save);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/assets/CHILD-1" && (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+    const [, patchInit] = fetchMock.mock.calls.find(([url, init]) => String(url) === "/assets/CHILD-1" && (init as RequestInit | undefined)?.method === "PATCH")! as [string, RequestInit];
+    expect(JSON.parse(String(patchInit.body))).toEqual({ displayName: "폭포 위 검객" });
+    await waitFor(() => expect((screen.getByTestId("child-name-CHILD-1") as HTMLInputElement).value).toBe("폭포 위 검객"));
+    expect(screen.getByTestId("child-name-save-CHILD-1")).toBeDisabled();
+  });
+
+  /** 캡틴D, 2026-10-03: 「폴더에서 빼기」는 누르면 바로 빠지고 되돌릴 길이 없었습니다 — 뺀 뒤 「되돌리기」로 순서·대표까지 되살립니다. */
+  it("undoes 폴더에서 빼기, putting the picture back in its old place and restoring the representative", async () => {
+    const first = makeAsset({ assetId: "PIC-A", displayName: "일심불란", parentFolderId: "FOLDER-Q", sortOrder: 0, contentUrl: "/assets/PIC-A/content" });
+    const second = makeAsset({ assetId: "PIC-B", displayName: "호연지기", parentFolderId: "FOLDER-Q", sortOrder: 1, contentUrl: "/assets/PIC-B/content" });
+    let folder = makeAssetFolder({ assetId: "FOLDER-Q", displayName: "명언_이미지", childAssetIds: ["PIC-A", "PIC-B"], thumbnailAssetId: "PIC-A" });
+    const children: Record<string, Asset> = { "PIC-A": first, "PIC-B": second };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const key = `${init?.method ?? "GET"} ${url}`;
+      if (key === "GET /assets") return jsonResponse(200, { assets: [folder, children["PIC-A"]!, children["PIC-B"]!] });
+      if (key === "GET /assets/FOLDER-Q") return jsonResponse(200, { asset: folder, usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true });
+      const child = /^GET \/assets\/(PIC-[AB])$/.exec(key);
+      if (child) return jsonResponse(200, { asset: children[child[1]!], usageProjectIds: [], ownership: "library_manual", canDeleteOwnedFile: true });
+      const parent = /^PATCH \/assets\/(PIC-[AB])\/parent-folder$/.exec(key);
+      if (parent) {
+        const id = parent[1]!;
+        const target = (JSON.parse(String(init?.body)) as { parentFolderId: string | null }).parentFolderId;
+        const ids = target ? [...folder.childAssetIds, id] : folder.childAssetIds.filter((other) => other !== id);
+        folder = { ...folder, childAssetIds: ids, thumbnailAssetId: ids.includes(folder.thumbnailAssetId) ? folder.thumbnailAssetId : ids[0] ?? "" };
+        /* 실제 계약(CLI Round 1161): `{ asset, folder }` — 낱장의 parentFolderId 도 따라 바뀝니다. */
+        children[id] = { ...children[id]!, parentFolderId: target ?? "" };
+        return jsonResponse(200, { asset: children[id], folder });
+      }
+      if (key === "PATCH /assets/FOLDER-Q/character-reference-set") {
+        const body = JSON.parse(String(init?.body)) as { childAssetIds: string[]; thumbnailAssetId: string };
+        folder = { ...folder, ...body };
+        return jsonResponse(200, { folder, children: body.childAssetIds.map((id) => children[id]) });
+      }
+      throw new Error(`Unexpected fetch call in test: ${key}`);
+    });
+    vi.stubGlobal("fetch", withGeneratedImages(fetchMock));
+    render(<AssetLibraryScreen onBack={() => {}} />);
+
+    const list = await screen.findByRole("list", { name: "에셋 목록" });
+    fireEvent.click(within(list).getByText("명언_이미지"));
+    const detail = await screen.findByRole("region", { name: "에셋 상세" });
+    const set = within(detail).getByRole("region", { name: "폴더 구성" });
+    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 참고 이미지" }).textContent).toContain("1. 일심불란 (대표 이미지)"));
+    expect(screen.queryByTestId("folder-unlink-undo")).toBeNull();
+
+    fireEvent.click(within(set).getAllByRole("button", { name: "폴더에서 빼기" })[0]!);
+    const toast = await screen.findByTestId("folder-unlink-undo");
+    expect(toast.textContent).toContain("「일심불란」");
+    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 참고 이미지" }).textContent).toContain("1. 호연지기 (대표 이미지)"));
+
+    fireEvent.click(within(toast).getByRole("button", { name: "되돌리기" }));
+    await waitFor(() => expect(screen.queryByTestId("folder-unlink-undo")).toBeNull());
+    const resets = fetchMock.mock.calls.filter(([url]) => String(url) === "/assets/FOLDER-Q/character-reference-set") as Array<[string, RequestInit]>;
+    expect(JSON.parse(String(resets.at(-1)![1].body))).toEqual({ childAssetIds: ["PIC-A", "PIC-B"], thumbnailAssetId: "PIC-A" });
+    await waitFor(() => expect(within(set).getByRole("list", { name: "순서가 있는 참고 이미지" }).textContent).toContain("1. 일심불란 (대표 이미지)"));
   });
 
   it("registers a brand-new image straight into the open folder, then refiles it under that folder", async () => {

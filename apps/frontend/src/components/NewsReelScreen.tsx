@@ -8,7 +8,7 @@ import { Spinner } from "./Spinner.js";
 import { cardSectionRoomy as cardSection, outlineButton, primaryButton } from "./ui/surfaces.js";
 import { CountedField, newsReelFieldValue } from "./ui/CountedField.js";
 import type { NewsReelDraft } from "./NewsReelCreateScreen.js";
-import { PicturePicker } from "./ui/PicturePicker.js";
+import { PicturePicker, type PicturePickerFolder } from "./ui/PicturePicker.js";
 import { PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_PICTURES, type Asset, type PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { MANUAL_SOURCE_PROJECT_ID } from "./AssetLibraryScreen.js";
@@ -251,7 +251,7 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
      그 수를 모르는 채로 씁니다(CLI 1067 §1). */
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [assetsError, setAssetsError] = useState<{ code: string; message: string } | null>(null);
-  const [folders, setFolders] = useState<{ assetId: string; displayName: string }[]>([]);
+  const [folders, setFolders] = useState<PicturePickerFolder[]>([]);
   const [assetIds, setAssetIds] = useState<string[]>([]);
   const [seconds, setSeconds] = useState<PhotoCardDurationSeconds>(PHOTO_CARD_DURATIONS[0]);
 
@@ -294,7 +294,7 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
          */
         setFolders(response.assets
           .filter((asset) => asset.isFolder && asset.sourceProjectId === MANUAL_SOURCE_PROJECT_ID)
-          .map((asset) => ({ assetId: asset.assetId, displayName: asset.displayName })));
+          .map((asset) => ({ assetId: asset.assetId, displayName: asset.displayName, childAssetIds: asset.childAssetIds })));
       })
       .catch((caught: unknown) => { if (!cancelled) setAssetsError(toAssetDisplayError(caught)); });
     return () => { cancelled = true; };

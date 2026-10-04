@@ -128,10 +128,10 @@ export class LocalAssetsRepository {
         const allowedFolderKeys = new Set(["displayName", "description", "tags"]);
         if (Object.keys(changes).some((key) => !allowedFolderKeys.has(key))) throw assetMutationUnsupported();
       }
-      // A folder child (Character Reference Set member) may only have its per-child role and description edited
-      // here — every other field belongs to the standalone-asset flow and stays blocked, same as before.
+      // A folder child can change its name, role, and description. Its name is used by future story/image prompts;
+      // ownership, type, and reference wiring still belong to the standalone-asset or folder-link flows.
       if (asset.parent_folder_id) {
-        const allowedChildKeys = new Set(["role", "description"]);
+        const allowedChildKeys = new Set(["displayName", "role", "description"]);
         if (Object.keys(changes).some((key) => !allowedChildKeys.has(key))) throw assetMutationUnsupported();
       }
       if (changes.assetType !== undefined && changes.assetType !== "character" && asset.reference_images.length > 0) throw assetMutationUnsupported();

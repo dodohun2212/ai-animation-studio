@@ -39,7 +39,28 @@ interface PicturePickerProps {
    * 🟠 **없으면 안 그립니다.** (명언 카드도 2026-10-01 부터 넘깁니다 — 캡틴D 「사진만 있으니까 고르기가 너무 힘들어」.)
    * 🟠 **넘기는 쪽이 골라서 넘깁니다** — 이 칸은 받은 것을 다 그립니다.
    */
-  folders?: { assetId: string; displayName: string }[];
+  folders?: PicturePickerFolder[];
+}
+
+/**
+ * 폴더 하나. `childAssetIds` 를 주면 그 폴더 안 그림을 **그 순서대로** 놓습니다 — 보관함 「폴더 구성」에 보이는
+ * 순서, 곧 넣은 순서(위로·아래로로 바꾼 순서 포함)입니다(캡틴D, 2026-10-04: 「이미지 순서를 내가 추가한 순서로」).
+ * 안 주면 받은 목록 순서 그대로입니다.
+ */
+export interface PicturePickerFolder {
+  assetId: string;
+  displayName: string;
+  childAssetIds?: readonly string[];
+}
+
+/** 폴더 안 그림을 폴더가 기억하는 순서로. 폴더 목록에 없는 그림은 받은 순서대로 뒤에 둡니다. */
+function inFolderOrder(items: Asset[], childAssetIds: readonly string[] | undefined): Asset[] {
+  if (!childAssetIds || childAssetIds.length === 0) return items;
+  const rank = new Map(childAssetIds.map((id, index) => [id, index]));
+  return items
+    .map((asset, index) => ({ asset, index }))
+    .sort((left, right) => (rank.get(left.asset.assetId) ?? childAssetIds.length + left.index) - (rank.get(right.asset.assetId) ?? childAssetIds.length + right.index))
+    .map(({ asset }) => asset);
 }
 
 /** 폴더 단추가 고르는 값 — `null` 은 「전체」, `""` 는 「폴더 없음」. */
@@ -68,7 +89,7 @@ export function PicturePicker({
   const showFolders = folderButtons.length > 0;
   const shown = !showFolders || folderFilter === null
     ? assets
-    : (assets ?? []).filter((asset) => asset.parentFolderId === folderFilter);
+    : inFolderOrder((assets ?? []).filter((asset) => asset.parentFolderId === folderFilter), folderButtons.find((folder) => folder.assetId === folderFilter)?.childAssetIds);
   /* 🔴 걸러도 **고른 것은 그대로 골라져 있습니다** — 격자에서 안 보일 뿐입니다. 안 보이는 채로 두면
      「분명히 3장 골랐는데 격자에 하나밖에 없다」가 되므로, 몇 장이 숨었는지 아래에서 말합니다. */
   /* 🟠 **거르고 있을 때만 셉니다.** 안 거를 때 이 수는 「아직 목록을 못 읽었다」를 뜻하게 되고, 그건 주제
@@ -77,7 +98,7 @@ export function PicturePicker({
      한 줄로 쏟아 놓으면 고르개로 주제를 정하기 전까지는 어느 그림이 어느 폴더인지 알 길이 없습니다. */
   const groups: { key: string; title: string; items: Asset[] }[] | null = showFolders && folderFilter === null
     ? [
-      ...folderButtons.map((folder) => ({ key: folder.assetId, title: folder.displayName, items: (assets ?? []).filter((asset) => asset.parentFolderId === folder.assetId) })),
+      ...folderButtons.map((folder) => ({ key: folder.assetId, title: folder.displayName, items: inFolderOrder((assets ?? []).filter((asset) => asset.parentFolderId === folder.assetId), folder.childAssetIds) })),
       ...(looseCount > 0 ? [{ key: "", title: "폴더 없음", items: (assets ?? []).filter((asset) => asset.parentFolderId === "") }] : []),
     ]
     : null;

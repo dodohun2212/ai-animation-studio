@@ -1,8 +1,8 @@
 import { API_ROUTES, type GetAssetResponse, type ListAssetsResponse } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AssetsApiError, createAsset, deleteAsset, getAsset, listAssets, toAssetDisplayError, updateAsset } from "./assetsApi.js";
-import { jsonResponse, makeAsset, nonJsonResponse } from "./testUtils.js";
+import { AssetsApiError, createAsset, deleteAsset, getAsset, listAssets, toAssetDisplayError, updateAsset, updateCharacterFolderReferenceSet } from "./assetsApi.js";
+import { jsonResponse, makeAsset, makeAssetFolder, nonJsonResponse } from "./testUtils.js";
 
 describe("assetsApi", () => {
   afterEach(() => {
@@ -577,5 +577,24 @@ describe("assetsApi", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, malformed)));
 
     await expect(listAssets()).rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
+  });
+
+  /** CLI Round 1161: 서버는 배경 등 모든 유형의 폴더에 순서·대표 저장을 엽니다 — 화면 가드가 그걸 깨진 응답으로 막고 있었습니다. */
+  it("accepts a reference-set answer for a non-character folder whose pictures share its type", async () => {
+    const folder = makeAssetFolder({ assetId: "FOLDER-BG", assetType: "background", childAssetIds: ["BG-1"], thumbnailAssetId: "BG-1" });
+    const child = makeAsset({ assetId: "BG-1", assetType: "background", parentFolderId: "FOLDER-BG" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { folder, children: [child] })));
+
+    const result = await updateCharacterFolderReferenceSet("FOLDER-BG", { childAssetIds: ["BG-1"], thumbnailAssetId: "BG-1" });
+    expect(result.folder.assetType).toBe("background");
+  });
+
+  it("still rejects a reference-set answer whose picture is a different type from its folder", async () => {
+    const folder = makeAssetFolder({ assetId: "FOLDER-BG", assetType: "background", childAssetIds: ["CH-1"], thumbnailAssetId: "CH-1" });
+    const child = makeAsset({ assetId: "CH-1", assetType: "character", parentFolderId: "FOLDER-BG" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { folder, children: [child] })));
+
+    await expect(updateCharacterFolderReferenceSet("FOLDER-BG", { childAssetIds: ["CH-1"], thumbnailAssetId: "CH-1" }))
+      .rejects.toMatchObject({ code: "CLIENT_MALFORMED_RESPONSE" });
   });
 });

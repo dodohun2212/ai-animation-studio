@@ -111,6 +111,30 @@ describe("AssetsService", () => {
     expect(linked.asset.referenceImages).toEqual([]);
   });
 
+  it("renames a folder child and restores order and representative after unlinking it", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-service-")); roots.push(root);
+    const service = new AssetsService(new LocalAssetsRepository(root));
+    const folder = await service.createFolder({ assetType: "background", displayName: "City views" });
+    const first = await service.create({ buffer: image, originalname: "first.png" }, { assetType: "background", displayName: "First" });
+    const second = await service.create({ buffer: secondImage, originalname: "second.png" }, { assetType: "background", displayName: "Second" });
+    const folderId = folder.asset.assetId;
+    const firstId = first.asset.assetId;
+    const secondId = second.asset.assetId;
+    await service.setParentFolder(firstId, { parentFolderId: folderId });
+    await service.setParentFolder(secondId, { parentFolderId: folderId });
+
+    expect((await service.update(firstId, { displayName: "Renamed" })).asset.displayName).toBe("Renamed");
+    expect((await service.list("Renamed", "background")).assets.map((asset) => asset.assetId)).toEqual([firstId]);
+    await service.setParentFolder(firstId, { parentFolderId: null });
+    expect((await service.get(folderId)).asset).toMatchObject({ childAssetIds: [secondId], thumbnailAssetId: secondId });
+    await service.setParentFolder(firstId, { parentFolderId: folderId });
+    const restored = await service.updateCharacterFolderReferenceSet(folderId, {
+      childAssetIds: [firstId, secondId], thumbnailAssetId: firstId,
+    });
+    expect(restored.folder).toMatchObject({ assetType: "background", childAssetIds: [firstId, secondId], thumbnailAssetId: firstId });
+    expect(restored.children.map((asset) => asset.displayName)).toEqual(["Renamed", "Second"]);
+  });
+
   it("re-parents an Asset directly from one Character Folder to another", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "asset-service-")); roots.push(root);
     const repository = new LocalAssetsRepository(root); const service = new AssetsService(repository);

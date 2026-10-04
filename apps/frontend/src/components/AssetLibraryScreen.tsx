@@ -105,10 +105,10 @@ export function assetListName(asset: Pick<Asset, "displayName" | "isFolder" | "s
 }
 
 /**
- * 목록 줄에 그릴 그림 주소. 없으면 `null` 이고, 그때만 📁 · 🖼 가 나옵니다.
+ * 목록 줄에 그릴 그림 주소. 없으면 `null` 이고, 그때만 글자 자리표시(「폴더」 · 「없음」)가 나옵니다.
  *
  * 🟠 폴더는 자기 그림이 없으므로 `thumbnailAssetId` 가 가리키는 **안의 한 장**을 씁니다. 그게 비어 있는
- * 폴더(빈 폴더거나 아직 안 정해진 폴더)는 예전 그대로 📁 입니다 — 없는 걸 만들어 내지는 않습니다.
+ * 폴더(빈 폴더거나 아직 안 정해진 폴더)는 글자 「폴더」 자리표시입니다 — 없는 걸 만들어 내지는 않습니다(§7 이모지 금지, CLI Round 1161).
  */
 export function coverUrl(asset: Pick<Asset, "imageAvailable" | "contentUrl" | "isFolder" | "thumbnailAssetId">): string | null {
   if (asset.imageAvailable && asset.contentUrl) return asset.contentUrl;
@@ -251,6 +251,12 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   // Per-child "개별 특징" drafts, keyed by child assetId; a key exists only while the draft differs from
   // the saved value. Cleared whenever the selected folder changes.
   const [childDescriptionDrafts, setChildDescriptionDrafts] = useState<Record<string, string>>({});
+  /* 폴더 안 낱장의 이름 고치기(캡틴D, 2026-10-03: 「이미지 이름을 바꾸는 기능이 왜 없는거야」). 특징과 같은 방식 —
+     바뀐 칸만 초안으로 들고, 저장하면 비웁니다. */
+  const [childNameDrafts, setChildNameDrafts] = useState<Record<string, string>>({});
+  /* 「폴더에서 빼기」 되돌리기(캡틴D, 2026-10-03). 빼기 직전의 순서·대표 이미지를 들고 있다가 「되돌리기」로 다시
+     넣고 순서·대표를 되살립니다. 다른 폴더로 옮기면 화면에서 사라집니다(그 폴더 것만 보여 줍니다). */
+  const [lastUnlinked, setLastUnlinked] = useState<{ folderId: string; assetId: string; name: string; order: string[]; thumbnailAssetId: string } | null>(null);
   /* 🟠 One at a time, and never more than one: the overlay is the whole screen, so a second one would sit on
      top of the first with no way back to it. */
   const [zoomed, setZoomed] = useState<ZoomedImage | null>(null);
@@ -332,6 +338,7 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   useEffect(() => {
     const folder = selected?.asset;
     setChildDescriptionDrafts({});
+    setChildNameDrafts({});
     if (!folder || !folder.isFolder) {
       setFolderChildren(null); setFolderChildrenError(null); setFolderChildrenFileLocked(null); setFolderLinkResults(null); setFolderLinkQuery("");
       setFolderLinkSearchError(null); setFolderMutationError(null);
@@ -646,10 +653,39 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
   async function unlinkAssetFromFolder(assetId: string) {
     if (!selected || folderMutationBusy.current) return;
     const folderId = selected.asset.assetId;
+    const before = {
+      folderId,
+      assetId,
+      name: folderChildren?.find((child) => child.assetId === assetId)?.displayName ?? "이미지",
+      order: [...selected.asset.childAssetIds],
+      thumbnailAssetId: selected.asset.thumbnailAssetId,
+    };
     folderMutationBusy.current = true; setFolderMutationPending(true); setFolderMutationError(null);
     try {
       await setAssetParentFolder(assetId, { parentFolderId: null });
+      setLastUnlinked(before);
       await open(folderId);
+    } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
+    finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
+  }
+
+  /** 방금 뺀 한 장을 같은 폴더에 다시 넣고, 뺄 때의 순서·대표 이미지를 되살립니다. */
+  async function undoUnlink() {
+    const undo = lastUnlinked;
+    if (!undo || folderMutationBusy.current) return;
+    folderMutationBusy.current = true; setFolderMutationPending(true); setFolderMutationError(null);
+    try {
+      await setAssetParentFolder(undo.assetId, { parentFolderId: undo.folderId });
+      const fresh = (await getAsset(undo.folderId)).asset;
+      const now = fresh.childAssetIds;
+      // 그 사이 다른 변화가 있었을 수 있으니, 지금 폴더에 있는 것만 예전 순서대로 놓고 새로 생긴 것은 뒤에 붙입니다.
+      const order = [...undo.order.filter((id) => now.includes(id)), ...now.filter((id) => !undo.order.includes(id))];
+      const thumbnail = now.includes(undo.thumbnailAssetId) ? undo.thumbnailAssetId : fresh.thumbnailAssetId;
+      if (order.join("\n") !== now.join("\n") || thumbnail !== fresh.thumbnailAssetId) {
+        await updateCharacterFolderReferenceSet(undo.folderId, { childAssetIds: order, thumbnailAssetId: thumbnail });
+      }
+      setLastUnlinked(null);
+      if (selected?.asset.assetId === undo.folderId) await open(undo.folderId);
     } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
     finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
   }
@@ -673,6 +709,20 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       const response = await updateAsset(assetId, { description: draft.trim() });
       setFolderChildren((current) => current?.map((asset) => (asset.assetId === assetId ? response.asset : asset)) ?? current);
       setChildDescriptionDrafts(({ [assetId]: _saved, ...rest }) => rest);
+    } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
+    finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
+  }
+
+  async function saveChildName(assetId: string) {
+    const draft = childNameDrafts[assetId]?.trim();
+    if (!draft || folderMutationBusy.current) return;
+    folderMutationBusy.current = true; setFolderMutationPending(true); setFolderMutationError(null);
+    const listGenerationAtStart = listRequest.current;
+    try {
+      const response = await updateAsset(assetId, { displayName: draft });
+      setFolderChildren((current) => current?.map((asset) => (asset.assetId === assetId ? response.asset : asset)) ?? current);
+      setChildNameDrafts(({ [assetId]: _saved, ...rest }) => rest);
+      if (listRequest.current === listGenerationAtStart) await load();
     } catch (caught) { setFolderMutationError(toAssetDisplayError(caught)); }
     finally { folderMutationBusy.current = false; setFolderMutationPending(false); }
   }
@@ -904,7 +954,14 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
         </p>
       )}
       {assets && (
-        <ul aria-label="에셋 목록" className="space-y-2 pr-1">
+        /* 🟢 아무 폴더도 안 열었을 때는 폴더를 **그림 카드 격자**로 보여 줍니다(캡틴D: 「UI 가 너무 불편함」).
+           전에는 폴더 마흔 개가 작은 40px 썸네일 한 줄씩 세로로 늘어서, 그림 보관함인데 그림이 거의 안 보였습니다.
+           폴더를 열면 왼쪽 좁은 목록(한 줄씩)으로 돌아갑니다 — 그때는 오른쪽 상세가 주인공입니다. */
+        <ul
+          aria-label="에셋 목록"
+          data-layout={detailPaneShown ? "list" : "grid"}
+          className={detailPaneShown ? "space-y-2 pr-1" : "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"}
+        >
           {ASSET_GROUPS.flatMap((group) => {
             const members = assets.filter((asset) => {
               if (asset.parentFolderId || !group.match(asset)) return false;
@@ -915,11 +972,30 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
             });
             if (members.length === 0) return [];
             return [
-              <li key={`group-${group.key}`} role="presentation" className="px-1 pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <li key={`group-${group.key}`} role="presentation" className={`col-span-full px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 ${detailPaneShown ? "pt-1" : "pt-4 first:pt-0"}`}>
                 {group.label} · {members.length}
               </li>,
               ...members.map((asset) => (
             <li key={asset.assetId}>
+              {!detailPaneShown ? (
+              <button
+                type="button"
+                onClick={() => void open(asset.assetId, { toggle: true })}
+                className="group block w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/70 text-left transition hover:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              >
+                {coverUrl(asset) ? (
+                  <img src={coverUrl(asset) ?? ""} alt="" loading="lazy" className="aspect-[4/3] w-full bg-slate-950 object-cover transition group-hover:opacity-90" />
+                ) : (
+                  <span aria-hidden="true" className="flex aspect-[4/3] w-full items-center justify-center bg-slate-950/60 type-mono text-xs text-slate-500">
+                    {asset.isFolder ? "빈 폴더" : "그림 없음"}
+                  </span>
+                )}
+                <span className="block px-3 py-2">
+                  <strong className="block truncate text-sm text-slate-100">{assetListName(asset)}</strong>
+                  <span className="block truncate text-xs text-slate-400">{rowSubtitle(asset)}</span>
+                </span>
+              </button>
+              ) : (
               <button
                 type="button"
                 onClick={() => void open(asset.assetId, { toggle: true })}
@@ -933,8 +1009,8 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 {coverUrl(asset) ? (
                   <img src={coverUrl(asset) ?? ""} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
                 ) : (
-                  <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-slate-950/40 text-sm text-slate-500">
-                    {asset.isFolder ? "📁" : "🖼"}
+                  <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-slate-950/40 type-mono text-[10px] text-slate-500">
+                    {asset.isFolder ? "폴더" : "없음"}
                   </span>
                 )}
                 <span className="min-w-0 flex-1">
@@ -942,13 +1018,14 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                   <span className="text-xs text-slate-400">{rowSubtitle(asset)}</span>
                 </span>
               </button>
+              )}
             </li>
               )),
             ];
           })}
           {/* 🟠 개수는 위로 올라갔습니다. 여기 남는 건 **개수가 아니라 이유** — 왜 그것들이 이 목록에 없는지. */}
           {assets.some((asset) => asset.parentFolderId) && (
-            <li role="presentation" className="px-1 pt-2 text-xs text-slate-500">
+            <li role="presentation" className="col-span-full px-1 pt-2 text-xs text-slate-500">
               폴더 안의 이미지는 이 목록에 없습니다 — 폴더를 열면 보입니다.
             </li>
           )}
@@ -1146,110 +1223,13 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 대표 이미지가 목록·썸네일에 표시됩니다. 위의 폴더 전체 특징과 각 이미지의 개별 특징이 AI에게 함께 전달됩니다.
               </p>
               </details>
-              {(folderChildrenLoading || referenceSetPending) && <Spinner label="불러오는 중..." />}
-              {folderChildrenError && (
-                <p role="alert" data-testid="folder-children-error" data-error-code={folderChildrenError.code} className="text-sm text-rose-400">
-                  {folderChildrenError.message}
-                </p>
-              )}
-              {folderChildren && folderChildren.length === 0 && !folderChildrenLoading && (
-                <p className="text-sm text-slate-400">아직 등록된 이미지가 없습니다. 아래에서 기존 이미지를 검색해 추가해 주세요.</p>
-              )}
-              {folderChildren && folderChildren.length > 0 && (
-                <ol aria-label="순서가 있는 참고 이미지" className="space-y-2">
-                  {folderChildren.map((child, index) => (
-                    <li key={child.assetId} className="space-y-2 rounded-xl border border-white/10 bg-slate-900/60 p-2.5 text-sm text-slate-300">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {child.imageAvailable && child.contentUrl && (
-                          <ZoomThumb
-                            url={child.contentUrl}
-                            name={child.displayName}
-                            imageClassName="h-10 w-10 rounded-xl object-cover"
-                            testId={`folder-child-zoom-${child.assetId}`}
-                            onZoom={setZoomed}
-                          />
-                        )}
-                        <span className="flex-1">
-                          {index + 1}. {child.displayName}
-                          {selected.asset.thumbnailAssetId === child.assetId ? " (대표 이미지)" : ""}
-                        </span>
-                        {selected.asset.assetType === "character" && (
-                          <label className="flex items-center gap-1.5 text-xs text-slate-400">
-                            역할
-                            <select
-                              className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
-                              value={CHARACTER_ROLE_OPTIONS.some((option) => option.value === child.role) ? child.role : "other"}
-                              disabled={folderMutationPending}
-                              onChange={(event) => void updateChildRole(child.assetId, event.target.value)}
-                            >
-                              {CHARACTER_ROLE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
-                        <label className="flex min-w-0 flex-1 items-center gap-1.5">
-                          개별 특징
-                          <input
-                            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
-                            placeholder="이 이미지만의 특징 (예: 정면, 웃는 표정)"
-                            value={childDescriptionDrafts[child.assetId] ?? child.description}
-                            disabled={folderMutationPending}
-                            onChange={(event) => {
-                              const next = event.target.value;
-                              setChildDescriptionDrafts((current) =>
-                                next === child.description
-                                  ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== child.assetId))
-                                  : { ...current, [child.assetId]: next },
-                              );
-                            }}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          data-testid={`child-description-save-${child.assetId}`}
-                          className={smallOutlineButton}
-                          disabled={folderMutationPending || childDescriptionDrafts[child.assetId] === undefined}
-                          onClick={() => void saveChildDescription(child.assetId)}
-                        >
-                          특징 저장
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button type="button" className={smallOutlineButton} disabled={referenceSetPending || index === 0} onClick={() => moveCharacterReference(child.assetId, -1)}>
-                          위로
-                        </button>
-                        <button type="button" className={smallOutlineButton} disabled={referenceSetPending || index === folderChildren.length - 1} onClick={() => moveCharacterReference(child.assetId, 1)}>
-                          아래로
-                        </button>
-                        <button
-                          type="button"
-                          className={smallAddButton}
-                          disabled={referenceSetPending || selected.asset.thumbnailAssetId === child.assetId}
-                          onClick={() => void saveCharacterReferenceSet(selected.asset.childAssetIds, child.assetId)}
-                        >
-                          대표 이미지로 정하기
-                        </button>
-                        <button type="button" className={smallDangerOutlineButton} disabled={folderMutationPending} onClick={() => void unlinkAssetFromFolder(child.assetId)}>
-                          폴더에서 빼기
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {folderMutationError && (
-                <p role="alert" data-testid="folder-mutation-error" data-error-code={folderMutationError.code} className="text-sm text-rose-400">
-                  {folderMutationError.message}
-                </p>
-              )}
+              {/* 🟢 캡틴D, 2026-10-03: 「새 이미지 등록이 아래에 있어서 불편함」 — 그림 목록(최대 수십 장) 맨 끝에 있어서
+                  매번 끝까지 내려가야 했습니다. 등록 두 가지를 목록 **위**로 올립니다. 접힌 채로 두어 목록을 밀어내지 않습니다. */}
               {/* Folded: the panel used to stack five full-height sections, so choosing a folder pushed
                   everything below it off the screen. Content stays in the DOM — a closed <details> hides it
                   visually without removing it. */}
-              <details className="border-t border-white/10 pt-3">
-              <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100">이 폴더에 새 이미지 등록</summary>
+              <details className="rounded-xl border border-emerald-400/25 bg-emerald-500/[0.05] px-3 py-2">
+              <summary className="cursor-pointer text-sm font-semibold text-emerald-200 hover:text-emerald-100">+ 이 폴더에 새 이미지 등록</summary>
               <form onSubmit={submitFolderUpload} aria-label="이 폴더에 새 이미지 등록" className="mt-2 space-y-2">
                 <p className="text-sm font-semibold text-slate-100">이 폴더에 새 이미지 등록</p>
                 <p className="text-xs text-slate-400">
@@ -1312,8 +1292,8 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 </button>
               </form>
               </details>
-              <details className="border-t border-white/10 pt-3">
-              <summary className="cursor-pointer text-sm font-medium text-slate-300 hover:text-slate-100">이미 등록된 이미지 넣기</summary>
+              <details className="rounded-xl border border-white/10 bg-slate-900/40 px-3 py-2">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-200 hover:text-slate-100">+ 이미 등록된 이미지 넣기</summary>
               <form onSubmit={searchFolderLinkCandidates} aria-label="폴더에 추가할 이미지 검색" className="mt-2 space-y-2">
                 <p className="text-sm font-semibold text-slate-100">이미 등록된 이미지 넣기</p>
                 <p className="text-xs text-slate-400">이미지 보관함에 이미 등록된 같은 유형의 이미지를 검색해서 이 폴더에 추가할 수 있습니다.</p>
@@ -1356,6 +1336,141 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
                 {folderLinkResults && folderLinkResults.length === 0 && !folderLinkSearchLoading && <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>}
               </form>
               </details>
+              {(folderChildrenLoading || referenceSetPending) && <Spinner label="불러오는 중..." />}
+              {folderChildrenError && (
+                <p role="alert" data-testid="folder-children-error" data-error-code={folderChildrenError.code} className="text-sm text-rose-400">
+                  {folderChildrenError.message}
+                </p>
+              )}
+              {folderChildren && folderChildren.length === 0 && !folderChildrenLoading && (
+                <p className="text-sm text-slate-400">아직 등록된 이미지가 없습니다. 위의 「이 폴더에 새 이미지 등록」이나 「이미 등록된 이미지 넣기」로 추가해 주세요.</p>
+              )}
+              {folderChildren && folderChildren.length > 0 && (
+                <ol aria-label="순서가 있는 참고 이미지" className="space-y-2">
+                  {folderChildren.map((child, index) => (
+                    <li key={child.assetId} className="flex gap-3 rounded-xl border border-white/10 bg-slate-900/60 p-2.5 text-sm text-slate-300">
+                      {/* 🟢 그림이 40px 였습니다 — 무엇을 고치는지 보이지 않았습니다. 이제 왼쪽에 크게 두고 오른쪽에 조작을 모읍니다. */}
+                      {child.imageAvailable && child.contentUrl ? (
+                        <ZoomThumb
+                          url={child.contentUrl}
+                          name={child.displayName}
+                          imageClassName="h-32 w-24 rounded-xl bg-slate-950 object-cover sm:h-40 sm:w-28"
+                          testId={`folder-child-zoom-${child.assetId}`}
+                          onZoom={setZoomed}
+                        />
+                      ) : (
+                        <span className="flex h-32 w-24 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-slate-950/40 type-mono text-[11px] text-slate-500 sm:h-40 sm:w-28">그림 없음</span>
+                      )}
+                      <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="min-w-0 flex-1 font-medium text-slate-100">
+                          {index + 1}. {child.displayName}
+                          {selected.asset.thumbnailAssetId === child.assetId ? " (대표 이미지)" : ""}
+                        </span>
+                        {selected.asset.assetType === "character" && (
+                          <label className="flex items-center gap-1.5 text-xs text-slate-400">
+                            역할
+                            <select
+                              className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                              value={CHARACTER_ROLE_OPTIONS.some((option) => option.value === child.role) ? child.role : "other"}
+                              disabled={folderMutationPending}
+                              onChange={(event) => void updateChildRole(child.assetId, event.target.value)}
+                            >
+                              {CHARACTER_ROLE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                        <label className="flex min-w-0 flex-1 items-center gap-1.5">
+                          <span className="w-12 shrink-0">이름</span>
+                          <input
+                            data-testid={`child-name-${child.assetId}`}
+                            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                            value={childNameDrafts[child.assetId] ?? child.displayName}
+                            disabled={folderMutationPending}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setChildNameDrafts((current) =>
+                                next === child.displayName
+                                  ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== child.assetId))
+                                  : { ...current, [child.assetId]: next },
+                              );
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") { event.preventDefault(); void saveChildName(child.assetId); }
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          data-testid={`child-name-save-${child.assetId}`}
+                          className={smallOutlineButton}
+                          disabled={folderMutationPending || !childNameDrafts[child.assetId]?.trim()}
+                          onClick={() => void saveChildName(child.assetId)}
+                        >
+                          이름 저장
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                        <label className="flex min-w-0 flex-1 items-center gap-1.5">
+                          <span className="w-12 shrink-0">개별 특징</span>
+                          <input
+                            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/60 px-2.5 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50"
+                            placeholder="이 이미지만의 특징 (예: 정면, 웃는 표정)"
+                            value={childDescriptionDrafts[child.assetId] ?? child.description}
+                            disabled={folderMutationPending}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setChildDescriptionDrafts((current) =>
+                                next === child.description
+                                  ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== child.assetId))
+                                  : { ...current, [child.assetId]: next },
+                              );
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          data-testid={`child-description-save-${child.assetId}`}
+                          className={smallOutlineButton}
+                          disabled={folderMutationPending || childDescriptionDrafts[child.assetId] === undefined}
+                          onClick={() => void saveChildDescription(child.assetId)}
+                        >
+                          특징 저장
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" className={smallOutlineButton} disabled={referenceSetPending || index === 0} onClick={() => moveCharacterReference(child.assetId, -1)}>
+                          위로
+                        </button>
+                        <button type="button" className={smallOutlineButton} disabled={referenceSetPending || index === folderChildren.length - 1} onClick={() => moveCharacterReference(child.assetId, 1)}>
+                          아래로
+                        </button>
+                        <button
+                          type="button"
+                          className={smallAddButton}
+                          disabled={referenceSetPending || selected.asset.thumbnailAssetId === child.assetId}
+                          onClick={() => void saveCharacterReferenceSet(selected.asset.childAssetIds, child.assetId)}
+                        >
+                          대표 이미지로 정하기
+                        </button>
+                        <button type="button" className={smallDangerOutlineButton} disabled={folderMutationPending} onClick={() => void unlinkAssetFromFolder(child.assetId)}>
+                          폴더에서 빼기
+                        </button>
+                      </div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {folderMutationError && (
+                <p role="alert" data-testid="folder-mutation-error" data-error-code={folderMutationError.code} className="text-sm text-rose-400">
+                  {folderMutationError.message}
+                </p>
+              )}
             </section>
           )}
 
@@ -1565,6 +1680,22 @@ export function AssetLibraryScreen({ onBack, initialQuery = "" }: Props) {
       )}
       </div>
       </div>
+
+      {lastUnlinked && selected?.asset.assetId === lastUnlinked.folderId && (
+        <div
+          role="status"
+          data-testid="folder-unlink-undo"
+          className="fixed inset-x-0 bottom-5 z-40 mx-auto flex w-fit max-w-[90vw] items-center gap-3 rounded-2xl border border-white/15 bg-slate-900 px-4 py-2.5 text-sm text-slate-200"
+        >
+          <span className="min-w-0 truncate">「{lastUnlinked.name}」을(를) 폴더에서 뺐습니다.</span>
+          <button type="button" data-testid="folder-unlink-undo-button" className={smallAddButton} disabled={folderMutationPending} onClick={() => void undoUnlink()}>
+            되돌리기
+          </button>
+          <button type="button" className="text-xs text-slate-400 hover:text-slate-200" onClick={() => setLastUnlinked(null)}>
+            닫기
+          </button>
+        </div>
+      )}
 
       {/* 🟠 The picture itself does NOT close it — a person looking closely at a picture clicks on the picture,
           and losing it on that click is the thing that makes a viewer annoying. The ground, 닫기 and Escape do. */}

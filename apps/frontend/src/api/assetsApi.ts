@@ -298,10 +298,12 @@ export async function updateCharacterFolderReferenceSet(
   const response = await request(API_ROUTES.characterFolderReferenceSet(assetId), {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody),
   }, isCharacterFolderReferenceSetResponse);
+  /* 🟠 이름은 「character」지만 서버는 모든 유형의 폴더에 이 길을 엽니다(CLI Round 1161) — 보관함의 위로·아래로·
+     대표 단추와 「폴더에서 빼기」 되돌리기가 배경 폴더에서도 씁니다. 여기서 지키는 건 **폴더와 안의 낱장 유형이
+     같은지**입니다. 예전 `assetType === "character"` 가드는 배경 폴더의 정상 응답을 「깨진 응답」으로 막았습니다. */
   if (response.folder.assetId !== assetId
     || !response.folder.isFolder
-    || response.folder.assetType !== "character"
-    || response.children.some((child) => child.parentFolderId !== assetId)) {
+    || response.children.some((child) => child.parentFolderId !== assetId || child.assetType !== response.folder.assetType)) {
     throw new AssetsApiError(MALFORMED.code, MALFORMED.message);
   }
   return response;
