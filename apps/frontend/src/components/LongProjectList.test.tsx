@@ -93,4 +93,12 @@ describe("LongProjectList", () => {
 
     expect(onCreateNew).toHaveBeenCalledTimes(1);
   });
+  /** CLI Round 1206: 빈 목록은 다음에 할 일을 말하고, 같은 일을 하는 버튼을 하나 더 만들지 않습니다. */
+  it("tells an empty list where to start without adding a second create button", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [] })));
+    render(<LongProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+    const empty = await screen.findByTestId("long-project-empty");
+    expect(empty.textContent).toContain("「새 장기 프로젝트」로 시작하세요");
+    expect(screen.getAllByRole("button", { name: /새 장기 프로젝트/ })).toHaveLength(1);
+  });
 });

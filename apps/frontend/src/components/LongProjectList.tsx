@@ -6,7 +6,7 @@ import { formatDateTime } from "../utils/formatDateTime.js";
 import { longEpisodeOutlineStatusLabel } from "../utils/longEpisodeLabels.js";
 import { Spinner } from "./Spinner.js";
 import { StatusChip, type StatusTone } from "./ui/StatusChip.js";
-import { riseIn } from "./ui/surfaces.js";
+import { primaryButton, riseIn } from "./ui/surfaces.js";
 
 /**
  * The outline's state, in the chip grammar of §2.1 — exhaustive, so a third outline status cannot be added
@@ -121,7 +121,8 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
         </div>
         <button
           type="button"
-          className="ml-auto flex items-center gap-1.5 rounded bg-bone px-4 py-2 text-[13px] font-semibold text-ground transition-colors hover:bg-[#cfc8bb]"
+          // 단기 목록의 「새 프로젝트」와 같은 레시피(§3.3: 손으로 적지 않고 surfaces 에서). 생김새는 그대로입니다.
+          className={`${primaryButton} ml-auto flex items-center gap-1.5 text-[13px]`}
           onClick={onCreateNew}
         >
           <PlusIcon />
@@ -139,7 +140,12 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
       )}
 
       {state.projects !== null && state.projects.length === 0 && (
-        <p className="mt-6 text-bone-dim">아직 생성된 장기 프로젝트가 없습니다.</p>
+        <div className="mt-6" data-testid="long-project-empty">
+          <p className="text-bone-dim">아직 생성된 장기 프로젝트가 없습니다.</p>
+          {/* CLI Round 1206: 빈 목록에서 다음에 할 일을 말합니다. 버튼을 하나 더 두지 않고 위의 버튼을 가리킵니다 — 같은 일을
+              하는 버튼 두 개는 「둘이 다른가?」를 묻게 만듭니다. */}
+          <p className="mt-1 text-sm text-slate-500">오른쪽 위 「새 장기 프로젝트」로 시작하세요. 회차 여러 개를 하나의 세계관 아래 이어 만드는 곳입니다.</p>
+        </div>
       )}
       {state.projects !== null && state.projects.length > 0 && (
         <ul className="mt-6 space-y-3">
@@ -147,11 +153,11 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
             <li key={project.id}>
               <button
                 type="button"
-                className={`flex w-full items-center gap-4 rounded-lg border border-line bg-ground-raised p-3 text-left text-bone transition-colors duration-150 hover:border-bone-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bone-faint ${riseIn}`}
+                className={`flex w-full items-center gap-4 rounded-2xl border border-line bg-ground-raised p-3 text-left text-bone transition-colors duration-150 hover:border-bone-faint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bone-faint ${riseIn}`}
                 style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
                 onClick={() => onOpenProject(project.id)}
               >
-                <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-ground-edge">
+                <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-xl bg-ground-edge">
                   <LongProjectThumbnail />
                 </span>
                 <span className="min-w-0 flex-1">

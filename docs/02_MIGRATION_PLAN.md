@@ -4573,3 +4573,8 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 - 장편 에피소드 대본을 생성하는 기존 OpenAI Story 호출에 `continuity_draft`를 포함한다. 요약·사건·인물 변화·다음 행동을 같은 JSON 응답에서 검증해 회차 `project.json`에 저장한다. 추가 Provider 호출은 없다. 단기 대본 schema와 응답은 바꾸지 않았다. 로컬 대체 생성은 임의의 초안을 만들지 않고 기존 개요 채우기로 남는다.
 - 이어쓰기 화면은 저장된 memory를 우선하고, 없으면 초안을 표시하며, 초안도 없을 때 기존 개요를 사용한다. 초안이 대본 기준이라 실제 완성 영상과 다를 수 있음을 안내하고 사용자가 고쳐 저장하도록 했다. 응답 가드와 초안·memory 우선순위·개요 대체 경로를 양쪽 화면 테스트로 검증했다.
 - 전체 검증 통과: backend 2019 pass/1 skip, frontend 1953 pass, shared 128 pass, desktop 38 pass. 전체 타입검사·빌드·`git diff --check` 통과. 검증 중 기존 장편 OpenAI 테스트 fixture가 새 초안 필드를 빠뜨려 실패해 fixture를 계약에 맞췄고 전체 재검증했다. Provider 호출은 전부 mock이었으며 실제 유료 호출 0회. 프론트 기존 obsolete snapshot 1개, 폰트 경로·번들 크기 빌드 경고는 남아 있다.
+
+## 2026-10-06 — 장편 프로젝트 목록 사용성 점검
+
+- 실제 목록 조작은 별개의 한 가지 새 프로젝트 CTA와 프로젝트 전체 행 열기뿐이라 중복 동작은 제거하지 않았다. 단기 목록과 달리 손으로 적은 새 프로젝트 버튼 클래스를 공유 `primaryButton` 레시피로 통일했고, 행·썸네일 반경을 디자인 시스템에 맞췄다. 빈 목록에는 이미 있는 생성 버튼 위치와 장편 프로젝트의 목적을 안내하며, 두 번째 CTA는 추가하지 않았다.
+- 빈 목록 안내·버튼 수 테스트를 더했다. Cowork가 localhost의 실제 목록(프로젝트 2개)을 확인했고, 수정 뒤 같은 화면에 오류가 없는 것을 확인했다. 전체 검증 통과: backend 2019 pass/1 skip, frontend 1954 pass, shared 128 pass, desktop 38 pass. 전체 타입검사·빌드·`git diff --check` 통과, 변경 코드 2개 SHA-256 검증 전후 동일. 유료 Provider 호출 0회. UI 점검은 다음 화면으로 계속한다.
