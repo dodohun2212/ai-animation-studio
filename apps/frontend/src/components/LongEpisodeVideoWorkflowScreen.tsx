@@ -608,6 +608,15 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
           </ul>
         </section>
       )}
+      {/* CLI Round 1211: the next step once every scene is approved sat beneath the whole review list, four
+          screens down, while the paid 「모든 장면 다시 만들기」 stayed near the top. Placed above the review so
+          the one free next action is the first thing seen; the review below stays for anyone who wants it. */}
+      {job?.episode.status === "videos_approved" && (
+        <div data-testid="episode-videos-approved" className="space-y-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/5 p-5">
+          <p className="text-sm text-emerald-400">{job.sceneNumbers.length}개 장면 영상이 모두 승인되었습니다. 다음은 최종 에피소드 영상을 이어 붙이는 단계입니다.</p>
+          <button type="button" data-testid="open-episode-video-merge" className={primaryButton} onClick={() => onOpenMerge(projectId, episodeNumber)}>최종 에피소드 영상 만들기</button>
+        </div>
+      )}
       {/* Said from the Episode's own status, which the progress response carries — never inferred from the
           refusal that got us here. "완료" is a finished work, not a problem, and the previous screen said the
           opposite in red. */}
@@ -789,12 +798,6 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
           ))}
           </div>
         </section>
-      )}
-      {job?.episode.status === "videos_approved" && (
-        <div data-testid="episode-videos-approved" className="space-y-2 rounded-lg border border-emerald-400/30 bg-emerald-500/5 p-5">
-          <p className="text-sm text-emerald-400">{job.sceneNumbers.length}개 에피소드 영상이 모두 승인되었습니다.</p>
-          <button type="button" data-testid="open-episode-video-merge" className={primaryButton} onClick={() => onOpenMerge(projectId, episodeNumber)}>최종 에피소드 영상 만들기</button>
-        </div>
       )}
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}
       {/* Named beneath the refusal, never instead of it: the server's sentence is still the reason, this is

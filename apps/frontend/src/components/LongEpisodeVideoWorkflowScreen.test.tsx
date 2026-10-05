@@ -1058,4 +1058,24 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(await screen.findByTestId("episode-video-regenerate-instruction-2")).toBeTruthy();
     expect(screen.queryByTestId("episode-video-regenerate-all-confirm")).toBeNull();
   });
+
+  // CLI Round 1211: once every scene is approved, the free next step comes before the review list rather than
+  // after it, so it is not four screens beneath the paid 「모든 장면 다시 만들기」.
+  it("puts the final-video step above the review list once every scene is approved", async () => {
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "approved", updatedAt: "2026-08-23T00:00:00.000Z" }));
+    const onOpenMerge = vi.fn();
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": { ...progress("succeeded", [1, 2, 3, 4, 5, 6]), episode: episode("videos_approved") },
+      "GET /videos/generations/job/review": { episode: episode("videos_approved"), reviews: review, staleness: { videoStale: [] } },
+      ...sceneVersionRoutes(),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={onOpenMerge} />);
+
+    const reviewSection = await screen.findByTestId("episode-video-review");
+    const next = screen.getByTestId("open-episode-video-merge");
+    expect(next.compareDocumentPosition(reviewSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(next);
+    expect(onOpenMerge).toHaveBeenCalledWith("long", 1);
+  });
 });
