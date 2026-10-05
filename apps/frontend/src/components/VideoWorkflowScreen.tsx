@@ -511,14 +511,14 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       (~930px) of "완료" between the status line and the review the person came to do. The grid
                       keeps its number and status chip; the picture stays wherever the review list is not shown. */}
                   {reviewState.status !== "ready" && (
-                  <img
-                    src={sceneImageContentUrl(projectId, number)}
-                    alt=""
-                    aria-hidden="true"
-                    className={`${imageBoxAspectClass(progress.aspectRatio)} w-full rounded-xl border border-white/10 bg-slate-800 object-cover ${
-                      status === "pending" ? "opacity-40" : ""
-                    }`}
-                  />
+                    <img
+                      src={sceneImageContentUrl(projectId, number)}
+                      alt=""
+                      aria-hidden="true"
+                      className={`${imageBoxAspectClass(progress.aspectRatio)} w-full rounded-xl border border-white/10 bg-slate-800 object-cover ${
+                        status === "pending" ? "opacity-40" : ""
+                      }`}
+                    />
                   )}
                 </li>
               );
