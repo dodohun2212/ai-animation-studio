@@ -814,3 +814,25 @@ describe("VideoPromptPreviewScreen — dialogue", () => {
     expect(error.textContent).not.toContain("server raw message");
   });
 });
+
+// CLI Round 1219: a disabled approval button says, next to itself, which scene is holding it.
+describe("VideoPromptPreviewScreen blocked approval reason", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("names the emptied scene beside the disabled approval button, and drops the line once it is filled again", async () => {
+    renderScreen(vi.fn().mockResolvedValueOnce(jsonResponse(200, makePreviewResponse())));
+    await screen.findByTestId("preview-list");
+    expect(screen.queryByTestId("open-confirm-blocked-reason")).toBeNull();
+
+    const textarea = screen.getByLabelText("Runway 프롬프트", { selector: "#prompt-2" }) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "   " } });
+    expect(screen.getByTestId("open-confirm-button")).toBeDisabled();
+    expect(screen.getByTestId("open-confirm-blocked-reason").textContent).toContain("장면 2의 프롬프트가 비어 있습니다");
+
+    fireEvent.change(textarea, { target: { value: "Scene 2 again" } });
+    expect(screen.queryByTestId("open-confirm-blocked-reason")).toBeNull();
+    expect(screen.getByTestId("open-confirm-button")).not.toBeDisabled();
+  });
+});

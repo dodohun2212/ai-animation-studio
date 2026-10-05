@@ -156,6 +156,13 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
     const text = promptFor(preview);
     return !text.trim() || utf16Length(text) > PROMPT_UTF16_LIMIT;
   });
+  /* CLI Round 1219: an emptied prompt disabled 「이 프롬프트로 전송 승인」 with nothing on screen saying why — only an
+     over-long one had its own red line, possibly several scenes up the page. The scenes are named next to the
+     button that is waiting on them. */
+  const emptyPromptScenes = previews.filter((preview) => !promptFor(preview).trim()).map((preview) => preview.sceneNumber);
+  const overLimitPromptScenes = previews
+    .filter((preview) => utf16Length(promptFor(preview)) > PROMPT_UTF16_LIMIT)
+    .map((preview) => preview.sceneNumber);
 
   /** Opens the second, explicit confirmation step. Never calls the network — only the final confirm step's button does. */
   function openConfirmation(): void {
@@ -501,6 +508,13 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                 </button>
               )}
             </div>
+          )}
+          {!submitted && hasBlockingPromptError && (
+            <p data-testid="open-confirm-blocked-reason" className="text-xs text-rose-400">
+              {emptyPromptScenes.length > 0 && `장면 ${emptyPromptScenes.join(", ")}의 프롬프트가 비어 있습니다. `}
+              {overLimitPromptScenes.length > 0 && `장면 ${overLimitPromptScenes.join(", ")}의 프롬프트가 ${PROMPT_UTF16_LIMIT}자를 넘습니다. `}
+              고친 뒤에 전송 승인을 누를 수 있습니다.
+            </p>
           )}
 
           {confirmOpen && (
