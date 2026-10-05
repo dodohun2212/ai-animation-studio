@@ -423,14 +423,28 @@ export function LongProjectDetail({
                     data-selected={selected ? "true" : "false"}
                     className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 ${selected ? "border-violet-400/40 bg-violet-500/10" : "border-white/10 bg-slate-950/40"}`}
                   >
-                    <button
-                      type="button"
-                      className="text-left font-medium text-slate-100"
-                      onClick={() => setSelectedEpisodeNumber(episode.episodeNumber)}
-                      aria-pressed={selected}
-                    >
-                      {episode.episodeNumber}. {episode.title}
-                    </button>
+                    {/*
+                      CLI Round 1208 · 실화면 점검: 회차 제목은 굵은 글씨의 버튼이라 「누르면 그 회차가 열린다」로 읽히는데,
+                      실제로는 복제·보관 대상을 고르는 선택일 뿐입니다. 타임라인을 고칠 수 없는 프로젝트(대본·미디어 작업이
+                      시작된 뒤 — 실제 작업 중인 프로젝트는 거의 다)에서는 그 선택이 아무 데도 쓰이지 않아, 누르면 보라색
+                      테두리만 생기고 아무 일도 일어나지 않았습니다. 그때는 제목을 그냥 글자로 둡니다. 회차를 여는 길은 오른쪽
+                      단계 버튼 하나입니다.
+                    */}
+                    {editableTimeline ? (
+                      <button
+                        type="button"
+                        className="text-left font-medium text-slate-100"
+                        onClick={() => setSelectedEpisodeNumber(episode.episodeNumber)}
+                        aria-pressed={selected}
+                        title="복제·보관할 회차로 고르기"
+                      >
+                        {episode.episodeNumber}. {episode.title}
+                      </button>
+                    ) : (
+                      <span data-testid={`episode-title-${episode.episodeNumber}`} className="font-medium text-slate-100">
+                        {episode.episodeNumber}. {episode.title}
+                      </span>
+                    )}
                     <span className={episode.status === "outline_ready" ? "text-emerald-400" : "text-slate-400"}>{longEpisodeStatusLabel(episode.status)}</span>
                     {/* Narration is a side channel, not a step in the fixed flow — it sits next to the resume
                         link rather than replacing it, and it is only offered when the project actually uses

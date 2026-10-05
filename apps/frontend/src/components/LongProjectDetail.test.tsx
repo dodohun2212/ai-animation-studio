@@ -511,4 +511,36 @@ describe("LongProjectDetail", () => {
       expect(empty.textContent).not.toContain("보관한 적");
     });
   });
+  /**
+   * CLI Round 1208 · 실화면 점검: 타임라인을 고칠 수 없는 프로젝트에서 회차 제목은 선택 버튼이 아니라 글자입니다.
+   * 그 선택은 복제·보관에만 쓰이는데, 그 둘이 잠긴 프로젝트에서는 눌러도 아무 일이 없어 「열기」로 오해됐습니다.
+   */
+  it("shows Episode titles as plain text, not a do-nothing select button, once the timeline is locked", async () => {
+    const project = makeLongProject({
+      id: "long_test",
+      episodes: [
+        makeLongEpisodeOutline({ episodeNumber: 1, title: "재생", status: "completed" }),
+        makeLongEpisodeOutline({ episodeNumber: 2, title: "지하의 목소리", status: "outline_ready" }),
+      ],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+
+    expect((await screen.findByTestId("episode-title-1")).textContent).toContain("1. 재생");
+    expect(within(screen.getByTestId("episode-1")).queryByRole("button", { name: /1\. 재생/ })).toBeNull();
+    expect(within(screen.getByTestId("episode-2")).queryByRole("button", { name: /2\. 지하의 목소리/ })).toBeNull();
+    // 편집 버튼들은 그대로 있고(비활성), 잠긴 이유도 그대로 말합니다.
+    expect(screen.getByRole("button", { name: "에피소드 만들기" })).toBeDisabled();
+    expect(screen.getByText(/타임라인 편집은 대본 작업이나 미디어 작업을 시작하기 전에만/)).toBeTruthy();
+  });
+
+  it("keeps the title as the select button while the timeline can still be edited", async () => {
+    const project = makeLongProject({ id: "long_test", episodes: [makeLongEpisodeOutline({ episodeNumber: 1, title: "재생", status: "planned" })] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<LongProjectDetail projectId="long_test" onBack={() => {}} onOpenSettings={() => {}} onOpenOutline={() => {}} />);
+    const button = await within(await screen.findByTestId("episode-1")).findByRole("button", { name: /1\. 재생/ });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(button);
+    expect(screen.getByTestId("episode-1").getAttribute("data-selected")).toBe("true");
+  });
 });
