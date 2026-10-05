@@ -1,4 +1,4 @@
-import type { RunwayVideoRatio, AspectRatio, AudioMode, FrameFit, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, PhotoCardDurationSeconds, SceneNumber, SceneSubtitleLayout, StillMotion, UsedAudio, VideoJobStatus, VideoModel } from "./domain.js";
+import type { RunwayVideoRatio, AspectRatio, AudioMode, FrameFit, GenerationSource, LongEpisodeOutlineStatus, Project, VideoModelOption, ProjectSummary, PhotoCardDurationSeconds, SceneNumber, SceneSubtitleLayout, StillMotion, UsedAudio, VideoJobStatus, VideoModel, PhotoCardEffect } from "./domain.js";
 import { FINAL_VIDEO_RELATIVE_PATH, MAX_SCENE_COUNT, MIN_SCENE_COUNT } from "./domain.js";
 import type { Asset, AssetOwnership, AssetType } from "./asset.js";
 import type {
@@ -2519,11 +2519,12 @@ export interface MergeVideosRequest {
    * video. What is stored comes back as {@link ProjectSummary.subtitleLayout}, so merging the same card again
    * starts from the layout it already has instead of the defaults.
    *
-   * Either number may be omitted, and the omitted one keeps whatever the card is already using. Out of range is
-   * refused, never clamped (see PhotoCardSubtitleLayout). Sent for an ordinary project, it is refused too: the
+   * A field may be omitted, and the omitted value keeps whatever the card is already using. Missing `effect`
+   * defaults to `lightning` for old clients and cards. Out of range or an unknown effect is refused (see
+   * PhotoCardSubtitleLayout). Sent for an ordinary project, it is refused too: the
    * scene subtitle has no such control and silently ignoring the field would let a screen believe it had one.
    */
-  subtitleLayout?: { scale?: number; center?: number };
+  subtitleLayout?: { scale?: number; center?: number; effect?: PhotoCardEffect };
   /**
    * Ordinary projects only: where the scene subtitles go in the video this merge is about to make.
    *
@@ -2564,8 +2565,8 @@ export interface MergeVideosRequest {
 export interface PreviewStillMotionRequest {
   sceneNumber: SceneNumber;
   motion: StillMotion;
-  /** Photo card only: preview an unsaved subtitle adjustment alongside the chosen motion. */
-  subtitleLayout?: { scale?: number; center?: number };
+  /** Photo card only: preview unsaved subtitle size, position, or effect alongside the chosen motion. */
+  subtitleLayout?: { scale?: number; center?: number; effect?: PhotoCardEffect };
 }
 
 /** The local FFmpeg render result never exposes an absolute filesystem path. */

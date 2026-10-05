@@ -72,19 +72,39 @@ describe("photo card subtitles", () => {
     expect(cueY(ass, "Body")).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_CENTER.default));
   });
 
-  it("strikes the first card's text while briefly flashing the full picture", () => {
+  it("sends a deterministic warm-white bolt from the top, flashes the full picture, and dims it afterward", () => {
     const ass = card("권토중래\n다시 일어선다");
-    const effects = ass.split("\n").filter((line) => /^Dialogue: [345],/.test(line));
-    expect(effects).toHaveLength(3);
-    expect(ass).toContain(`Dialogue: 0,0:00:00.08,0:00:00.20,Quote,,0,0,0,,{\\an7\\pos(0,0)\\p1`);
+    const effects = ass.split("\n").filter((line) => /^Dialogue: [3456],/.test(line));
+    expect(effects.length).toBeGreaterThan(10);
+    expect(card("권토중래\n다시 일어선다")).toBe(ass);
+    expect(ass).toContain("Dialogue: 0,0:00:00.38,0:00:03.00,Quote,,0,0,0,,");
+    expect(ass).toContain("\\1a&H90&");
+    expect(ass).toContain(`Dialogue: 1,0:00:00.08,0:00:00.18,Quote,,0,0,0,,{\\an7\\pos(0,0)\\p1`);
     expect(ass).toContain(`m 0 0 l ${WIDTH} 0 l ${WIDTH} ${HEIGHT} l 0 ${HEIGHT}`);
     expect(effects[0]).toContain("\\clip(");
-    expect(effects[0]).toContain("\\1c&HFFFF99&");
-    expect(effects[0]).toContain("권토중래");
-    expect(effects[1]).toContain("\\blur10");
-    expect(effects[2]).toContain("\\blur1");
-    expect(effects[2]).toContain("0:00:00.28");
+    expect(ass).toContain("\\1c&HB8E6FF&");
+    expect(ass).toContain("\\1c&HE8F6FF&");
+    expect(ass).toContain("\\1c&HFFFFFF&");
+    expect(ass).not.toContain("&HFFCC66&");
+    expect(ass).not.toContain("&HFFFF99&");
+    expect(ass).toContain("\\t(0.5,\\1a&HFF&\\3a&HFF&)");
+    expect(ass).toMatch(/m \d+ -5\d l/); // the bolt originates just above the picture's top edge
     expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:05.00,Quote");
+  });
+
+  it("omits only the lightning when disabled and keeps subtitle reveal, while old layout objects default to lightning", () => {
+    const none = sceneSubtitleAss("권토중래\n첫째 줄\n둘째 줄", 5, WIDTH, HEIGHT, "photo-card", { card: { scale: 0.027, center: 0.4, effect: "none" } });
+    expect(none).not.toContain("\\p1");
+    expect(none).toContain("Dialogue: 1,0:00:00.00,0:00:05.00,Body");
+    expect(none).toContain("Dialogue: 1,0:00:01.25,0:00:05.00,Body");
+    const old = sceneSubtitleAss("한 줄", 5, WIDTH, HEIGHT, "photo-card", { card: { scale: 0.027, center: 0.4 } });
+    expect(old).toContain("Dialogue: 1,0:00:00.08,0:00:00.18,Body");
+  });
+
+  it("clamps the picture dimming recovery cue to short card durations", () => {
+    const ass = sceneSubtitleAss("한 줄", 1.2, WIDTH, HEIGHT, "photo-card");
+    expect(ass).toContain("Dialogue: 0,0:00:00.38,0:00:01.20,Body");
+    expect(ass).not.toContain("Dialogue: 0,0:00:00.38,0:00:03.00,Body");
   });
 
   it("keeps a soft halo behind a thin outlined title and its downward shadow", () => {
@@ -94,8 +114,8 @@ describe("photo card subtitles", () => {
     expect(Number(quote[13])).toBe(Math.round(size * PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO));
     expect(Number(styleRow(ass, "Body")[13])).toBe(0);
     expect(Number(quote[16])).toBe(PHOTO_CARD_SUBTITLE_OUTLINE);
-    const halo = ass.split("\n").find((line) => line.startsWith("Dialogue: 0,") && line.includes(",Quote,,") && line.includes("\\1a&HFF&"));
-    const face = ass.split("\n").find((line) => line.startsWith("Dialogue: 1,") && line.includes(",Quote,,"));
+    const halo = ass.split("\n").find((line) => line.startsWith("Dialogue: 0,") && line.includes(",Quote,,") && line.includes(`\\bord${Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO)}`));
+    const face = ass.split("\n").find((line) => line.startsWith("Dialogue: 1,") && line.includes(",Quote,,") && line.includes("\\yshad"));
     expect(halo).toContain(`\\bord${Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO)}`);
     expect(halo).toContain(`\\blur${Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO)}`);
     expect(face).toContain(`\\xshad0\\yshad${Math.round(size * PHOTO_CARD_SUBTITLE_DROP_Y_RATIO)}`);
@@ -107,7 +127,7 @@ describe("photo card subtitles", () => {
     expect(later).not.toContain("\\p1");
     expect(scene).not.toContain("\\p1");
     const oneLine = card("다시 일어선다");
-    expect(oneLine).toContain("Dialogue: 3,0:00:00.08,0:00:00.44,Body");
+    expect(oneLine).toContain("Dialogue: 3,0:00:00.08,0:00:00.90,Body");
   });
 
   it("keeps a long line off the edges of the frame even though the lines are positioned", () => {

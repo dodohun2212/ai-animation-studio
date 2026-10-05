@@ -24,7 +24,9 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 `POST /projects/:projectId/videos/merge`의 `MergeVideosRequest.stillMotions`는 카드의 모든 사진에 대한 값을 순서대로 받는다. 생략하면 마지막 성공한 병합의 선택을 유지한다. 사진 수가 다르거나 알 수 없는 값, 일반 영상 릴의 요청은 거절한다. 선택은 FFmpeg 병합과 프로젝트 저장이 성공한 뒤에만 보존한다.
 
-`POST /projects/:projectId/videos/still-motion-preview`는 `{ sceneNumber, motion, subtitleLayout? }`을 받는다. `sceneNumber`는 1부터 시작한다. `subtitleLayout`은 명언 카드에만 허용되며 저장하지 않은 자막 크기·위치도 미리 보는 값이다. 응답은 한 사진 길이의 무음 `video/mp4` 바이너리다. 최종 병합과 같은 로컬 FFmpeg 필터·글자/뉴스 띠를 사용하며 프로젝트와 완성 영상을 바꾸지 않고 유료 Provider를 호출하지 않는다. 프론트는 응답을 Blob으로 읽는다.
+`POST /projects/:projectId/videos/still-motion-preview`는 `{ sceneNumber, motion, subtitleLayout? }`을 받는다. `sceneNumber`는 1부터 시작한다. `subtitleLayout`은 명언 카드에만 허용되며 저장하지 않은 크기·위치·`effect`도 미리 보는 값이다. `effect`는 `lightning` 또는 `none`이고, 오래된 카드처럼 생략하면 `lightning`이다. 응답은 한 사진 길이의 무음 `video/mp4` 바이너리다. 최종 병합과 같은 로컬 FFmpeg 필터·글자/뉴스 띠를 사용하며 프로젝트와 완성 영상을 바꾸지 않고 유료 Provider를 호출하지 않는다. 프론트는 응답을 Blob으로 읽는다.
+
+`POST /projects/:projectId/videos/merge`의 명언 카드 `subtitleLayout`도 `effect`를 받는다. 선택은 병합이 성공한 뒤에만 크기·위치와 함께 저장되어 `ProjectSummary.subtitleLayout`으로 돌아온다. `none`은 번개만 생략하고 순차 자막 등장에는 영향을 주지 않는다.
 
 ## 뉴스 릴 게시 본문용 요약
 

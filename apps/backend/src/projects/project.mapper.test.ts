@@ -61,6 +61,14 @@ describe("toApiSummary / toApiProject", () => {
     expect(project.finalVideoGenerationSource).toBe("unknown_legacy");
   });
 
+  it("returns the stored photo card effect and defaults old cards to lightning", () => {
+    const stored = createStoredProject("quote_card", "topic", "2026-08-21T00:00:00.000Z");
+    stored.lore_context.photo_card = true;
+    expect(toApiSummary(stored).subtitleLayout?.effect ?? "lightning").toBe("lightning");
+    stored.lore_context.subtitle_effect = "none";
+    expect(toApiSummary(stored).subtitleLayout).toMatchObject({ effect: "none" });
+  });
+
   it("exposes recorded final fit and rotation only while that final is current", () => {
     const stored = createStoredProject("sample_project", "topic", "2026-08-21T00:00:00.000Z");
     stored.lore_context = { final_video_frame_fit: "fill", final_video_rotated_clockwise: true };

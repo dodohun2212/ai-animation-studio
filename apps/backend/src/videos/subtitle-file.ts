@@ -29,8 +29,15 @@ export const QUOTE_FONT_FAMILY = "Noto Serif KR";
  */
 const PHOTO_CARD_REVEAL_SHARE = 0.5;
 
-/** A single short strike on the first picture. ASS vector shapes keep this effect local and license-free. */
-const PHOTO_CARD_STRIKE = { flashStart: 0.08, flashEnd: 0.20, boltEnd: 0.28, tintEnd: 0.44 } as const;
+/** ASS-vector lightning and its picture afterglow; no external footage or assets are used. */
+const PHOTO_CARD_LIGHTNING = {
+  leaderStart: 0, leaderEnd: 0.08,
+  strokes: [[0.08, 0.18, 0], [0.24, 0.30, 0x30], [0.34, 0.38, 0x60]] as const,
+  afterglowEnd: 0.70,
+  flashAlpha: [0x50, 0x98, 0xc0] as const,
+  dimStart: 0.38, dimPeak: 0.55, dimEnd: 3.0, dimAlpha: 0x90,
+  bloomEnd: 0.90,
+} as const;
 
 /** ASS timestamp: H:MM:SS.CC (centiseconds), per the format's fixed field widths. Exported so the news reel
  * card builds its cues with the same clock rather than a second copy of this arithmetic. */
@@ -206,8 +213,8 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   const strikeSize = heading !== undefined ? headSize : bodySize;
   const strikeText = heading ?? body[0];
   const strikeStyle = heading !== undefined ? "Quote" : "Body";
-  const strike = reveal && strikeText && durationSeconds > PHOTO_CARD_STRIKE.tintEnd
-    ? photoCardStrikeCues(strikeStyle, strikeText, centerX, strikeY, strikeSize, width, height)
+  const strike = reveal && strikeText && (card.effect ?? "lightning") === "lightning" && durationSeconds > PHOTO_CARD_LIGHTNING.afterglowEnd
+    ? photoCardLightningCues(strikeStyle, strikeText, centerX, strikeY, strikeSize, width, height, durationSeconds)
     : [];
   return [
     "[Script Info]",
@@ -233,33 +240,120 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   ].join("\n");
 }
 
-/** The photo, glyphs and bolt share one clock. Later pictures already show the settled card. */
-function photoCardStrikeCues(style: "Quote" | "Body", content: string, x: number, y: number, size: number, width: number, height: number): string[] {
-  const { flashStart, flashEnd, boltEnd, tintEnd } = PHOTO_CARD_STRIKE;
+type Point = [number, number];
+
+/** A seeded stream makes a caption's bolt identical in the local preview and in every render. */
+function seededRandom(seedText: string): () => number {
+  let state = 2166136261;
+  for (const ch of seedText) state = Math.imul(state ^ ch.codePointAt(0)!, 16777619);
+  return () => {
+    state = Math.imul(state ^ (state >>> 15), 2246822507) ^ Math.imul(state ^ (state >>> 13), 3266489909);
+    state ^= state >>> 16;
+    return (state >>> 0) / 4294967296;
+  };
+}
+
+/** Midpoint displacement produces the jagged, branching channel seen in a natural cloud-to-ground bolt. */
+function jagged(a: Point, b: Point, depth: number, roughness: number, random: () => number): Point[] {
+  if (depth === 0) return [a, b];
+  const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const nx = -(b[1] - a[1]) / (length || 1);
+  const ny = (b[0] - a[0]) / (length || 1);
+  const offset = (random() * 2 - 1) * roughness * length;
+  const mid: Point = [(a[0] + b[0]) / 2 + nx * offset, (a[1] + b[1]) / 2 + ny * offset];
+  return [...jagged(a, mid, depth - 1, roughness, random), ...jagged(mid, b, depth - 1, roughness, random).slice(1)];
+}
+
+/** One filled polyline ribbon, widened along its vertex normals and tapered toward the end. */
+function ribbon(points: Point[], startWidth: number, endWidth: number): string {
+  const left: Point[] = [];
+  const right: Point[] = [];
+  points.forEach((point, index) => {
+    const before = points[Math.max(0, index - 1)]!;
+    const after = points[Math.min(points.length - 1, index + 1)]!;
+    const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
+    const nx = -(after[1] - before[1]) / length;
+    const ny = (after[0] - before[0]) / length;
+    const width = (startWidth + (endWidth - startWidth) * index / (points.length - 1)) / 2;
+    left.push([point[0] + nx * width, point[1] + ny * width]);
+    right.push([point[0] - nx * width, point[1] - ny * width]);
+  });
+  const vertices = [...left, ...right.reverse()].map(([px, py]) => `${Math.round(px)} ${Math.round(py)}`);
+  return `m ${vertices[0]} l ${vertices.slice(1).join(" ")}`;
+}
+
+function lightningShape(seed: string, x: number, y: number, size: number, width: number, height: number) {
+  const random = seededRandom(seed);
+  const top: Point = [x + (random() - 0.5) * width * 0.5, -height * 0.03];
+  const hit: Point = [x + (random() - 0.5) * size * 0.6, y - size * 0.55];
+  const main = jagged(top, hit, 7, 0.22, random);
+  const branches: Point[][] = [];
+  const count = 5 + Math.floor(random() * 3);
+  for (let index = 0; index < count; index++) {
+    const originIndex = Math.floor(main.length * (0.12 + 0.68 * random()));
+    const origin = main[originIndex]!;
+    const next = main[Math.min(main.length - 1, originIndex + 6)]!;
+    const angle = Math.atan2(next[1] - origin[1], next[0] - origin[0]) + (random() < 0.5 ? -1 : 1) * (0.35 + random() * 0.5);
+    const length = Math.hypot(hit[0] - top[0], hit[1] - top[1]) * (0.14 + random() * 0.26) * (1 - originIndex / main.length * 0.5);
+    const end: Point = [origin[0] + Math.cos(angle) * length, origin[1] + Math.sin(angle) * length];
+    const branch = jagged(origin, end, 5, 0.25, random);
+    branches.push(branch);
+    if (random() < 0.5) {
+      const pointIndex = Math.floor(branch.length * (0.3 + random() * 0.4));
+      const point = branch[pointIndex]!;
+      const twigAngle = angle + (random() < 0.5 ? -1 : 1) * (0.4 + random() * 0.4);
+      branches.push(jagged(point, [point[0] + Math.cos(twigAngle) * length * 0.4, point[1] + Math.sin(twigAngle) * length * 0.4], 4, 0.25, random));
+    }
+  }
+  return { main, branches };
+}
+
+/** The first picture's strike, flash and dim recovery. Later pictures already show the settled card. */
+function photoCardLightningCues(style: "Quote" | "Body", content: string, x: number, y: number, size: number, width: number, height: number, durationSeconds: number): string[] {
+  const light = PHOTO_CARD_LIGHTNING;
   const event = (layer: number, start: number, end: number, overrides: string, drawing: string) =>
     `Dialogue: ${layer},${timestamp(start)},${timestamp(end)},${style},,0,0,0,,{${overrides}}${drawing}`;
-  const polygon = (points: [number, number][], halfWidth: number) => {
-    const left = points.map(([px, py]) => [Math.round(px - halfWidth), Math.round(py)]);
-    const right = [...points].reverse().map(([px, py]) => [Math.round(px + halfWidth), Math.round(py)]);
-    return `m ${left[0]!.join(" ")} ${[...left.slice(1), ...right].map((point) => `l ${point.join(" ")}`).join(" ")}`;
-  };
-  const startY = Math.max(0, y - size * 3.8);
-  const path: [number, number][] = [
-    [x + size * 1.15, startY], [x + size * 0.5, y - size * 2.35],
-    [x + size * 0.85, y - size * 1.8], [x + size * 0.12, y - size * 0.7], [x, y],
-  ];
-  const branch: [number, number][] = [path[2]!, [x + size * 1.45, y - size * 1.25], [x + size * 1.15, y - size * 0.7]];
-  const glow = `${polygon(path, Math.max(4, size * 0.16))} ${polygon(branch, Math.max(2, size * 0.09))}`;
-  const core = `${polygon(path, Math.max(2, size * 0.045))} ${polygon(branch, Math.max(1, size * 0.025))}`;
-  const clipHalfWidth = Math.round(size * 0.75);
-  const clip = `\\clip(${x - clipHalfWidth},${Math.round(y - size)},${x + clipHalfWidth},${Math.round(y + size)})`;
-  return [
-    // Layer 0 covers the full picture while the existing caption remains legible above it.
-    event(0, flashStart, flashEnd, "\\an7\\pos(0,0)\\p1\\bord0\\shad0\\1c&HFFFFFF&\\1a&H78&", `m 0 0 l ${width} 0 l ${width} ${height} l 0 ${height}`),
-    event(3, flashStart, tintEnd, `\\an5\\pos(${x},${y})${clip}\\1c&HFFFF99&\\bord0\\shad0`, escapeDialogueText(content)),
-    event(4, flashStart, boltEnd, "\\an7\\pos(0,0)\\p1\\bord0\\shad0\\blur10\\1c&HFFCC66&\\1a&H55&", glow),
-    event(5, flashStart, boltEnd, "\\an7\\pos(0,0)\\p1\\bord0\\shad0\\blur1\\1c&HFFFFFF&", core),
-  ];
+  const draw = "\\an7\\pos(0,0)\\p1\\bord0\\shad0";
+  const frame = `m 0 0 l ${width} 0 l ${width} ${height} l 0 ${height}`;
+  const { main, branches } = lightningShape(content, x, y, size, width, height);
+  const coreWidth = Math.max(2, size * 0.09);
+  const mainCore = ribbon(main, coreWidth * 0.7, coreWidth * 1.2);
+  const branchCore = branches.map((branch) => ribbon(branch, coreWidth * 0.6, 0.5)).join(" ");
+  const out: string[] = [];
+
+  // A lower layer darkens the whole still, then eases back to its original brightness.
+  const dimEnd = Math.min(light.dimEnd, durationSeconds);
+  if (dimEnd > light.dimStart) {
+    const peak = Math.min(light.dimPeak, dimEnd);
+    const peakMs = Math.round((peak - light.dimStart) * 1000);
+    const endMs = Math.round((dimEnd - light.dimStart) * 1000);
+    out.push(event(0, light.dimStart, dimEnd,
+      `${draw}\\1c&H000000&\\1a&HFF&\\t(0,${peakMs},\\1a&H${light.dimAlpha.toString(16).toUpperCase()}&)${endMs > peakMs ? `\\t(${peakMs},${endMs},0.6,\\1a&HFF&)` : ""}`,
+      frame));
+  }
+
+  // Faint stepped leader growing down from the top edge.
+  out.push(event(4, light.leaderStart, light.leaderEnd,
+    `${draw}\\blur1\\1c&HFFFFFF&\\1a&HB0&\\clip(0,0,${width},0)\\t(\\clip(0,0,${width},${Math.round(y)}))`,
+    `${mainCore} ${branchCore}`));
+
+  light.strokes.forEach(([start, end, alpha], index) => {
+    const strokeAlpha = (value: number) => `&H${Math.min(255, value + alpha).toString(16).padStart(2, "0").toUpperCase()}&`;
+    const shape = index === 0 ? `${mainCore} ${branchCore}` : mainCore;
+    out.push(event(1, start, end, `${draw}\\1c&HFFFFFF&\\1a&H${light.flashAlpha[index]!.toString(16).toUpperCase()}&`, frame));
+    out.push(event(4, start, end, `${draw}\\blur${Math.round(size * 0.6)}\\1c&HB8E6FF&\\1a${strokeAlpha(0x50)}`, shape));
+    out.push(event(5, start, end, `${draw}\\blur${Math.round(size * 0.12)}\\1c&HE8F6FF&\\1a${strokeAlpha(0x20)}`, shape));
+    out.push(event(6, start, end, `${draw}\\blur1\\1c&HFFFFFF&\\1a${strokeAlpha(0)}`, shape));
+  });
+
+  const lastStrokeEnd = light.strokes.at(-1)![1];
+  out.push(event(5, lastStrokeEnd, light.afterglowEnd,
+    `${draw}\\blur${Math.round(size * 0.1)}\\1c&HD0EEFF&\\1a&H60&\\t(\\1a&HFF&)`, mainCore));
+  // A white hit briefly blooms over the glyphs, then reveals their original sampled colours again.
+  out.push(event(3, light.strokes[0]![0], light.bloomEnd,
+    `\\an5\\pos(${x},${y})\\1c&HFFFFFF&\\3c&HB8E6FF&\\bord${Math.round(size * 0.06)}\\blur${Math.round(size * 0.25)}\\shad0\\1a&H00&\\3a&H40&\\t(0.5,\\1a&HFF&\\3a&HFF&)`,
+    escapeDialogueText(content)));
+  return out;
 }
 
 /**

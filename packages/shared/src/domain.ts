@@ -897,6 +897,17 @@ export interface PhotoCardSubtitleLayout {
   scale: number;
   /** Vertical centre of the whole text block as a fraction of frame height. */
   center: number;
+  /** First-picture entrance effect. Missing on older cards means the original default: lightning. */
+  effect?: PhotoCardEffect;
+}
+
+export const PHOTO_CARD_EFFECTS = ["lightning", "none"] as const;
+export type PhotoCardEffect = (typeof PHOTO_CARD_EFFECTS)[number];
+/** Missing effect values are interpreted as lightning, preserving old stored cards and current clients. */
+export const DEFAULT_PHOTO_CARD_EFFECT: PhotoCardEffect = "lightning";
+
+export function isPhotoCardEffect(value: unknown): value is PhotoCardEffect {
+  return typeof value === "string" && (PHOTO_CARD_EFFECTS as readonly string[]).includes(value);
 }
 
 /** Body size: 0.027 of frame height is 52px at 1920. The range is "readable at a glance" to "a third of the frame", both ends tried on real cards. */
@@ -922,7 +933,8 @@ export function isPhotoCardSubtitleLayout(value: unknown): value is PhotoCardSub
   if (typeof value !== "object" || value === null) return false;
   const { scale, center } = value as { scale?: unknown; center?: unknown };
   return typeof scale === "number" && Number.isFinite(scale) && scale >= PHOTO_CARD_SUBTITLE_SCALE.min && scale <= PHOTO_CARD_SUBTITLE_SCALE.max
-    && typeof center === "number" && Number.isFinite(center) && center >= PHOTO_CARD_SUBTITLE_CENTER.min && center <= PHOTO_CARD_SUBTITLE_CENTER.max;
+    && typeof center === "number" && Number.isFinite(center) && center >= PHOTO_CARD_SUBTITLE_CENTER.min && center <= PHOTO_CARD_SUBTITLE_CENTER.max
+    && ((value as { effect?: unknown }).effect === undefined || isPhotoCardEffect((value as { effect?: unknown }).effect));
 }
 
 /**

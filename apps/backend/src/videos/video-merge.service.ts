@@ -115,10 +115,11 @@ function resolveSubtitleLayout(project: StoredProject, request: unknown): PhotoC
   if (!isObject(request) || request.subtitleLayout === undefined) return stored;
   if (!photoCardFor(project)) throw videoMergeInvalidRequest("subtitleLayout applies to photo cards only.");
   const asked = request.subtitleLayout;
-  if (!isObject(asked) || Object.keys(asked).some((key) => !["scale", "center"].includes(key))) throw videoMergeInvalidRequest();
+  if (!isObject(asked) || Object.keys(asked).some((key) => !["scale", "center", "effect"].includes(key))) throw videoMergeInvalidRequest();
   const merged = {
     scale: asked.scale === undefined ? stored.scale : asked.scale,
     center: asked.center === undefined ? stored.center : asked.center,
+    ...((asked.effect ?? stored.effect) === undefined ? {} : { effect: asked.effect ?? stored.effect }),
   };
   if (!isPhotoCardSubtitleLayout(merged)) {
     throw videoMergeInvalidRequest(`subtitleLayout.scale must be ${PHOTO_CARD_SUBTITLE_SCALE.min}-${PHOTO_CARD_SUBTITLE_SCALE.max} and subtitleLayout.center ${PHOTO_CARD_SUBTITLE_CENTER.min}-${PHOTO_CARD_SUBTITLE_CENTER.max}.`);
@@ -641,7 +642,14 @@ export class LocalVideoMergeService {
       // Written only here, after the render that used it: a layout the person tried and abandoned never comes
       // back to change a later video, and a card merged again starts from what it actually looks like.
       const baseLoreContext = photoCardFor(rendering)
-        ? { ...rendering.lore_context, subtitle_scale: subtitleLayout.scale, subtitle_center: subtitleLayout.center }
+        ? {
+          ...rendering.lore_context,
+          subtitle_scale: subtitleLayout.scale,
+          subtitle_center: subtitleLayout.center,
+          ...(subtitleLayout.effect !== undefined || rendering.lore_context.subtitle_effect !== undefined
+            ? { subtitle_effect: subtitleLayout.effect ?? "lightning" }
+            : {}),
+        }
         : { ...rendering.lore_context, scene_subtitle_scale: sceneSubtitleLayout.scale, scene_subtitle_center: sceneSubtitleLayout.center };
       const loreContext = pictureCardFor(rendering) ? { ...baseLoreContext, still_motions: [...stillMotions] } : {
         ...baseLoreContext, final_video_frame_fit: frameFit, final_video_rotated_clockwise: rotateClockwise,

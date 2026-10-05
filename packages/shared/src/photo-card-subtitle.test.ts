@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
+  DEFAULT_PHOTO_CARD_EFFECT,
   isPhotoCardSubtitleLayout,
+  isPhotoCardEffect,
+  PHOTO_CARD_EFFECTS,
   PHOTO_CARD_SUBTITLE_CENTER,
   PHOTO_CARD_SUBTITLE_SCALE,
   photoCardSubtitleGeometry,
@@ -66,6 +69,7 @@ describe("photo card subtitle bounds", () => {
   // disagree about what is allowed.
   it("accepts the defaults and both ends of each range", () => {
     expect(isPhotoCardSubtitleLayout(DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT)).toBe(true);
+    expect(DEFAULT_PHOTO_CARD_EFFECT).toBe("lightning");
     expect(isPhotoCardSubtitleLayout({ scale: PHOTO_CARD_SUBTITLE_SCALE.min, center: PHOTO_CARD_SUBTITLE_CENTER.min })).toBe(true);
     expect(isPhotoCardSubtitleLayout({ scale: PHOTO_CARD_SUBTITLE_SCALE.max, center: PHOTO_CARD_SUBTITLE_CENTER.max })).toBe(true);
   });
@@ -77,5 +81,13 @@ describe("photo card subtitle bounds", () => {
     expect(isPhotoCardSubtitleLayout({ scale: "0.03", center: 0.4 })).toBe(false);
     expect(isPhotoCardSubtitleLayout(null)).toBe(false);
     expect(isPhotoCardSubtitleLayout({ scale: 0.027 })).toBe(false);
+    expect(isPhotoCardSubtitleLayout({ scale: 0.027, center: 0.4, effect: "sparkles" })).toBe(false);
+  });
+
+  it("publishes the supported photo card effects", () => {
+    expect(PHOTO_CARD_EFFECTS).toEqual(["lightning", "none"]);
+    expect(isPhotoCardEffect("lightning")).toBe(true);
+    expect(isPhotoCardEffect("none")).toBe(true);
+    expect(isPhotoCardEffect("sparkles")).toBe(false);
   });
 });

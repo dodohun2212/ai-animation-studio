@@ -1216,6 +1216,30 @@ describe("a photo card's subtitle colours, for the preview", () => {
     expect(await projects.findById("video_merge")).toMatchObject({ workflow_state: WorkflowState.VideosApproved, final_video_path: null });
   });
 
+  it("accepts a photo card effect for merge and local preview, persists successful choices, and rejects unknown choices", async () => {
+    const { projectsRoot, projects } = await card(1);
+    const calls: string[][] = [];
+    const ass = new Map<string, string>();
+    const service = new LocalVideoMergeService(projects, projectsRoot, sampling(calls, ass));
+
+    await expect(service.merge("video_merge", { subtitleLayout: { effect: "none" } })).resolves.toMatchObject({
+      project: { subtitleLayout: { effect: "none" } },
+    });
+    expect((await projects.findById("video_merge")).lore_context.subtitle_effect).toBe("none");
+    expect(ass.get("scene1.ass")).not.toContain("\\p1");
+
+    const previewAss = new Map<string, string>();
+    const previewService = new LocalVideoMergeService(projects, projectsRoot, sampling([], previewAss));
+    await previewService.previewStillMotion("video_merge", { sceneNumber: 1, motion: "still", subtitleLayout: { effect: "lightning" } });
+    expect(previewAss.get("scene1.ass")).toContain("Dialogue: 1,0:00:00.08,0:00:00.18,Quote");
+    expect((await projects.findById("video_merge")).lore_context.subtitle_effect).toBe("none");
+
+    const beforeCalls = calls.length;
+    await expect(service.merge("video_merge", { subtitleLayout: { effect: "sparkles" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect(calls).toHaveLength(beforeCalls);
+    expect((await projects.findById("video_merge")).lore_context.subtitle_effect).toBe("none");
+  });
+
   it("previews a news reel's selected picture with that picture's caption and fixed bands", async () => {
     const { projectsRoot, projects } = await card(2);
     const project = await projects.findById("video_merge");

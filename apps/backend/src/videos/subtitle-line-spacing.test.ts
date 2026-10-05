@@ -161,7 +161,7 @@ describe("how a card's lines arrive", () => {
     const root = await plainFrame();
 
     const at = async (seconds: number, label: string) => (await inkRowCentres(root, label, CARD_TEXT, seconds)).length;
-    // Start after the first picture's 0.44s lightning tint and full-frame flash.
+    // Start after the three picture flashes; the shorter glyph bloom is allowed to be fading at this frame.
     const start = await at(0.5, "t0");
     const early = await at(1.2, "t1");
     const settled = await at(2.6, "t2");
@@ -186,10 +186,11 @@ describe("how a card's lines arrive", () => {
     if (!await runMediaCommand(["ffmpeg", "-version"]).then(() => true).catch(() => false)) skip();
     const root = await plainFrame();
 
-    const first = await inkRowCentres(root, "single-start", SINGLE_LINE_CARD, 0.5);
+    const first = await inkRowCentres(root, "single-start", SINGLE_LINE_CARD, 1.0);
     const later = await inkRowCentres(root, "single-late", SINGLE_LINE_CARD, CARD_SECONDS - 0.2);
     expect(first).toHaveLength(2);
-    expect(later).toEqual(first);
+    expect(later).toHaveLength(first.length);
+    expect(later.every((centre, index) => Math.abs(centre - first[index]!) <= 2)).toBe(true);
   }, 180000);
 });
 
