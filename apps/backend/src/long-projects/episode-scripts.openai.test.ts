@@ -23,7 +23,11 @@ function aiScene(number: number) {
   };
 }
 function aiStory(sceneCount: number) {
-  return { title: "AI Episode Script", synopsis: "AI synopsis", ending: "AI ending", scenes: Array.from({ length: sceneCount }, (_, index) => aiScene(index + 1)) };
+  return {
+    title: "AI Episode Script", synopsis: "AI synopsis", ending: "AI ending",
+    scenes: Array.from({ length: sceneCount }, (_, index) => aiScene(index + 1)),
+    continuity_draft: { episode_summary: "AI continuity draft", events: ["AI event"], character_changes: [{ name: "hero", change: "learns" }], next_actions: ["Continue"] },
+  };
 }
 function jsonResponse(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body, headers: { get: () => null } } as unknown as Response;

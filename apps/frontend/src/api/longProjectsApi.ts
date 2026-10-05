@@ -38,6 +38,7 @@ import {
   type GenerateLongEpisodeScriptResponse,
   type GetLongEpisodeContinuityReferenceResponse,
   type GetLongEpisodeContinuityResponse,
+  type LongEpisodeContinuityDraft,
   type GetLongEpisodeCurrentVideoJobResponse,
   type GetLongEpisodeImagePreviewResponse,
   type GetLongEpisodeImageProgressResponse,
@@ -712,8 +713,15 @@ function isLongEpisodeContinuityMemory(value: unknown): value is LongEpisodeCont
  * server will refuse (if absence read as true) — both are the screen and its server disagreeing, which is the
  * defect this field was added to end. A response without it is malformed and says so.
  */
+/** CLI Round 1204: the AI draft written with the script. Optional; when present, all four fields must have their shape. */
+function isLongEpisodeContinuityDraft(value: unknown): value is LongEpisodeContinuityDraft {
+  const isStringList = (list: unknown) => Array.isArray(list) && list.every((item) => typeof item === "string");
+  return isRecord(value) && typeof value.episodeSummary === "string" && isStringList(value.events)
+    && isUnknownRecordArray(value.characterChanges) && isStringList(value.nextActions);
+}
 const isGetLongEpisodeContinuityResponse = (value: unknown): value is GetLongEpisodeContinuityResponse =>
-  isRecord(value) && typeof value.canSave === "boolean" && (value.memory === null || isLongEpisodeContinuityMemory(value.memory));
+  isRecord(value) && typeof value.canSave === "boolean" && (value.memory === null || isLongEpisodeContinuityMemory(value.memory))
+  && (value.draft === undefined || isLongEpisodeContinuityDraft(value.draft));
 const isSaveLongEpisodeContinuityResponse = (value: unknown): value is SaveLongEpisodeContinuityResponse => isRecord(value)
   && isLongEpisodeContinuityMemory(value.memory) && (value.nextEpisode === null || isLongEpisodeOutline(value.nextEpisode));
 const isGetLongEpisodeContinuityReferenceResponse = (value: unknown): value is GetLongEpisodeContinuityReferenceResponse => {

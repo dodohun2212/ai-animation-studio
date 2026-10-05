@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { LongEpisodeContinuityMemory, LongEpisodeOutline, SaveLongEpisodeContinuityRequest } from "@ai-animation-studio/shared";
+import type { LongEpisodeContinuityDraft, LongEpisodeContinuityMemory, LongEpisodeOutline, SaveLongEpisodeContinuityRequest } from "@ai-animation-studio/shared";
 
 import { getLongEpisode, getLongEpisodeContinuity, saveLongEpisodeContinuity, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
@@ -66,6 +66,19 @@ function prefillFromOutline(episode: LongEpisodeOutline): Partial<FormState> {
   };
 }
 
+/**
+ * The AI draft (CLI Round 1204) into the same four carried boxes the outline prefill fills. Character changes go
+ * into the existing JSON-array box as-is — they already are an array of objects ({name, change}).
+ */
+function draftToForm(draft: LongEpisodeContinuityDraft): Partial<FormState> {
+  return {
+    episodeSummary: draft.episodeSummary.trim(),
+    events: draft.events.map((item) => item.trim()).filter(Boolean),
+    characterChanges: JSON.stringify(draft.characterChanges, null, 2),
+    nextActions: draft.nextActions.map((item) => item.trim()).filter(Boolean),
+  };
+}
+
 const toLines = (value: string[]) => value.join("\n");
 const fromLines = (value: string) => value.split("\n").map((item) => item.trim()).filter(Boolean);
 
@@ -114,19 +127,30 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
    * is the honest outcome when the screen could not learn the answer.
    */
   const [canSave, setCanSave] = useState(true);
-  /** True while the boxes still hold what this screen put there from the outline and nothing has been saved. */
-  const [prefilled, setPrefilled] = useState(false);
+  /**
+   * Where the boxes' unsaved contents came from, while they still hold exactly that: the AI draft written with this
+   * Episode's script (CLI Round 1204), the Episode's outline, or nothing. Any edit clears it — the words are the
+   * person's from then on.
+   */
+  const [prefilled, setPrefilled] = useState<"draft" | "outline" | null>(null);
   const busy = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null); setSaved(undefined);
-    setPrefilled(false);
+    setPrefilled(null);
     getLongEpisodeContinuity(projectId, episodeNumber)
       .then(async (response) => {
         if (cancelled) return;
         setCanSave(response.canSave);
         if (response.memory) { setForm(toForm(response.memory)); return; }
+        // CLI Round 1204: the script call now writes a first draft of the four carried fields. It knows the script,
+        // so it beats the outline — but it is a plan, not what the finished video showed, and the notice says so.
+        if (response.draft) {
+          setForm({ ...blankForm(), ...draftToForm(response.draft) });
+          setPrefilled("draft");
+          return;
+        }
         // Only a memo that does not exist yet gets one. The outline is a convenience, so a failure to read it
         // leaves the blank form the screen always had rather than failing the screen.
         const outline = await getLongEpisode(projectId, episodeNumber).then((one) => one.episode).catch(() => null);
@@ -134,7 +158,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
         const suggested = prefillFromOutline(outline);
         if (!suggested.episodeSummary && !suggested.events?.length && !suggested.newConflicts?.length && !suggested.nextActions?.length) return;
         setForm((current) => ({ ...current, ...suggested }));
-        setPrefilled(true);
+        setPrefilled("outline");
       })
       .catch((caught) => { if (!cancelled) setError(toLongProjectDisplayError(caught)); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -142,7 +166,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
   }, [projectId, episodeNumber]);
 
   function update(key: keyof FormState, value: string): void {
-    setPrefilled(false);
+    setPrefilled(null);
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -173,7 +197,14 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
           회차가 어떻게 끝났는지를 적는 곳이라서요. 지금은 예전에 저장한 내용을 읽어볼 수만 있습니다.
         </p>
       )}
-      {!loading && prefilled && (
+      {!loading && prefilled === "draft" && (
+        <p data-testid="continuity-draft" className="rounded-xl border border-amber-400/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+          아직 저장된 메모가 없어서 <span className="font-semibold">대본을 만들 때 AI가 함께 쓴 초안</span>으로 채워 뒀습니다 — 요약, 있었던 일, 캐릭터 변화, 다음에서 할 일.
+          대본 기준의 계획이라 <span className="font-semibold">실제 영상 내용과 다를 수 있습니다.</span> 회차 작업을 마친 뒤 실제와 맞게 검토·수정하고 저장해 주세요.
+          <span className="font-semibold"> 저장을 눌러야 저장됩니다.</span>
+        </p>
+      )}
+      {!loading && prefilled === "outline" && (
         <p data-testid="continuity-prefilled" className="rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-4 py-3 text-sm text-slate-300">
           아직 저장된 메모가 없어서 <span className="font-semibold text-slate-100">이 회차의 개요</span>로 미리 채워 뒀습니다 — 요약, 있었던 일, 다음에서 할 일, 그리고 아래 기록용 칸의 새로 생긴 갈등.
           고쳐 쓰셔도 되고, 그대로 두셔도 됩니다. <span className="font-semibold text-slate-100">저장을 눌러야 저장됩니다.</span>
@@ -193,7 +224,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
           {carriedListFields.map(([key, label]) => (
             <label key={key} className="block text-sm text-slate-300">
               {label}
-              <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => { setPrefilled(false); setForm((current) => ({ ...current, [key]: fromLines(event.target.value) })); }} />
+              <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => { setPrefilled(null); setForm((current) => ({ ...current, [key]: fromLines(event.target.value) })); }} />
             </label>
           ))}
           {/* Stored as a free-form object array with no agreed key set, so there is no honest way to turn it
@@ -229,7 +260,7 @@ export function LongEpisodeContinuityScreen({ projectId, episodeNumber, onBack, 
               {recordOnlyListFields.map(([key, label]) => (
                 <label key={key} className="block text-sm text-slate-300">
                   {label}
-                  <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => { setPrefilled(false); setForm((current) => ({ ...current, [key]: fromLines(event.target.value) })); }} />
+                  <textarea data-testid={`continuity-${key}`} className={fieldClassName} value={toLines(form[key])} disabled={pending || !canSave} placeholder="한 줄에 하나씩 입력" onChange={(event) => { setPrefilled(null); setForm((current) => ({ ...current, [key]: fromLines(event.target.value) })); }} />
                   {/* The screen these numbers could be read off no longer exists — the character and location
                       collections were removed from the Story Bible. Naming a deleted screen is worse than
                       saying nothing: a person goes looking for it, does not find it, and reads the whole field

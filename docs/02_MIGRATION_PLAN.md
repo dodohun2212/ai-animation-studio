@@ -4567,3 +4567,9 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 - 사진 카드·뉴스 릴의 한 장당 길이를 목록에서 1초 단위 숫자 입력으로 바꿨다. 허용 상한은 공유 함수 `photoCardMaxDurationSeconds(pictureCount)`가 정하고, 서버 생성·설정 저장은 정수 1초 이상이면서 총 180초 이하인지 검증한다. 0초·소수·총합 초과는 거부한다. 기존 설정 응답 가드는 초과 저장값을 화면에서 안내할 수 있도록 형식만 검사한다.
 - `docs/05_DESIGN_SYSTEM.md` §3.10을 입력 동작에 맞췄다. Cowork가 보고한 장편 생성 화면 실물 확인과 UI 체크리스트, Codex의 전체 코드 리뷰·테스트로 확인했다. 프로젝트 설정 저장, 카드 병합·게시, 유료 Provider 호출은 하지 않았다.
 - 전체 검증: backend 2016 pass/1 skip, frontend 1948 pass, shared 128 pass, desktop 38 pass. 타입검사·빌드·`git diff --check` 통과. 변경 코드 파일 17개의 SHA-256이 검증 전후 일치했다. 프론트에는 기존 obsolete snapshot 1개와 빌드의 폰트 경로·번들 크기 경고가 남아 있다.
+
+## 2026-10-06 — 장편 대본과 이어쓰기 메모 AI 초안
+
+- 장편 에피소드 대본을 생성하는 기존 OpenAI Story 호출에 `continuity_draft`를 포함한다. 요약·사건·인물 변화·다음 행동을 같은 JSON 응답에서 검증해 회차 `project.json`에 저장한다. 추가 Provider 호출은 없다. 단기 대본 schema와 응답은 바꾸지 않았다. 로컬 대체 생성은 임의의 초안을 만들지 않고 기존 개요 채우기로 남는다.
+- 이어쓰기 화면은 저장된 memory를 우선하고, 없으면 초안을 표시하며, 초안도 없을 때 기존 개요를 사용한다. 초안이 대본 기준이라 실제 완성 영상과 다를 수 있음을 안내하고 사용자가 고쳐 저장하도록 했다. 응답 가드와 초안·memory 우선순위·개요 대체 경로를 양쪽 화면 테스트로 검증했다.
+- 전체 검증 통과: backend 2019 pass/1 skip, frontend 1953 pass, shared 128 pass, desktop 38 pass. 전체 타입검사·빌드·`git diff --check` 통과. 검증 중 기존 장편 OpenAI 테스트 fixture가 새 초안 필드를 빠뜨려 실패해 fixture를 계약에 맞췄고 전체 재검증했다. Provider 호출은 전부 mock이었으며 실제 유료 호출 0회. 프론트 기존 obsolete snapshot 1개, 폰트 경로·번들 크기 빌드 경고는 남아 있다.

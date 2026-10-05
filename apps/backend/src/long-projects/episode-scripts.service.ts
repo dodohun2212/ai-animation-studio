@@ -8,7 +8,7 @@ import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
 import { errorsOf as episodeErrors, toEpisodeInstagramPost, toEpisodeUsedAudio, toEpisodePreviousInstagramPosts } from "./episode-detail.js";
-import { DEFAULT_SCENE_SUBTITLE_LAYOUT, isSceneSubtitleLayout, LONG_EPISODE_STATUSES, MAX_SCENE_COUNT, MIN_SCENE_COUNT, STORY_ESTIMATED_COST_USD, CLIP_DURATION_LIMITS, isClipDurationSeconds, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type GetLongEpisodeSettingsResponse, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse, type UpdateLongEpisodeSettingsRequest, type UpdateLongEpisodeSettingsResponse } from "@ai-animation-studio/shared";
+import { DEFAULT_SCENE_SUBTITLE_LAYOUT, isSceneSubtitleLayout, LONG_EPISODE_STATUSES, MAX_SCENE_COUNT, MIN_SCENE_COUNT, STORY_ESTIMATED_COST_USD, CLIP_DURATION_LIMITS, isClipDurationSeconds, type ApproveLongEpisodeScriptRequest, type ApproveLongEpisodeScriptResponse, type GenerateLongEpisodeScriptRequest, type GenerateLongEpisodeScriptResponse, type GetLongEpisodeResponse, type GetLongEpisodeSettingsResponse, type LongEpisodeContinuityDraft, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeScene, type LongEpisodeScript, type LongEpisodeStatus, type SceneNumber, type UpdateLongEpisodeScriptRequest, type UpdateLongEpisodeScriptResponse, type UpdateLongEpisodeSettingsRequest, type UpdateLongEpisodeSettingsResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { resolveSafeProjectDirectory } from "../projects/project-id.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
@@ -29,7 +29,7 @@ import { withoutStaleEpisodeRecoveryWarnings } from "./orphaned-episode-generati
 import { LongProjectsService } from "./long-projects.service.js";
 import { camelKeys, snakeKeys } from "./episode-script-format.js";
 
-type StoredEpisode = Record<string, unknown> & { episode_id: string; number: number; title: string; summary: string; core_event: string; conflict: string; cliffhanger: string; next_connection: string; duration_seconds: number; scene_count: number; approved: boolean; state: LongEpisodeStatus; script: Record<string, unknown>; script_history: unknown[]; script_revision: number; outline: Record<string, unknown>; updated_at: string; last_script_request_id?: string; instagram_post?: unknown; previous_instagram_posts?: unknown; used_audio?: unknown };
+type StoredEpisode = Record<string, unknown> & { episode_id: string; number: number; title: string; summary: string; core_event: string; conflict: string; cliffhanger: string; next_connection: string; duration_seconds: number; scene_count: number; approved: boolean; state: LongEpisodeStatus; script: Record<string, unknown>; script_history: unknown[]; script_revision: number; outline: Record<string, unknown>; updated_at: string; last_script_request_id?: string; instagram_post?: unknown; previous_instagram_posts?: unknown; used_audio?: unknown; continuity_draft?: unknown };
 
 const asObject = (value: unknown, error = longInvalidData): Record<string, unknown> => { if (!value || typeof value !== "object" || Array.isArray(value)) throw error(); return value as Record<string, unknown>; };
 const isObj = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -101,6 +101,23 @@ export class EpisodeScriptsService {
       return Object.fromEntries([...camelKeys.map((key, itemIndex) => [key, scene[sourceKeys[itemIndex]!]]), ...(hasNarration ? [["narration", scene.narration]] : [])]) as unknown as LongEpisodeScene;
     });
     return { title: d.title, synopsis: d.synopsis, ending: d.ending, scenes };
+  }
+  private parseContinuityDraft(value: unknown): LongEpisodeContinuityDraft {
+    const draft = asObject(value, () => longInvalidData());
+    if (Object.keys(draft).length !== 4 || typeof draft.episode_summary !== "string" || !draft.episode_summary.trim() || draft.episode_summary.length > 4000
+      || !Array.isArray(draft.events) || draft.events.length > 100 || draft.events.some((item) => typeof item !== "string" || item.length > 1000)
+      || !Array.isArray(draft.character_changes) || draft.character_changes.length > 100
+      || draft.character_changes.some((item) => !isObj(item) || Object.keys(item).length !== 2 || typeof item.name !== "string" || !item.name.trim() || item.name.length > 300 || typeof item.change !== "string" || !item.change.trim() || item.change.length > 1000)
+      || !Array.isArray(draft.next_actions) || draft.next_actions.length > 100 || draft.next_actions.some((item) => typeof item !== "string" || item.length > 1000)) throw longInvalidData();
+    return {
+      episodeSummary: draft.episode_summary,
+      events: draft.events as string[],
+      characterChanges: draft.character_changes as Array<Record<string, unknown>>,
+      nextActions: draft.next_actions as string[],
+    };
+  }
+  private storedContinuityDraft(draft: LongEpisodeContinuityDraft): Record<string, unknown> {
+    return { episode_summary: draft.episodeSummary, events: draft.events, character_changes: draft.characterChanges, next_actions: draft.nextActions };
   }
   private storedScript(script: LongEpisodeScript): Record<string, unknown> { return { title: script.title, synopsis: script.synopsis, ending: script.ending, scenes: script.scenes.map((scene) => ({ ...Object.fromEntries(snakeKeys.map((key, index) => [key, scene[camelKeys[index]!]])), ...(scene.narration !== undefined ? { narration: scene.narration } : {}) })) }; }
   private async stored(projectId: string, outline: LongEpisodeOutline): Promise<StoredEpisode> {
@@ -260,6 +277,8 @@ export class EpisodeScriptsService {
       "이번 Episode만 작성하고 다른 Episode의 상세 대본은 생성하지 마십시오.",
       "공개 금지 정보를 노출하지 마십시오.",
       `정확히 ${sceneCount}개 장면을 지정된 JSON 형식으로만 반환하십시오.`,
+      "대본과 함께 continuity_draft도 작성하십시오. episode_summary에는 이번 대본의 핵심을, events에는 일어난 주요 사건을, character_changes에는 이름과 변화(name, change)를, next_actions에는 다음 화에서 이어갈 행동을 씁니다.",
+      "continuity_draft는 대본에서 예상한 초안일 뿐 실제 영상에서 일어난 사실이 아닙니다. 영상 작업 후 사람이 검토하고 고칠 수 있도록 대본 내용에 근거해 간결하게 작성하십시오.",
       // 🔴 This list named ten fields and the schema requires eighteen (STORY_SCENE_FIELDS, with
       // additionalProperties false), so five were demanded and never explained: shot_size, camera_angle,
       // composition, lens_feel and focus_subject. A required field with no description is not omitted — it is
@@ -411,7 +430,7 @@ export class EpisodeScriptsService {
     // written knowing what happened in the Episode before it.
     const continuity = await this.continuityContext(id, number);
     const apiKey = this.providerSettings ? await this.providerSettings.rawCredentialIfConnected("openai") : null;
-    let script: LongEpisodeScript; let historyEntry: Record<string, unknown>;
+    let script: LongEpisodeScript; let continuityDraft: LongEpisodeContinuityDraft | undefined; let historyEntry: Record<string, unknown>;
     /** The money is gone and the ledger does not know — attached to the Episode that this call is about to save. */
     let spendUnrecorded = false;
     if (apiKey && this.budget) {
@@ -422,8 +441,10 @@ export class EpisodeScriptsService {
         await this.budget.preflight(STORY_ESTIMATED_COST_USD);
         let succeeded = false;
         try {
-          const result = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: stored.scene_count });
-          script = this.parseScript(result.story, stored.scene_count);
+          const result = await callOpenAiStoryApi(apiKey, prompt, { sceneCount: stored.scene_count, continuityDraft: true });
+          const { continuity_draft: generatedDraft, ...scriptResult } = result.story;
+          script = this.parseScript(scriptResult, stored.scene_count);
+          continuityDraft = this.parseContinuityDraft(generatedDraft);
           succeeded = true;
         } finally {
           // `recordSpend`, not a bare await: this is a `finally` around a paid call, so a throw here discards
@@ -436,12 +457,14 @@ export class EpisodeScriptsService {
         if (error instanceof OpenAiAdapterError) throw longEpisodeScriptProviderError(error.category, error.message);
         throw longEpisodeScriptProviderError("unknown", OPENAI_KOREAN_MESSAGES.unknown);
       }
-      historyEntry = { created_at: new Date().toISOString(), source: "openai_generation", script: this.storedScript(script!), context };
+      historyEntry = { created_at: new Date().toISOString(), source: "openai_generation", script: this.storedScript(script!), continuity_draft: this.storedContinuityDraft(continuityDraft!), context };
     } else {
       script = this.generated(outline, await this.bibleContext(id), continuity, stored.scene_count);
       historyEntry = { created_at: new Date().toISOString(), source: "local_fake_generation", script: this.storedScript(script), continuity_context: continuity };
     }
     stored.script = this.storedScript(script);
+    if (continuityDraft) stored.continuity_draft = this.storedContinuityDraft(continuityDraft);
+    else delete stored.continuity_draft;
     stored.script_history.push(historyEntry);
     stored.script_revision += 1; stored.approved = false; stored.state = "script_review"; stored.updated_at = new Date().toISOString();
     stored.last_script_request_id = userRequestId;

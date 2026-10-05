@@ -215,9 +215,8 @@ export interface LongEpisodeScene {
    * Same meaning as Scene.narration (domain.ts), scoped to Long Episodes: present regardless of
    * LongProjectSettings.narrationEnabled — only actually turned into TTS audio, or burned in as a subtitle, when
    * that flag (or subtitlesEnabled) is on. Optional because every Episode script stored before this field
-   * existed has none. Long Episode script generation is local-fake only (episode-scripts.service.ts never calls
-   * a real Provider), so this text is a template sentence for now, not AI-written — the same as every other
-   * field on this type.
+   * existed has none. New scripts include it in the strict OpenAI response when a credential is connected;
+   * otherwise the local fake fallback supplies a template sentence.
    */
   narration?: string;
 }
@@ -1201,8 +1200,17 @@ export interface LongEpisodeContinuityMemory {
   userEdits: string;
   updatedAt: string;
 }
+/** Unsaved, AI-written starting point derived from the script. It is a plan, not a record of what the finished Episode showed. */
+export interface LongEpisodeContinuityDraft {
+  episodeSummary: string;
+  events: string[];
+  characterChanges: Array<Record<string, unknown>>;
+  nextActions: string[];
+}
 export interface GetLongEpisodeContinuityResponse {
   memory: LongEpisodeContinuityMemory | null;
+  /** Present only when no reviewed memory has been saved and script generation returned this draft. */
+  draft?: LongEpisodeContinuityDraft;
   /**
    * Whether saving is possible right now.
    *

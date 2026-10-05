@@ -25,11 +25,25 @@ export const STORY_SCENE_FIELDS = [
 ] as const;
 
 /** The scene count is a per-project setting (2-12, see MIN/MAX_SCENE_COUNT in shared/domain.ts), so this schema is built per request rather than a fixed constant. */
-function storySchema(sceneCount: number, dialogueEnabled: boolean) {
+function storySchema(sceneCount: number, dialogueEnabled: boolean, continuityDraftEnabled: boolean) {
+  const continuityDraft = {
+    type: "object",
+    additionalProperties: false,
+    required: ["episode_summary", "events", "character_changes", "next_actions"],
+    properties: {
+      episode_summary: { type: "string", minLength: 1, maxLength: 4000 },
+      events: { type: "array", maxItems: 100, items: { type: "string", maxLength: 1000 } },
+      character_changes: {
+        type: "array", maxItems: 100,
+        items: { type: "object", additionalProperties: false, required: ["name", "change"], properties: { name: { type: "string", minLength: 1, maxLength: 300 }, change: { type: "string", minLength: 1, maxLength: 1000 } } },
+      },
+      next_actions: { type: "array", maxItems: 100, items: { type: "string", maxLength: 1000 } },
+    },
+  } as const;
   return {
     type: "object",
     additionalProperties: false,
-    required: ["title", "synopsis", "scenes", "ending"],
+    required: ["title", "synopsis", "scenes", "ending", ...(continuityDraftEnabled ? ["continuity_draft"] : [])],
     properties: {
       title: { type: "string" },
       synopsis: { type: "string" },
@@ -53,6 +67,7 @@ function storySchema(sceneCount: number, dialogueEnabled: boolean) {
           },
         },
       },
+      ...(continuityDraftEnabled ? { continuity_draft: continuityDraft } : {}),
     },
   } as const;
 }
@@ -81,7 +96,7 @@ function extractOutputText(body: unknown): string {
 export async function callOpenAiStoryApi(
   apiKey: string,
   prompt: string,
-  options: { model?: string; fetchImpl?: typeof fetch; sceneCount?: number; dialogueEnabled?: boolean } = {},
+  options: { model?: string; fetchImpl?: typeof fetch; sceneCount?: number; dialogueEnabled?: boolean; continuityDraft?: boolean } = {},
 ): Promise<{ story: StoredStory; requestId: string }> {
   const model = options.model ?? OPENAI_STORY_MODEL;
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -95,7 +110,7 @@ export async function callOpenAiStoryApi(
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model, input: prompt,
-        text: { format: { type: "json_schema", name: "animation_story", strict: true, schema: storySchema(sceneCount, options.dialogueEnabled === true) } },
+        text: { format: { type: "json_schema", name: "animation_story", strict: true, schema: storySchema(sceneCount, options.dialogueEnabled === true, options.continuityDraft === true) } },
       }),
     });
   } catch {
@@ -111,6 +126,6 @@ export async function callOpenAiStoryApi(
   if (!text) throw new OpenAiAdapterError("empty_response", "대본 응답이 비어 있습니다.");
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
-  try { validateStory(parsed, sceneCount, options.dialogueEnabled === true); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
+  try { validateStory(parsed, sceneCount, options.dialogueEnabled === true, options.continuityDraft === true); } catch { throw new OpenAiAdapterError("invalid_response", "대본 응답 JSON을 해석할 수 없습니다."); }
   return { story: parsed, requestId };
 }

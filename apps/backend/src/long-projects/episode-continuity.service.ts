@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, type GetLongEpisodeContinuityResponse, type LongEpisodeContinuityMemory, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeStatus, type SaveLongEpisodeContinuityRequest, type SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, type GetLongEpisodeContinuityResponse, type LongEpisodeContinuityDraft, type LongEpisodeContinuityMemory, type LongEpisodeDetail, type LongEpisodeOutline, type LongEpisodeStatus, type SaveLongEpisodeContinuityRequest, type SaveLongEpisodeContinuityResponse } from "@ai-animation-studio/shared";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { parseEpisodeOutlineEntry } from "./episode-outline-entry.js";
 import { isLongProjectError, longEpisodeContinuityInvalid, longEpisodeContinuityNotAllowed, longEpisodeNotFound, longInvalidData, longMalformed, longNotFound, longStorageError, longUnsafeId } from "./long-project-api.error.js";
@@ -49,6 +49,13 @@ export class EpisodeContinuityService {
   }
 
   private detail(episode: StoredEpisode): LongEpisodeDetail { return toEpisodeDetail(episode); }
+  private draftFromStored(value: unknown): LongEpisodeContinuityDraft | undefined {
+    if (!object(value) || Object.keys(value).length !== 4 || typeof value.episode_summary !== "string" || !value.episode_summary.trim()
+      || !Array.isArray(value.events) || value.events.some((item) => typeof item !== "string")
+      || !Array.isArray(value.character_changes) || value.character_changes.some((item) => !object(item))
+      || !Array.isArray(value.next_actions) || value.next_actions.some((item) => typeof item !== "string")) return undefined;
+    return { episodeSummary: value.episode_summary, events: value.events as string[], characterChanges: value.character_changes as Array<Record<string, unknown>>, nextActions: value.next_actions as string[] };
+  }
   private parse(value: unknown, expectedNumber: number, request = false): LongEpisodeContinuityMemory { const source = request ? (object(value) && Object.keys(value).length === 1 && object(value.memory) ? value.memory : undefined) : value; if (!object(source)) throw request ? longEpisodeContinuityInvalid() : longInvalidData(); const expected = new Set(request ? [...memoryStrings, ...memoryLists, ...changeLists] : ["episodeNumber", "updatedAt", ...memoryStrings, ...memoryLists, ...changeLists]); if (Object.keys(source).length !== expected.size || Object.keys(source).some((key) => !expected.has(key)) || (!request && (source.episodeNumber !== expectedNumber || typeof source.updatedAt !== "string"))) throw request ? longEpisodeContinuityInvalid() : longInvalidData(); const invalid = request ? longEpisodeContinuityInvalid() : longInvalidData(); const updatedAt = request ? new Date().toISOString() : text(source.updatedAt, 100); if (!updatedAt) throw invalid; const result: Record<string, unknown> = { episodeNumber: expectedNumber, updatedAt };
     for (const key of memoryStrings) { const value = text(source[key]); if (value === undefined) throw invalid; result[key] = value; }
     for (const key of memoryLists) { const value = source[key]; if (!Array.isArray(value) || value.length > 100 || value.some((item) => text(item, 1000) === undefined)) throw invalid; result[key] = value.map((item) => text(item, 1000)!); }
@@ -62,15 +69,22 @@ export class EpisodeContinuityService {
    * Null covers both "never written" and "written and no longer readable". The second used to throw, which made
    * this the one screen a person could not open to fix the file it is about: a corrupt continuity.json refused
    * here and refused every later Episode's script generation, with nothing in the app able to replace it. The
-   * screen already handles null by pre-filling from the outline and saying so, and saving overwrites the file
-   * — which is exactly the repair.
+   * screen handles null with the generated draft when one exists, then the outline as a fallback. Saving overwrites
+   * the file — which is exactly the repair.
    */
   async get(projectId: string, number: number): Promise<GetLongEpisodeContinuityResponse> { const id = projectId.trim(); const episode = await this.episodeOrNull(id, number);
     // An Episode with no record yet has no memo and cannot have one saved — which is exactly what this screen
     // already shows for "never written", so it opens rather than erroring. The same reasoning as the comment
     // above: the screen a person goes to in order to write this file must not be closed by the file's absence.
     if (!episode) return { memory: null, canSave: false };
-    const canSave = eligible.includes(episode.state); try { return { memory: this.fromStored(await readLongProjectJson(this.files(id, number).continuity), number), canSave }; } catch (error) { if (isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID")) return { memory: null, canSave }; throw error; } }
+    const canSave = eligible.includes(episode.state);
+    try { return { memory: this.fromStored(await readLongProjectJson(this.files(id, number).continuity), number), canSave }; }
+    catch (error) {
+      if (!isLongProjectError(error, "LONG_PROJECT_NOT_FOUND", "LONG_PROJECT_JSON_MALFORMED", "LONG_PROJECT_DATA_INVALID")) throw error;
+      const draft = this.draftFromStored(episode.continuity_draft);
+      return { memory: null, canSave, ...(draft ? { draft } : {}) };
+    }
+  }
   /**
    * The Episode after this one, or null when the story genuinely has no more.
    *

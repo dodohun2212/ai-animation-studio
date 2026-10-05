@@ -14,6 +14,12 @@ export type StoredStory = {
   synopsis: string;
   ending: string;
   scenes: Array<Record<(typeof SCENE_FIELDS)[number], string | number> & { dialogue_speaker?: string; dialogue_text?: string }>;
+  continuity_draft?: {
+    episode_summary: string;
+    events: string[];
+    character_changes: Array<{ name: string; change: string }>;
+    next_actions: string[];
+  };
 };
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -23,12 +29,25 @@ const object = (value: unknown): value is Record<string, unknown> =>
  * Enforces Python's OpenAI `STORY_SCHEMA` plus StoryEngine's ordered-scene
  * and non-empty-description invariants before anything is persisted.
  */
-export function validateStory(value: unknown, sceneCount = 6, dialogueEnabled = false): asserts value is StoredStory {
-  if (!object(value) || Object.keys(value).length !== 4
+export function validateStory(value: unknown, sceneCount = 6, dialogueEnabled = false, continuityDraftEnabled = false): asserts value is StoredStory {
+  if (!object(value) || Object.keys(value).length !== 4 + (continuityDraftEnabled ? 1 : 0)
     || !["title", "synopsis", "ending", "scenes"].every((key) => key in value)
+    || (continuityDraftEnabled && !("continuity_draft" in value))
     || typeof value.title !== "string" || typeof value.synopsis !== "string" || typeof value.ending !== "string"
     || !Array.isArray(value.scenes) || value.scenes.length !== sceneCount) {
     throw new Error(`Story response does not match the required ${sceneCount}-scene schema.`);
+  }
+
+  if (continuityDraftEnabled) {
+    const draft = value.continuity_draft;
+    if (!object(draft) || Object.keys(draft).length !== 4
+      || typeof draft.episode_summary !== "string" || !draft.episode_summary.trim() || draft.episode_summary.length > 4000
+      || !Array.isArray(draft.events) || draft.events.length > 100 || draft.events.some((item) => typeof item !== "string" || item.length > 1000)
+      || !Array.isArray(draft.character_changes) || draft.character_changes.length > 100
+      || draft.character_changes.some((item) => !object(item) || Object.keys(item).length !== 2 || typeof item.name !== "string" || !item.name.trim() || item.name.length > 300 || typeof item.change !== "string" || !item.change.trim() || item.change.length > 1000)
+      || !Array.isArray(draft.next_actions) || draft.next_actions.length > 100 || draft.next_actions.some((item) => typeof item !== "string" || item.length > 1000)) {
+      throw new Error("Story response does not match the required continuity draft schema.");
+    }
   }
 
   value.scenes.forEach((scene, index) => {

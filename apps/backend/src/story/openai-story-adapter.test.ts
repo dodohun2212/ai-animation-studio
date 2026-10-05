@@ -35,6 +35,32 @@ describe("callOpenAiStoryApi", () => {
     const body = JSON.parse(String(init.body));
     expect(body).toMatchObject({ model: "gpt-5.6-luna", input: "prompt text" });
     expect(body.text.format).toMatchObject({ type: "json_schema", name: "animation_story", strict: true });
+    expect(body.text.format.schema.properties).not.toHaveProperty("continuity_draft");
+  });
+
+  it("requires a bounded continuity draft only when the long-episode caller asks for one", async () => {
+    const draft = {
+      episode_summary: "주인공이 무너진 다리를 건넌다.",
+      events: ["다리가 무너졌다"],
+      character_changes: [{ name: "하린", change: "팔을 다쳤다" }],
+      next_actions: ["배를 찾는다"],
+    };
+    const story = { ...VALID_STORY, continuity_draft: draft };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(story)));
+    const result = await callOpenAiStoryApi("sk-test", "episode prompt", { fetchImpl: fetchMock, continuityDraft: true });
+    expect(result.story.continuity_draft).toEqual(draft);
+    const request = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(request.text.format.schema).toMatchObject({
+      required: expect.arrayContaining(["continuity_draft"]),
+      properties: { continuity_draft: { additionalProperties: false, required: ["episode_summary", "events", "character_changes", "next_actions"] } },
+    });
+  });
+
+  it("rejects a malformed continuity draft without retrying the paid call", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody({ ...VALID_STORY, continuity_draft: { episode_summary: "초안", events: [], character_changes: [], next_actions: [], extra: true } })));
+    await expect(callOpenAiStoryApi("sk-test", "episode prompt", { fetchImpl: fetchMock, continuityDraft: true }))
+      .rejects.toMatchObject({ category: "invalid_response" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("uses a caller-supplied model instead of the default", async () => {

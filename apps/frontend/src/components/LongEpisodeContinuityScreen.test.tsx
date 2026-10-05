@@ -208,4 +208,69 @@ describe("LongEpisodeContinuityScreen", () => {
     expect(screen.getByTestId("continuity-summary")).not.toBeDisabled();
     expect(screen.getByTestId("continuity-save")).not.toBeDisabled();
   });
+  /** CLI Round 1204: 대본 생성 때 AI가 같이 쓴 초안이 있으면 개요보다 먼저 채우고, 실제 영상과 다를 수 있다고 말합니다. */
+  describe("AI draft from script generation", () => {
+    const draft = {
+      episodeSummary: "주인공이 폐허에서 지도를 얻는다",
+      events: ["지도를 찾는다", "경비병과 마주친다"],
+      characterChanges: [{ name: "주인공", change: "다리를 다친다" }],
+      nextActions: ["폐허를 빠져나간다"],
+    };
+
+    it("fills the four carried fields from the draft before the outline, and says it is a plan, not what was filmed", async () => {
+      const fetchMock = stubFetchByRoute({
+        [`GET ${CONTINUITY_URL}`]: { memory: null, draft, canSave: true },
+        [`GET ${EPISODE_URL}`]: outline({ summary: "개요 요약", mainEvent: "개요 사건" }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+
+      expect(await screen.findByDisplayValue("주인공이 폐허에서 지도를 얻는다")).toBeTruthy();
+      expect(screen.getByTestId("continuity-events")).toHaveValue("지도를 찾는다\n경비병과 마주친다");
+      expect(screen.getByTestId("continuity-nextActions")).toHaveValue("폐허를 빠져나간다");
+      expect(JSON.parse((screen.getByTestId("continuity-character-changes") as HTMLTextAreaElement).value)).toEqual(draft.characterChanges);
+      const notice = screen.getByTestId("continuity-draft");
+      expect(notice.textContent).toContain("AI가 함께 쓴 초안");
+      expect(notice.textContent).toContain("실제 영상 내용과 다를 수 있습니다");
+      expect(notice.textContent).toContain("저장을 눌러야 저장됩니다");
+      expect(screen.queryByTestId("continuity-prefilled")).toBeNull();
+      // 초안이 있으면 개요는 읽지 않습니다. 그리고 나타나는 것만으로는 아무것도 저장되지 않습니다.
+      expect(fetchMock.mock.calls.some((call) => String(call[0]) === EPISODE_URL)).toBe(false);
+      expect(fetchMock.mock.calls.every((call) => (call[1] as RequestInit | undefined) === undefined)).toBe(true);
+    });
+
+    it("drops the draft notice once the person edits a field", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${CONTINUITY_URL}`]: { memory: null, draft, canSave: true } }));
+      render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+      await screen.findByTestId("continuity-draft");
+      fireEvent.change(screen.getByTestId("continuity-summary"), { target: { value: "실제로는 지도를 못 찾았다" } });
+      expect(screen.queryByTestId("continuity-draft")).toBeNull();
+    });
+
+    it("shows a saved memory, not the draft, when both exist", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${CONTINUITY_URL}`]: { memory: memory(), draft, canSave: true } }));
+      render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+      expect(await screen.findByDisplayValue("The hero enters the ruins.")).toBeTruthy();
+      expect(screen.queryByTestId("continuity-draft")).toBeNull();
+      expect(screen.queryByDisplayValue("주인공이 폐허에서 지도를 얻는다")).toBeNull();
+    });
+
+    it("falls back to the outline when there is no draft", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({
+        [`GET ${CONTINUITY_URL}`]: { memory: null, canSave: true },
+        [`GET ${EPISODE_URL}`]: outline({ summary: "개요 요약" }),
+      }));
+      render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+      expect(await screen.findByDisplayValue("개요 요약")).toBeTruthy();
+      expect(screen.getByTestId("continuity-prefilled")).toBeTruthy();
+      expect(screen.queryByTestId("continuity-draft")).toBeNull();
+    });
+
+    it("treats a malformed draft as a malformed response", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({ [`GET ${CONTINUITY_URL}`]: { memory: null, draft: { ...draft, events: "지도를 찾는다" }, canSave: true } }));
+      render(<LongEpisodeContinuityScreen projectId="long" episodeNumber={1} onBack={() => {}} />);
+      expect((await screen.findByTestId("continuity-error")).getAttribute("data-error-code")).toBe("CLIENT_MALFORMED_RESPONSE");
+      expect(screen.queryByTestId("continuity-draft")).toBeNull();
+    });
+  });
 });

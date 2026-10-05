@@ -5,15 +5,49 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { toEpisodeDetail } from "./episode-detail.js";
 import { EpisodeScriptsService } from "./episode-scripts.service.js";
 import { LongProjectsService } from "./long-projects.service.js";
+import { EpisodeContinuityService } from "./episode-continuity.service.js";
+import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
+import { ProviderSettingsService } from "../settings/provider-settings.service.js";
+import { OpenAiBudget } from "../providers/openai-budget.js";
 import { withProjectLock } from "../videos/project-lock.js";
 import { ACQUIRE_TIMEOUT_MS } from "../videos/project-lock.js";
 
 let root: string | undefined;
 const settings = { title: "Long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 2, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
+const apiScene = (number: number) => ({ number, description: `scene ${number}`, visual_action: "action", start_motion: "start", main_motion: "move", end_motion: "settle", shot_size: "medium", camera_angle: "eye-level", composition: "centered", lens_feel: "natural", focus_subject: "hero", camera_motion: "static", environment_motion: "still", motion_speed: "steady", motion_intensity: "gentle", expression_change: "calm", continuity_hint: "continue", narration: "narration" });
+const responsesBody = (story: unknown) => ({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(story) }] }] });
+const jsonResponse = (body: unknown): Response => ({ ok: true, status: 200, json: async () => body, headers: { get: () => "req-script" } }) as unknown as Response;
 async function setup(episodeDurationSeconds: 30 | 60 = 30, sceneCount = 6) { root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-")); const projects = new LongProjectsService(path.join(root, "projects")); await projects.create({ projectId: "long", settings: { ...settings, sceneCount, clipDurationSeconds: episodeDurationSeconds === 60 ? 10 : 5 } }); const preview = await projects.preview("long"); await projects.approve("long", { approved: true, prompt: preview.preview.prompt, promptSha256: preview.preview.promptSha256 }); return new EpisodeScriptsService(path.join(root, "projects")); }
 afterEach(async () => { vi.unstubAllGlobals(); if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 
 describe("EpisodeScriptsService", () => {
+  it("generates and persists an unsaved continuity draft in the same mocked OpenAI story call", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "episode-script-continuity-draft-"));
+    const projectsRoot = path.join(root, "projects");
+    const projects = new LongProjectsService(projectsRoot);
+    await projects.create({ projectId: "long", settings });
+    const outline = await projects.preview("long");
+    await projects.approve("long", { approved: true, prompt: outline.preview.prompt, promptSha256: outline.preview.promptSha256 });
+
+    const continuityDraft = { episode_summary: "하린이 무너진 다리를 건너 동료를 구했다.", events: ["다리가 무너졌다", "하린이 동료를 구했다"], character_changes: [{ name: "하린", change: "팔을 다쳤다" }], next_actions: ["배를 찾아 강을 건넌다"] };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ title: "Episode 1", synopsis: "Synopsis", ending: "The bridge is gone.", scenes: Array.from({ length: 6 }, (_, index) => apiScene(index + 1)), continuity_draft: continuityDraft })));
+    vi.stubGlobal("fetch", fetchMock);
+    const providerSettings = new ProviderSettingsService(new ProviderSettingsRepository(root!));
+    await providerSettings.save("openai", { value: "sk-test-key-only-1234567890" });
+    const scripts = new EpisodeScriptsService(projectsRoot, providerSettings, new OpenAiBudget(root!, 10));
+
+    const generated = await scripts.generate("long", 1, { userRequestId: "continuity-draft-once" });
+    expect(generated.episode.script?.scenes).toHaveLength(6);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(request.input).toContain("continuity_draft");
+
+    const continuity = await new EpisodeContinuityService(projectsRoot).get("long", 1);
+    expect(continuity).toMatchObject({ memory: null, canSave: false, draft: { episodeSummary: continuityDraft.episode_summary, events: continuityDraft.events, characterChanges: continuityDraft.character_changes, nextActions: continuityDraft.next_actions } });
+    const stored = JSON.parse(await fs.readFile(path.join(projectsRoot, "long", "long_story", "Episode01", "project.json"), "utf8")) as { continuity_draft: unknown };
+    expect(stored.continuity_draft).toEqual(continuityDraft);
+  });
+
   /**
    * A script written without knowing what happened last episode says so.
    *
