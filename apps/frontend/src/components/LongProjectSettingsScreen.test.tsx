@@ -335,4 +335,36 @@ describe("LongProjectSettingsScreen", () => {
     fireEvent.click(save);
     expect(callTo(fetchMock, "/long-projects/long_test/settings", "PATCH")[1].method).toBe("PATCH");
   });
+
+  // CLI Round 1260: clean -> dirty -> saved, and dirty -> reset, with 돌아가기 never blocked.
+  it("warns about unsaved form edits beside 돌아가기 without blocking it, and clears once saved or undone", async () => {
+    const settings = makeLongProjectSettings({ title: "우주 방랑자" });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.startsWith("/assets")) return jsonResponse(200, { assets: [] });
+      if (url.includes("/story-bible")) return jsonResponse(200, { storyBible: { basic: {}, world: {}, characters: [], locations: [], props: [], secrets: [], foreshadowing: [], updatedAt: "2026-08-23T00:00:00.000Z" } });
+      if (init?.method === "PATCH") return jsonResponse(200, { project: makeLongProject({ settings: { ...settings, title: "새 제목" } }) });
+      return jsonResponse(200, withSettingsDefaults({ settings }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onBack = vi.fn();
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={onBack} />);
+
+    const title = await screen.findByDisplayValue("우주 방랑자");
+    expect(screen.queryByTestId("long-settings-unsaved-warning")).toBeNull();
+
+    fireEvent.change(title, { target: { value: "다른 제목" } });
+    expect(screen.getByTestId("long-settings-unsaved-warning").textContent).toContain("설정 저장");
+    fireEvent.change(screen.getByDisplayValue("다른 제목"), { target: { value: "우주 방랑자" } });
+    expect(screen.queryByTestId("long-settings-unsaved-warning")).toBeNull();
+
+    fireEvent.change(screen.getByDisplayValue("우주 방랑자"), { target: { value: "새 제목" } });
+    expect(screen.getByTestId("long-settings-unsaved-warning")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "돌아가기" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+    await screen.findByTestId("long-settings-saved-notice");
+    expect(screen.queryByTestId("long-settings-unsaved-warning")).toBeNull();
+  });
 });

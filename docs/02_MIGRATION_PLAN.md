@@ -4662,3 +4662,4 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 
 - `LongProjectSettingsScreen` 수동 저장 폼을 `cardSectionRoomy`로 통일하고 「설정 저장」을 전체 폭 막대에서 오른쪽 정렬 `primaryButton`으로 바꿨다. 필드 배치·PATCH·disabled 상태 및 저장 결과는 유지한다. Cowork가 recipe·정렬을 실화면에서 확인하고 회귀 테스트를 추가했다(1259, `55c1c818`). 전체 타입검사, frontend 1974 tests, 전체 build 통과; source SHA-256 전후 동일. 설정 저장·유료 호출은 없었다.
 - 같은 화면의 머리글 「돌아가기」는 미저장 내용을 조용히 버리는 점이 남은 검토 후보(1236-2); 현재는 경고만 표시할지 판단 중이다.
+- 사용자가 값을 바꾸고 저장하지 않았을 때 머리글 아래 기존 amber status 상자로 안내한다. 처음 로드된 상태와 원래 값으로 되돌린 상태에서는 숨기며, 저장 성공도 경고를 해제한다. 이동은 막지 않는다. Cowork가 회귀 테스트와 화면 확인을 완료했다(1261). 전체 타입검사, frontend 1975 tests, 전체 build 통과; hash 전후 동일. 설정 저장·유료 호출 없음.

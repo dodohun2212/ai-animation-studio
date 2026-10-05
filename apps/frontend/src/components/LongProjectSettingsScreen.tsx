@@ -56,6 +56,11 @@ function Field({ label, value, onChange, multiline = false, hint }: { label: str
 export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
   const [state, setState] = useState<State>({ settings: null, loading: true, error: null, aspectRatioChangeable: true });
   const [justSaved, setJustSaved] = useState(false);
+  /**
+   * CLI Round 1260: the form as the server last confirmed it (loaded or saved), so the screen can say when the
+   * manual-save form holds edits that 「돌아가기」 would drop. Null until the first answer — unknown is not dirty.
+   */
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const saving = useRef(false);
   const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -68,6 +73,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
     getLongProjectSettings(projectId)
       .then((response) => {
         if (cancelled) return;
+        setSavedSnapshot(JSON.stringify(response.settings));
         setState({
           settings: response.settings,
           loading: false,
@@ -115,6 +121,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
       // it anyway (only generating images does). Replacing the whole state here would drop what the GET said and
       // silently unlock a project whose images already exist.
       setState((old) => ({ ...old, settings: response.project.settings, loading: false, error: null }));
+      setSavedSnapshot(JSON.stringify(response.project.settings));
       setJustSaved(true);
       if (justSavedTimer.current) clearTimeout(justSavedTimer.current);
       justSavedTimer.current = setTimeout(() => setJustSaved(false), 4000);
@@ -125,10 +132,19 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
     }
   }
 
+  const formUnsaved = state.settings !== null && savedSnapshot !== null && JSON.stringify(state.settings) !== savedSnapshot;
+
   if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return (
     <section className="mt-8 max-w-3xl space-y-5">
       <ScreenHeader title="장기 프로젝트 설정" backLabel="돌아가기" onBack={onBack} />
+      {/* CLI Round 1260: said next to 「돌아가기」 rather than by blocking it — leaving stays one click, but not a
+          silent one. Only the manual-save form counts; the four cards below save themselves. */}
+      {formUnsaved && (
+        <p role="status" data-testid="long-settings-unsaved-warning" className="rounded-xl border border-amber-400/30 bg-amber-500/[0.06] px-3.5 py-2 text-sm text-amber-200">
+          설정 폼에 저장하지 않은 내용이 있습니다. <span className="font-semibold">설정 저장</span>을 누르지 않고 돌아가면 사라집니다.
+        </p>
+      )}
       {/* Said once, here, instead of four times below.
           Every card on this screen — 주인공, 전체 그림체, 세계관 설명, 비밀·복선 — carried its own copy of the
           same three facts: what reaches the AI, that blank is allowed, and that already-written Episodes do not
