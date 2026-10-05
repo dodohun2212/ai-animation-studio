@@ -4655,3 +4655,4 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 
 - `VideoPromptPreviewScreen`의 장면별 편집 칸 아래에 실제 provider 요청 문자열 전체를 펼쳐 보는 항목을 추가했다. 장편 화면과 같은 shared `runwayVideoPromptText`를 사용하므로 편집값과 모델별 자동 추가 문장이 실제 전송과 일치한다. Cowork 테스트로 문장 편집 후 전체 문자열이 바뀌는 것을 확인했다(1253); 실화면에 확인 대기 프로젝트가 없어 실전송 화면은 열지 않았다. 전체 타입검사, frontend 1971 tests, 전체 build 통과; SHA-256 전후 동일. provider 호출 없음.
 - 별도 요청: 전송 후 검토에서 실제 최종 provider prompt를 보여 주기 위해 `VideoReview.submittedPrompt?: string`을 저장 계약으로 추가하고 제출 시점에 백엔드에서 기록한다. 과거 및 local fake 기록은 생략한다.
+- 계약 `5c508f21`, 백엔드 `693a4a28`: Runway 제출 claim 때 어댑터와 동일한 shared composer로 최종 문자열을 `submitted_prompt`에 스냅샷한다. 재생성 때 이전 문자열을 지우고, provider body와 검토 응답이 같은지 테스트한다. authored prompt와 staleness는 변경하지 않으며 local fake에는 응답 값을 만들지 않는다. backend typecheck와 관련 테스트 43개 통과. 프론트 검토 카드 표시·guard·회귀 테스트가 남았다.
