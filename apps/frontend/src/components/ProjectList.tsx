@@ -341,6 +341,22 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
         <span aria-hidden="true" className="type-index ml-auto text-bone-faint/80">Recent first</span>
       </div>
 
+      {/* CLI Round 1215: this line exists to answer "is anything waiting on me" without scrolling (Python
+          pinned it to its window's bottom edge), but here it scrolled with the page and sat beneath every frame —
+          3419px down a 3504px page with 22 projects. It now sits under the index row, above the first frame. */}
+      {state.projects !== null && (
+        <p
+          data-testid="dashboard-summary"
+          className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-bone-faint"
+        >
+          <span className="type-mono">단기 프로젝트 {projects.length}개</span>
+          <span aria-hidden="true">·</span>
+          <span className={`type-mono ${waitingCount > 0 ? "text-amber-300/90" : ""}`} data-testid="dashboard-waiting-count">
+            영상 생성 확인 대기 {waitingCount}개
+          </span>
+        </p>
+      )}
+
       {state.projects === null && state.loading && <Spinner label="불러오는 중..." className="mt-6" />}
 
       {state.error && (
@@ -371,18 +387,6 @@ export function ProjectList({ refreshToken, onOpenProject, onCreateNew }: Projec
         </ul>
       )}
 
-      {state.projects !== null && (
-        <p
-          data-testid="dashboard-summary"
-          className="mt-9 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line pt-3 text-[11px] text-bone-faint"
-        >
-          <span className="type-mono">단기 프로젝트 {projects.length}개</span>
-          <span aria-hidden="true">·</span>
-          <span className={`type-mono ${waitingCount > 0 ? "text-amber-300/90" : ""}`} data-testid="dashboard-waiting-count">
-            영상 생성 확인 대기 {waitingCount}개
-          </span>
-        </p>
-      )}
     </section>
   );
 }

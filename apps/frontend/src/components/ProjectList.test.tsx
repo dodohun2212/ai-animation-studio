@@ -359,4 +359,17 @@ describe("ProjectList", () => {
       expect(within(frame).getByText(workflowStateLabel(WorkflowState.Failed))).toBeTruthy();
     });
   });
+
+  // CLI Round 1215
+  it("shows the waiting-count line above the frames, so it is read without scrolling past every project", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [
+      makeProject({ id: "a", workflowState: WorkflowState.WaitingForVideoConfirmation }),
+      makeProject({ id: "b", workflowState: WorkflowState.Completed }),
+    ] })));
+    render(<ProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
+
+    const summary = await screen.findByTestId("dashboard-summary");
+    const firstFrame = screen.getAllByTestId("project-frame")[0]!;
+    expect(summary.compareDocumentPosition(firstFrame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
