@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NEWS_REEL_TEXT_BOXES } from "@ai-animation-studio/shared";
+import { NEWS_REEL_TEXT_BOXES, NEWS_SUMMARY_MAX_CHARS } from "@ai-animation-studio/shared";
 
 import { makeAsset, makeProject, stubFetchByRoute } from "../api/testUtils.js";
-import { NewsReelCreateScreen, type NewsReelDraft } from "./NewsReelCreateScreen.js";
+import { NEWS_REEL_CAPTION_TOTAL, NewsReelCreateScreen, splitNewsReelCaption, type NewsReelDraft } from "./NewsReelCreateScreen.js";
 
 const ONE = makeAsset({ assetId: "ASSET-GENERAL-000000000001", displayName: "국회 본회의장" });
 const TWO = makeAsset({ assetId: "ASSET-GENERAL-000000000002", displayName: "법원 앞" });
@@ -89,13 +89,103 @@ describe("NewsReelCreateScreen 장면마다 자막", () => {
   it("counts every scene's caption against the contract, not just the first", () => {
     renderScreen();
     fillLines();
-    const limit = NEWS_REEL_TEXT_BOXES["caption.line1"].limit;
+    /* 장면 자막은 이제 칸 하나(두 줄 합계 한도) — 캡틴D 2026-10-04. 합계를 2자 넘깁니다. */
+    const words = Array.from({ length: 20 }, () => "가나").join(" ").slice(0, NEWS_REEL_CAPTION_TOTAL + 2);
 
-    fireEvent.change(screen.getByTestId("news-reel-caption1-1"), { target: { value: "가".repeat(limit + 2) } });
+    fireEvent.change(screen.getByTestId("news-reel-caption1-1"), { target: { value: words } });
 
     expect(screen.getByTestId("news-reel-caption1-1-count").textContent).toContain("2자 넘었습니다");
     expect(screen.getByTestId("news-reel-create-submit")).toBeDisabled();
     expect(screen.getByTestId("news-reel-create-why").textContent).toContain("글자 수");
+  });
+
+  /**
+   * 캡틴D 2026-10-04: 「둘째 줄을 지우고 첫째 줄 자막 수를 늘릴 수는 없나」 → 칸 하나에 길게 쓰고 영상에서 자동 줄바꿈.
+   * 줄 한도(굽는 글꼴로 잰 폭)는 그대로라, 띄어쓰기에서 두 줄 길이가 가장 비슷하게 나눕니다.
+   */
+  it("splits one caption box into the two burned lines at a space, as evenly as it can", () => {
+    const limit = NEWS_REEL_TEXT_BOXES["caption.line1"].limit;
+    expect(NEWS_REEL_CAPTION_TOTAL).toBe(limit + NEWS_REEL_TEXT_BOXES["caption.line2"].limit);
+    expect(splitNewsReelCaption("  3일 백악관서 만난 트럼프 ")).toEqual({ line1: "3일 백악관서 만난 트럼프", line2: null });
+    expect(splitNewsReelCaption("3일 백악관서 만난 트럼프 관세 협상 재개에 합의")).toEqual({ line1: "3일 백악관서 만난 트럼프", line2: "관세 협상 재개에 합의" });
+    expect(splitNewsReelCaption("가".repeat(limit + 1))).toBeNull();
+    expect(splitNewsReelCaption("   ")).toBeNull();
+    for (const text of ["재석 289명 중 180명 찬성으로 법안 51건 통과", "가 나 다 라 마 바 사 아 자 차 카 타 파 하"]) {
+      const split = splitNewsReelCaption(text)!;
+      expect(Array.from(split.line1).length).toBeLessThanOrEqual(limit);
+      expect(Array.from(split.line2 ?? "").length).toBeLessThanOrEqual(limit);
+      expect(`${split.line1} ${split.line2}`).toBe(text);
+    }
+  });
+
+  it("sends a long caption as two lines and shows where the video will break it", async () => {
+    const mock = stubRoutes();
+    renderScreen();
+    fillLines();
+    fireEvent.change(screen.getByTestId("news-reel-caption1-0"), { target: { value: "재석 289명 중 180명 찬성 10월 2일부터 시행" } });
+
+    expect(screen.getByTestId("news-reel-caption1-0-lines").textContent).toContain("두 줄");
+    expect(screen.queryByTestId("news-reel-caption2-0"), "둘째 줄 칸은 없어졌습니다").toBeNull();
+    fireEvent.click(screen.getByTestId("news-reel-create-submit"));
+
+    await waitFor(() => {
+      const card = sentBody(mock).card as { captions: { line1: string; line2: string | null }[] };
+      expect(card.captions[0]).toEqual({ line1: "재석 289명 중 180명", line2: "찬성 10월 2일부터 시행" });
+      expect(card.captions[1]).toEqual({ line1: "10월 2일부터 시행", line2: null });
+    });
+  });
+
+  it("refuses a caption that has no space to break at, and says why", () => {
+    renderScreen();
+    fillLines();
+    fireEvent.change(screen.getByTestId("news-reel-caption1-1"), { target: { value: "가".repeat(NEWS_REEL_TEXT_BOXES["caption.line1"].limit + 3) } });
+
+    expect(screen.getByTestId("news-reel-caption1-1-unsplittable").textContent).toContain("띄어쓰기");
+    expect(screen.getByTestId("news-reel-create-submit")).toBeDisabled();
+  });
+
+  /**
+   * CLI Round 1169 · 캡틴D 「캡션 본문에 뉴스 요약본을 넣어서 글 읽을 수 있게」 — 게시 본문용 요약 칸.
+   * 비어 있으면 카드에 안 실리고, 쓰면 다듬어 실리며, 한도를 넘거나 기사에 없는 숫자가 있으면 못 만듭니다.
+   */
+  it("sends a written summary with the card, and leaves it off when the box is blank", async () => {
+    const mock = stubRoutes();
+    renderScreen();
+    fillLines();
+    fireEvent.click(screen.getByTestId("news-reel-create-submit"));
+    await waitFor(() => expect((sentBody(mock).card as { summary?: string }).summary).toBeUndefined());
+
+    const again = stubRoutes();
+    fireEvent.change(screen.getByTestId("news-reel-summary"), { target: { value: "  국회가 검찰청 폐지 후속 법률 51건을 통과시켰다. 재석 289명 중 180명이 찬성했다.  " } });
+    fireEvent.click(screen.getByTestId("news-reel-create-submit"));
+    await waitFor(() => expect((sentBody(again).card as { summary?: string }).summary).toBe("국회가 검찰청 폐지 후속 법률 51건을 통과시켰다. 재석 289명 중 180명이 찬성했다."));
+  });
+
+  it("refuses a summary over the limit, and one that says what the article does not", () => {
+    renderScreen();
+    fillLines();
+    fireEvent.change(screen.getByTestId("news-reel-summary"), { target: { value: "가".repeat(NEWS_SUMMARY_MAX_CHARS + 3) } });
+    expect(screen.getByTestId("news-reel-summary-count").textContent).toContain("3자 넘었습니다");
+    expect(screen.getByTestId("news-reel-create-submit")).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId("news-reel-summary"), { target: { value: "재석 300명 중 180명이 찬성했다." } });
+    expect(screen.getByTestId("news-reel-check-failed").textContent).toContain("300");
+    expect(screen.getByTestId("news-reel-create-submit")).toBeDisabled();
+  });
+
+  it("fills the summary from the drawn card text", async () => {
+    stubRoutes({
+      "POST /news/card-text": {
+        summary: "국회가 후속 법률 51건을 통과시켰다.",
+        headline: { line1: "후속 법안 51건", line2: "국회 본회의 통과" },
+        captions: [{ line1: "본회의장 표결 직후" }, { line1: "공소청으로 간판 교체" }],
+        missing: [], repeated: [], ignored: [], check: { claims: [], missing: [] }, dailyCalls: { used: 3, limit: 30 },
+      },
+    });
+    renderScreen();
+    await waitFor(() => expect(screen.getByTestId("news-reel-draw")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("news-reel-draw"));
+    await waitFor(() => expect((screen.getByTestId("news-reel-summary") as HTMLTextAreaElement).value).toBe("국회가 후속 법률 51건을 통과시켰다."));
   });
 
   /** 🔴 구워지는 것이 이 줄들이라, 대조도 이 줄들 위에서 돕니다. */
@@ -112,7 +202,7 @@ describe("NewsReelCreateScreen 장면마다 자막", () => {
     const mock = stubRoutes({
       "POST /news/card-text": {
         headline: { line1: "후속 법안 51건", line2: "국회 본회의 통과" },
-        captions: [{ line1: "본회의장 표결 직후" }, { line1: "공소청으로 간판 교체" }],
+        captions: [{ line1: "본회의장 표결 직후", line2: "51건 한꺼번에" }, { line1: "공소청으로 간판 교체" }],
         missing: [], repeated: [], ignored: [], check: { claims: [], missing: [] }, dailyCalls: { used: 3, limit: 30 },
       },
     });
@@ -126,7 +216,8 @@ describe("NewsReelCreateScreen 장면마다 자막", () => {
       /* 🔴 숫자가 아니라 **고른 순서의 이름**이 갑니다 — 이게 자막과 그림을 묶는 유일한 끈입니다(D-057). */
       expect(sentBody(mock, "/news/card-text").pictures).toEqual(["국회 본회의장", "법원 앞"]);
       expect(sentBody(mock, "/news/card-text").sceneCount).toBeUndefined();
-      expect((screen.getByTestId("news-reel-caption1-0") as HTMLInputElement).value).toBe("본회의장 표결 직후");
+      /* 받은 두 줄은 한 칸에 이어 붙습니다 — 영상에서 다시 나눕니다. */
+      expect((screen.getByTestId("news-reel-caption1-0") as HTMLInputElement).value).toBe("본회의장 표결 직후 51건 한꺼번에");
       expect((screen.getByTestId("news-reel-caption1-1") as HTMLInputElement).value).toBe("공소청으로 간판 교체");
     });
   });

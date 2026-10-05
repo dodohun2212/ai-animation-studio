@@ -870,6 +870,72 @@ describe("InstagramPostScreen", () => {
     expect((screen.getByTestId("post-ai-notice") as HTMLInputElement).checked).toBe(true);
   });
 
+  /** 캡틴D, 2026-10-03: 「뉴스 릴스 캡션 본문에 뉴스 요약본을 넣어서 글 읽을 수 있게」 — 제목 한 줄뿐이던 본문을 카드 글로 펼칩니다. */
+  it("fills a news reel's caption with its headline and every scene caption as readable text", async () => {
+    renderScreen({
+      project: {
+        topic: "김여정 담화",
+        newsReelCard: newsReelCard({
+          creditRequired: false,
+          headline: { line1: "김여정이 연설 비꼬자", line2: "통일부 소통하자" },
+          captions: [
+            { line1: "21일 비무장지대 발표", line2: "군 경계 강화" },
+            { line1: "21일 비무장지대 발표", line2: "군 경계 강화" },
+            { line1: "통일부 공식 입장", line2: null },
+          ],
+        }),
+      },
+    });
+    await pickProject();
+
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value)
+      .toBe("김여정이 연설 비꼬자 통일부 소통하자\n\n21일 비무장지대 발표 군 경계 강화. 통일부 공식 입장.");
+    expect(screen.getByTestId("post-body-autofilled").textContent).toContain("뉴스 릴의 제목과 장면 자막");
+    expect(screen.getByTestId("post-body-news-fill-note").textContent).toContain("장면 자막");
+  });
+
+  it("lets a news reel with a saved caption swap in the news text, and undo it", async () => {
+    const { fetchMock } = renderScreen({
+      draft: { body: "예전 본문", hashtags: "", aiNotice: true },
+      project: { newsReelCard: newsReelCard({ creditRequired: false }) },
+    });
+    await pickProject();
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("예전 본문");
+
+    fireEvent.click(screen.getByTestId("post-body-news-fill"));
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("첫째 줄 둘째 줄\n\n자막 한 줄.");
+    expect(screen.getByTestId("post-body-news-fill")).toBeDisabled();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url) === "/projects/p1/post-draft"
+      && (init as RequestInit | undefined)?.method === "PUT"
+      && (JSON.parse(String((init as RequestInit).body)) as { body: string }).body === "첫째 줄 둘째 줄\n\n자막 한 줄.")).toBe(true));
+
+    fireEvent.click(screen.getByTestId("post-body-news-undo"));
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value).toBe("예전 본문");
+    expect(screen.queryByTestId("post-body-news-undo")).toBeNull();
+  });
+
+  /** CLI Round 1169: 만들 때 저장한 기사 요약이 있으면 장면 자막 대신 그것이 제목 다음 문단입니다. */
+  it("uses the saved article summary after the headline when the reel has one", async () => {
+    renderScreen({
+      project: {
+        newsReelCard: newsReelCard({ creditRequired: false, summary: "  국회가 후속 법률 51건을 통과시켰다. 10월 2일부터 시행된다. " }),
+      },
+    });
+    await pickProject();
+
+    expect((screen.getByTestId("post-body") as HTMLTextAreaElement).value)
+      .toBe("첫째 줄 둘째 줄\n\n국회가 후속 법률 51건을 통과시켰다. 10월 2일부터 시행된다.");
+    /* CLI Round 1171: 안내 문구도 실제로 넣은 것(요약)을 말합니다. */
+    expect(screen.getByTestId("post-body-autofilled").textContent).toContain("제목과 기사 요약");
+    expect(screen.getByTestId("post-body-news-fill-note").textContent).toContain("기사 요약");
+  });
+
+  it("offers no news fill on a project that is not a news reel", async () => {
+    renderScreen({ project: { topic: "기록관의 밤" } });
+    await pickProject();
+    expect(screen.queryByTestId("post-body-news-fill")).toBeNull();
+  });
+
   /**
    * The defect the quote posts had: a photo card stores its quote twice — once as the project's topic and once
    * as scene narration, because the renderer needs it there to draw onto the picture — so the suggestion joined

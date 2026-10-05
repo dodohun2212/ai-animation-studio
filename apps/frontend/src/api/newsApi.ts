@@ -200,6 +200,8 @@ function isCreateNewsReelCardTextResponse(value: unknown): value is CreateNewsRe
   if (!Array.isArray(candidate.captions) || !candidate.captions.every((one) => isLines(one, ["line1", "line2"]))) return false;
   if (!isSlotList(candidate.missing) || !isSlotList(candidate.repeated)) return false;
   if (!Array.isArray(candidate.ignored) || !candidate.ignored.every((one) => typeof one === "string")) return false;
+  /* 본문 요약은 같은 한 번의 호출에 실려 옵니다(CLI Round 1169). 없을 수 있고, 있으면 글자여야 합니다. */
+  if (candidate.summary !== undefined && typeof candidate.summary !== "string") return false;
 
   const check = candidate.check as { claims?: unknown; missing?: unknown } | null;
   if (typeof check !== "object" || check === null) return false;

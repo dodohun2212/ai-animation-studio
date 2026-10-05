@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NewsApiError, fetchNewsArticle, getNewsReelSetup } from "./newsApi.js";
+import { NewsApiError, createNewsReelCardText, fetchNewsArticle, getNewsReelSetup } from "./newsApi.js";
 
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 
@@ -95,5 +95,26 @@ describe("news article fetch", () => {
 
     vi.stubGlobal("fetch", vi.fn(async () => ok({ outcome: "refused", reason: "just_because", publishers })));
     await expect(fetchNewsArticle("https://www.yna.co.kr/view/1")).rejects.toBeInstanceOf(NewsApiError);
+  });
+});
+
+/** CLI Round 1169: 카드 글과 함께 오는 본문 요약 — 없어도 되고, 있으면 글자여야 합니다. */
+describe("news reel card text summary", () => {
+  const article = { title: "제목", body: "본문", publisher: "연합뉴스", publishedAt: "2026-10-05", sourceUrl: "https://www.yna.co.kr/view/1" };
+  const answer = (extra: Record<string, unknown>) => ({
+    headline: { line1: "첫 줄", line2: "둘째 줄" }, captions: [{ line1: "자막" }],
+    missing: [], repeated: [], ignored: [], check: { claims: [], missing: [] }, dailyCalls: { used: 1, limit: 30 }, ...extra,
+  });
+
+  it("passes the summary through when it is text, and accepts an answer without one", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ok(answer({ summary: "요약 두 문장." }))));
+    expect((await createNewsReelCardText(article, ["그림"])).summary).toBe("요약 두 문장.");
+    vi.stubGlobal("fetch", vi.fn(async () => ok(answer({}))));
+    expect((await createNewsReelCardText(article, ["그림"])).summary).toBeUndefined();
+  });
+
+  it("refuses a summary that is not text", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ok(answer({ summary: 42 }))));
+    await expect(createNewsReelCardText(article, ["그림"])).rejects.toBeInstanceOf(NewsApiError);
   });
 });

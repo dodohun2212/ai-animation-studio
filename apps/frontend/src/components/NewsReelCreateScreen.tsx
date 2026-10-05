@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Asset, NewsArticleInput, NewsDailyCallCount, NewsReelCaption, NewsReelCard, PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
-import { NEWS_CHECK_SCOPE_NOTICE, checkNewsSummary, newsReelTextBox } from "@ai-animation-studio/shared";
+import { NEWS_CHECK_SCOPE_NOTICE, NEWS_REEL_TEXT_BOXES, NEWS_SUMMARY_MAX_CHARS, checkNewsSummary, countNewsReelText, newsReelTextBox } from "@ai-animation-studio/shared";
 
 import { listAssets } from "../api/assetsApi.js";
 import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsReelCardText, getNewsReelSetup } from "../api/newsApi.js";
@@ -34,6 +34,37 @@ const field =
 /** 화면이 못 찾은 것을 무엇이라 부를지. */
 const CLAIM_LABEL = { number: "숫자", date: "날짜", quote: "따옴표 안의 말" } as const;
 
+/** 장면 자막 한 칸에 쓸 수 있는 글자 수 — 영상에서 두 줄(각 줄 한도)로 나뉘어 들어갑니다. */
+export const NEWS_REEL_CAPTION_TOTAL = NEWS_REEL_TEXT_BOXES["caption.line1"].limit + NEWS_REEL_TEXT_BOXES["caption.line2"].limit;
+
+/**
+ * 장면 자막 한 칸을 영상의 두 줄로 나눕니다(캡틴D, 2026-10-04: 「둘째 줄을 지우고 첫째 줄 자막 수를 늘릴 수 없나」 → 1번:
+ * 칸 하나에 길게 쓰고 자동 줄바꿈).
+ *
+ * 🔴 **줄 한도는 그대로입니다** — 18자는 굽는 글꼴로 잰 폭이라(D-053) 한 줄을 늘리면 화면 밖으로 넘칩니다. 그래서
+ * 칸만 하나로 합치고, **띄어쓰기에서** 두 줄로 나눕니다. 한 줄에 들어가면 한 줄(`line2: null`).
+ * 🟠 나눌 자리가 여럿이면 두 줄 길이가 가장 비슷한 곳 — 아래 줄만 한두 글자 남는 모양을 피합니다.
+ * 띄어쓰기 없이 한 줄 한도를 넘는 덩어리가 있으면 나눌 수 없어 `null` 입니다.
+ */
+export function splitNewsReelCaption(text: string): { line1: string; line2: string | null } | null {
+  const value = text.trim().replace(/\s+/gu, " ");
+  if (value === "") return null;
+  const limit1 = NEWS_REEL_TEXT_BOXES["caption.line1"].limit;
+  const limit2 = NEWS_REEL_TEXT_BOXES["caption.line2"].limit;
+  if (countNewsReelText(value) <= limit1) return { line1: value, line2: null };
+  let best: { line1: string; line2: string; gap: number } | null = null;
+  for (let at = value.indexOf(" "); at >= 0; at = value.indexOf(" ", at + 1)) {
+    const line1 = value.slice(0, at);
+    const line2 = value.slice(at + 1);
+    const n1 = countNewsReelText(line1);
+    const n2 = countNewsReelText(line2);
+    if (n1 > limit1 || n2 > limit2) continue;
+    const gap = Math.abs(n1 - n2);
+    if (best === null || gap < best.gap) best = { line1, line2, gap };
+  }
+  return best === null ? null : { line1: best.line1, line2: best.line2 };
+}
+
 /**
  * 릴에 들어갈 글을 쓰고 릴을 만드는 화면 — **그림마다 자막 하나**.
  *
@@ -52,9 +83,10 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
   const [headline2, setHeadline2] = useState("");
   /* 🔴 **장면 수만큼**입니다. 계약이 `captions.length === assetIds.length` 를 요구하고, 다르면 서버가
      작업을 쓰기 전에 거절합니다(CLI Round 1067 §1). */
-  const [captions, setCaptions] = useState<{ line1: string; line2: string }[]>(
-    () => Array.from({ length: sceneCount }, () => ({ line1: "", line2: "" })),
-  );
+  const [captions, setCaptions] = useState<string[]>(() => Array.from({ length: sceneCount }, () => ""));
+  /* 인스타그램 캡션 본문에 들어갈 기사 요약(CLI Round 1169, 캡틴D 「캡션 본문에 뉴스 요약본을 넣어서 글 읽을 수 있게」).
+     「글 뽑기」가 같은 한 번의 호출에서 채워 주고, 빠지면 사람이 씁니다. 비워 두면 카드에 안 실립니다. */
+  const [summary, setSummary] = useState("");
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [projectId, setProjectId] = useState("");
   const [takenNames, setTakenNames] = useState<ReadonlySet<string> | null>(null);
@@ -85,8 +117,8 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
     return () => { cancelled = true; };
   }, []);
 
-  function setCaption(scene: number, line: "line1" | "line2", value: string): void {
-    setCaptions((current) => current.map((one, index) => (index === scene ? { ...one, [line]: value } : one)));
+  function setCaption(scene: number, value: string): void {
+    setCaptions((current) => current.map((one, index) => (index === scene ? value : one)));
   }
 
   /**
@@ -109,10 +141,13 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
       const response = await createNewsReelCardText(draft.article, pictures);
       if (response.headline.line1 !== undefined) setHeadline1(response.headline.line1);
       if (response.headline.line2 !== undefined) setHeadline2(response.headline.line2);
-      setCaptions((current) => current.map((one, index) => ({
-        line1: response.captions[index]?.line1 ?? one.line1,
-        line2: response.captions[index]?.line2 ?? one.line2,
-      })));
+      if (response.summary !== undefined && response.summary.trim() !== "") setSummary(response.summary);
+      /* 받은 두 줄은 한 칸에 이어 붙입니다 — 영상에서 다시 나누는 건 이 화면의 일입니다. 아무 줄도 안 왔으면 그대로. */
+      setCaptions((current) => current.map((one, index) => {
+        const got = response.captions[index];
+        const merged = [got?.line1, got?.line2].filter((line): line is string => typeof line === "string" && line.trim() !== "").join(" ");
+        return merged === "" ? one : merged;
+      }));
       /* 🟠 **부스러기를 버리지 않습니다** — 돈이 나간 답이고, 못 채운 칸은 사람이 손으로 채울 자리입니다. */
       const leftovers: string[] = [];
       if (response.missing.length > 0) leftovers.push(`안 온 칸 ${response.missing.length}개`);
@@ -139,15 +174,20 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
   const boxes = [
     newsReelTextBox("headline.line1", newsReelFieldValue(headline1)),
     newsReelTextBox("headline.line2", newsReelFieldValue(headline2)),
-    ...captions.flatMap((one) => [
-      newsReelTextBox("caption.line1", newsReelFieldValue(one.line1)),
-      newsReelTextBox("caption.line2", newsReelFieldValue(one.line2)),
-    ]),
   ];
-  const refused = boxes.filter((box) => box.refusal !== null);
+  /* 장면 자막: 칸 하나 → 두 줄. 나뉜 두 줄을 **서버와 같은 함수로** 셉니다. 못 나누면 그 칸이 거절입니다. */
+  const captionSplits = captions.map((one) => splitNewsReelCaption(one));
+  const captionRefused = captionSplits.filter((split, index) => split === null
+    || newsReelTextBox("caption.line1", split.line1).refusal !== null
+    || newsReelTextBox("caption.line2", split.line2).refusal !== null
+    || captions[index]!.trim() === "").length;
+  const summaryCount = countNewsReelText(summary);
+  const summaryOver = summaryCount > NEWS_SUMMARY_MAX_CHARS;
+  const refusedCount = boxes.filter((box) => box.refusal !== null).length + captionRefused + (summaryOver ? 1 : 0);
 
-  /* 🔴 **구워지는 글이 기사 안에서만 말하는지** — 요약이 아니라 이 줄들을 대조합니다. */
-  const joined = [headline1, headline2, ...captions.flatMap((one) => [one.line1, one.line2])]
+  /* 🔴 **나가는 글이 기사 안에서만 말하는지** — 영상에 구워지는 제목·자막과 게시 본문 요약을 함께 대조합니다. */
+  /* 🔴 요약도 게시물에 나가는 글이라 **같이 대조합니다** — 기사에 없는 숫자가 캡션으로 새면 안 됩니다. */
+  const joined = [headline1, headline2, ...captions, summary]
     .map((one) => one.trim()).filter((one) => one.length > 0).join(" ");
   const check = joined.length > 0 && draft !== null && draft.article.body.trim().length > 0
     ? checkNewsSummary(joined, draft.article.body)
@@ -156,7 +196,7 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
 
   const trimmedCredit = creditText.trim();
   const creditMissing = creditRequired && trimmedCredit.length === 0;
-  const ready = draft !== null && refused.length === 0 && !blocked && nameUsable && !creditMissing;
+  const ready = draft !== null && refusedCount === 0 && !blocked && nameUsable && !creditMissing;
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -168,7 +208,8 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
         publisher: draft.article.publisher,
         headline: { line1: headline1.trim(), line2: headline2.trim() },
         /* 🔴 빈 둘째 줄은 `""` 가 아니라 `null` — 계약이 빈 문자열을 값으로 안 칩니다(docs/06_DECISIONS.md D-054). */
-        captions: captions.map((one): NewsReelCaption => ({ line1: one.line1.trim(), line2: newsReelFieldValue(one.line2) })),
+        captions: captionSplits.map((split): NewsReelCaption => ({ line1: split!.line1, line2: split!.line2 })),
+        ...(summary.trim() !== "" ? { summary: summary.trim() } : {}),
         ...(creditRequired ? { creditRequired: true, creditText: trimmedCredit } : { creditRequired: false }),
       };
       const response = await createNewsReel({
@@ -264,7 +305,7 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
         {/* 🔴 **그림 옆에 그 장면의 자막.** 어느 그림에 무엇이 깔리는지 안 보이면, 고칠 줄을 못 찾습니다. */}
         <section aria-label="장면마다 자막" className={cardSection}>
           <h2 className="text-sm font-semibold text-slate-100">장면마다 자막</h2>
-          <p className="mt-1 text-xs text-slate-500">그림이 바뀌면 아래 자막도 바뀝니다. 제목 띠는 그대로 있습니다.</p>
+          <p className="mt-1 text-xs text-slate-500">그림이 바뀌면 아래 자막도 바뀝니다. 제목 띠는 그대로 있습니다. 자막은 한 칸에 쓰면 길이에 맞춰 영상에서 한 줄 또는 두 줄로 나뉩니다.</p>
 
           <ol className="mt-4 space-y-5">
             {captions.map((one, scene) => {
@@ -279,31 +320,38 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
                     <span className="truncate text-[11px] text-slate-500">{asset?.displayName ?? "그림"}</span>
                   </div>
                   <div className="min-w-0 flex-1 space-y-2">
-                    <CountedField
-                      id={`news-reel-caption1-${scene}`}
-                      data-testid={`news-reel-caption1-${scene}`}
-                      field="caption.line1"
-                      label="자막 첫 줄"
-                      value={one.line1}
-                      onChange={(value) => setCaption(scene, "line1", value)}
+                    <CaptionField
+                      scene={scene}
+                      value={one}
+                      onChange={(value) => setCaption(scene, value)}
                       disabled={pending}
-                      placeholder="이 그림에 보이는 것을 말로"
-                    />
-                    <CountedField
-                      id={`news-reel-caption2-${scene}`}
-                      data-testid={`news-reel-caption2-${scene}`}
-                      field="caption.line2"
-                      label="자막 둘째 줄"
-                      value={one.line2}
-                      onChange={(value) => setCaption(scene, "line2", value)}
-                      disabled={pending}
-                      placeholder="없어도 됩니다"
                     />
                   </div>
                 </li>
               );
             })}
           </ol>
+        </section>
+
+        <section aria-label="게시 본문 요약" className={cardSection}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <label htmlFor="news-reel-summary" className="text-sm font-semibold text-slate-100">게시 본문 요약</label>
+            <span className={`text-xs tabular-nums ${summaryOver ? "text-rose-300" : "text-slate-500"}`} data-testid="news-reel-summary-count">
+              {summaryCount}/{NEWS_SUMMARY_MAX_CHARS}
+              {summaryOver && <span className="ml-1">· {summaryCount - NEWS_SUMMARY_MAX_CHARS}자 넘었습니다</span>}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">영상에는 안 들어가고, 「게시물 준비」의 캡션 본문으로 들어갑니다. 「글 뽑기」가 채워 주며, 직접 고치거나 써도 됩니다. 비워 두면 장면 자막을 이어 붙여 씁니다.</p>
+          <textarea
+            id="news-reel-summary"
+            data-testid="news-reel-summary"
+            rows={4}
+            className="mt-3 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm leading-relaxed text-slate-100 placeholder:text-slate-600 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
+            value={summary}
+            placeholder="기사 내용을 2~3문장으로"
+            disabled={pending}
+            onChange={(event) => setSummary(event.target.value)}
+          />
         </section>
 
         {/* 🔴 구워지는 글이 기사 안에서만 말하는지 — 걸리면 못 만듭니다. */}
@@ -371,7 +419,7 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
         </button>
         {!ready && !pending && (
           <p className="text-xs text-slate-500" data-testid="news-reel-create-why">
-            {refused.length > 0 ? "글자 수가 맞지 않는 칸이 있습니다."
+            {refusedCount > 0 ? "글자 수가 맞지 않는 칸이 있습니다."
               : blocked ? "대조에서 걸린 것을 고쳐야 만들 수 있습니다."
               : creditMissing ? "출처 문구를 적어 주세요."
               : "쓸 수 있는 이름을 적어 주세요."}
@@ -379,5 +427,49 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
         )}
       </form>
     </section>
+  );
+}
+
+/**
+ * 장면 자막 한 칸 — 최대 {@link NEWS_REEL_CAPTION_TOTAL}자. 영상에서 어떻게 나뉘는지 칸 아래에 바로 보여 줍니다.
+ * `news-reel-caption1-{n}` 은 예전 「첫 줄」 칸의 이름을 그대로 씁니다(같은 자리, 같은 역할).
+ */
+function CaptionField({ scene, value, onChange, disabled }: { scene: number; value: string; onChange: (value: string) => void; disabled: boolean }) {
+  const id = `news-reel-caption1-${scene}`;
+  const count = countNewsReelText(value);
+  const split = splitNewsReelCaption(value);
+  const over = count > NEWS_REEL_CAPTION_TOTAL;
+  const unsplittable = value.trim() !== "" && split === null && !over;
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <label className="block text-sm text-slate-300" htmlFor={id}>자막</label>
+        <span className={`text-xs tabular-nums ${over || unsplittable ? "text-rose-300" : "text-slate-500"}`} data-testid={`${id}-count`}>
+          {count}/{NEWS_REEL_CAPTION_TOTAL}
+          {over && <span className="ml-1">· {count - NEWS_REEL_CAPTION_TOTAL}자 넘었습니다</span>}
+        </span>
+      </div>
+      <textarea
+        id={id}
+        data-testid={id}
+        rows={2}
+        className="w-full resize-none rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
+        value={value}
+        placeholder="이 그림에 보이는 것을 말로 — 길면 영상에서 두 줄로 나뉩니다"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value.replace(/\n/gu, " "))}
+      />
+      {split !== null && (
+        <p className="text-xs text-slate-500" data-testid={`${id}-lines`}>
+          영상에서는 {split.line2 === null ? "한 줄" : "두 줄"}: <span className="text-slate-300">{split.line1}</span>
+          {split.line2 !== null && <> / <span className="text-slate-300">{split.line2}</span></>}
+        </p>
+      )}
+      {unsplittable && (
+        <p className="text-xs text-rose-300" data-testid={`${id}-unsplittable`}>
+          띄어쓰기 없이 {NEWS_REEL_TEXT_BOXES["caption.line1"].limit}자를 넘는 덩어리가 있어 두 줄로 나눌 수 없습니다 — 중간에 띄어쓰기를 넣어 주세요.
+        </p>
+      )}
+    </div>
   );
 }

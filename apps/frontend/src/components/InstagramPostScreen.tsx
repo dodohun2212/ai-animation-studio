@@ -224,6 +224,9 @@ function suggestCaptionBody(project: Project): string {
   if (project.photoCard === true) {
     return topic;
   }
+  if (project.newsReelCard) {
+    return suggestNewsReelCaptionBody(project.newsReelCard) || topic;
+  }
   const narration = project.scenes
     .map((scene) => (typeof scene.narration === "string" ? scene.narration.trim() : ""))
     .filter((line) => line.length > 0)
@@ -232,6 +235,29 @@ function suggestCaptionBody(project: Project): string {
     left.replace(/\s+/gu, " ").trim() === right.replace(/\s+/gu, " ").trim();
   const blocks = sameText(narration, topic) ? [topic] : [topic, narration];
   return blocks.filter((block) => block.length > 0).join("\n\n");
+}
+
+/**
+ * 뉴스 릴의 캡션 본문 — 저장된 기사 요약, 없으면 영상에 구운 글을 **읽을 수 있는 글**로 펼칩니다(캡틴D, 2026-10-03: 「캡션 본문에 뉴스 요약본을
+ * 넣어서 글 읽을 수 있게」).
+ *
+ * 🔴 뉴스 릴에는 내레이션이 없어서, 예전엔 제목 한 줄만 들어갔습니다. 카드에는 이미 기사에서 뽑아 기사 대조까지
+ * 통과한 글 — 제목 두 줄과 장면마다 자막 — 이 있습니다. 새로 지어내지 않고 그것을 그대로 문단으로 놓습니다
+ * (돈이 드는 호출 없음, 기사에 없는 말이 끼어들 틈 없음). 같은 줄이 연달아 나오면 한 번만 씁니다.
+ */
+export function suggestNewsReelCaptionBody(card: NonNullable<Project["newsReelCard"]>): string {
+  const headline = [card.headline.line1, card.headline.line2].map((line) => line.trim()).filter(Boolean).join(" ");
+  /* 🟢 만들 때 저장한 기사 요약이 있으면 그것이 본문입니다(CLI Round 1169) — 기사 대조를 통과한, 읽히는 글입니다.
+     옛 카드(요약 없음)만 아래처럼 장면 자막을 이어 붙입니다. */
+  const summary = card.summary?.trim() ?? "";
+  if (summary !== "") return [headline, summary].filter((block) => block.length > 0).join("\n\n");
+  const lines: string[] = [];
+  for (const caption of card.captions) {
+    const line = [caption.line1, caption.line2 ?? ""].map((part) => part.trim()).filter(Boolean).join(" ");
+    if (line && lines[lines.length - 1] !== line) lines.push(line);
+  }
+  const paragraph = lines.map((line) => (/[.!?。…]$/u.test(line) ? line : `${line}.`)).join(" ");
+  return [headline, paragraph].filter((block) => block.length > 0).join("\n\n");
 }
 
 /**
@@ -276,6 +302,8 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
   const [body, setBody] = useState("");
   /** True only while the box still holds text this screen put there and the person has not touched it yet. */
   const [bodyAutoFilled, setBodyAutoFilled] = useState(false);
+  /* 「뉴스 내용으로 채우기」 직전의 본문 — 한 번 되돌릴 수 있게. 다른 영상을 고르면 비웁니다. */
+  const [bodyBeforeNewsFill, setBodyBeforeNewsFill] = useState<string | null>(null);
   const [hashtagsRaw, setHashtagsRaw] = useState("");
   const [aiNoticeOn, setAiNoticeOn] = useState(true);
   /**
@@ -465,6 +493,7 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
         const suggested = !unread && draft?.body === undefined ? suggestCaptionBody(projectResponse.project) : "";
         setBody(draft?.body ?? suggested);
         setBodyAutoFilled(!unread && draft?.body === undefined && suggested.length > 0);
+        setBodyBeforeNewsFill(null);
         setMeasured(null);
         setHashtagsRaw(draft?.hashtags ?? "");
         setAiNoticeOn(draft?.aiNotice ?? true);
@@ -1209,11 +1238,53 @@ export function InstagramPostScreen({ initialProjectId, initialEpisodeNumber, on
                 onBlur={() => void saveDraft()}
               />
             </label>
+            {picked.status === "ready" && picked.kind === "project" && picked.project.newsReelCard && (() => {
+              const newsBody = suggestNewsReelCaptionBody(picked.project.newsReelCard);
+              if (!newsBody) return null;
+              return (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                  <button
+                    type="button"
+                    data-testid="post-body-news-fill"
+                    className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                    disabled={body === newsBody}
+                    onClick={() => {
+                      setBodyBeforeNewsFill(body);
+                      setBody(newsBody);
+                      setBodyAutoFilled(false);
+                      void saveDraft({ body: newsBody });
+                    }}
+                  >
+                    뉴스 내용으로 본문 채우기
+                  </button>
+                  <span data-testid="post-body-news-fill-note">{picked.project.newsReelCard.summary?.trim() ? "제목과 만들 때 저장한 기사 요약을 넣습니다." : "제목과 장면 자막을 이어서 읽을 수 있는 글로 넣습니다."}</span>
+                  {bodyBeforeNewsFill !== null && body === newsBody && (
+                    <button
+                      type="button"
+                      data-testid="post-body-news-undo"
+                      className="text-slate-300 underline hover:text-slate-100"
+                      onClick={() => {
+                        const previous = bodyBeforeNewsFill;
+                        setBody(previous);
+                        setBodyBeforeNewsFill(null);
+                        void saveDraft({ body: previous });
+                      }}
+                    >
+                      되돌리기
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
             {bodyAutoFilled && (
               <p data-testid="post-body-autofilled" className="text-xs text-slate-400">
                 {picked.status === "ready" && picked.kind === "episode"
                   ? "이 회차의 제목·줄거리·내레이션으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다."
-                  : "이 프로젝트의 제목과 내레이션으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다."}
+                  : picked.status === "ready" && picked.kind === "project" && picked.project.newsReelCard
+                    ? picked.project.newsReelCard.summary?.trim()
+                      ? "이 뉴스 릴의 제목과 기사 요약으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다."
+                      : "이 뉴스 릴의 제목과 장면 자막으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다."
+                    : "이 프로젝트의 제목과 내레이션으로 미리 채워 뒀습니다. 그대로 올려도 되고, 지우고 새로 쓰셔도 됩니다."}
               </p>
             )}
 
