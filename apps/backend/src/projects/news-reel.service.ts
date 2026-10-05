@@ -7,6 +7,7 @@ import {
   NEWS_SUMMARY_MAX_CHARS,
   WorkflowState,
   checkNewsReelCardText,
+  countNewsReelText,
   isAspectRatio,
   type CreateNewsReelRequest,
   type CreateNewsReelResponse,
@@ -148,7 +149,7 @@ function validCard(value: unknown): NewsReelCard {
   const headline = data.headline as Record<string, unknown> | undefined;
   const captions = Array.isArray(data.captions) ? data.captions as unknown[] : undefined;
   if (typeof data.publisher !== "string" || !data.publisher.trim()) throw newsReelInvalidRequest();
-  if (data.summary !== undefined && (typeof data.summary !== "string" || !data.summary.trim() || data.summary.length > NEWS_SUMMARY_MAX_CHARS)) {
+  if (data.summary !== undefined && (typeof data.summary !== "string" || !data.summary.trim() || countNewsReelText(data.summary) > NEWS_SUMMARY_MAX_CHARS)) {
     throw newsReelInvalidRequest(`뉴스 요약은 ${NEWS_SUMMARY_MAX_CHARS}자 이내로 적어 주세요.`);
   }
   if (!headline || typeof headline.line1 !== "string" || typeof headline.line2 !== "string") throw newsReelInvalidRequest();

@@ -59,6 +59,14 @@ describe("news reel creation", () => {
     }
   });
 
+  it("counts the summary by the same characters the screen displays", async () => {
+    const { service, assetId } = await setup();
+    const summary = `${"가".repeat(399)}🌱`;
+
+    const { project } = await service.create(request(assetId, { card: { ...CARD, summary } }));
+    expect(project.newsReelCard?.summary).toBe(summary);
+  });
+
   it("writes the card onto the project, so the merge can draw it later", async () => {
     const { service, projects, assetId } = await setup();
 
