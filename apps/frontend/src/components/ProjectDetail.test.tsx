@@ -360,4 +360,18 @@ describe("ProjectDetail", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  // CLI Round 1213
+  it("reads the stop reason before the side tools, and keeps 보관하기 out of the 'look at any time' row", async () => {
+    const project = makeProject({ warnings: ["서버가 꺼져서 중간에 멈췄습니다"], errors: [] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { project })));
+    render(<ProjectDetail projectId={project.id} onBack={() => {}} onOpenMappingReview={() => {}} />);
+
+    const warnings = await screen.findByTestId("project-warnings");
+    const tools = screen.getByTestId("project-side-tools");
+    expect(warnings.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const archive = screen.getByRole("button", { name: "프로젝트 보관하기" });
+    expect(tools.contains(archive)).toBe(false);
+    expect(screen.getByTestId("project-archive-zone").contains(archive)).toBe(true);
+  });
 });

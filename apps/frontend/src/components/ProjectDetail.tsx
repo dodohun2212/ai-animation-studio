@@ -145,13 +145,6 @@ export function ProjectDetail({
           {/*
             * The project, as one card that answers "what is this and how far is it" without scrolling.
             *
-            * The three facts were already all here — title, state chip, progress — but stacked as three loose
-            * rows above a button, so the screen opened looking like a form. The picture is the project's own
-            * first scene: it is the fastest way to tell two flower reels apart, and it costs no new data.
-            */}
-          {/*
-            * The project, as one card that answers "what is this and how far is it" without scrolling.
-            *
             * 🔴 `ScreenHeader`, not a second hero. The long-form detail screen already uses it, and the two
             * were drifting apart in the way a person would actually notice — one card had the hairline and the
             * corner glow, the other did not. What this screen has and that one does not is a picture, so the
@@ -194,64 +187,8 @@ export function ProjectDetail({
               {resumeTarget(state.project)!.label}
             </button>
           )}
-          {/* This row used to mix pipeline steps with side tools, so the same step appeared three times on one
-              screen: in the progress bar, in the resume button, and here. The bar owns the ordered steps and is
-              always on screen for this project; the resume button owns the next one. What is left here is only
-              what is NOT a step — hence the heading, which says so. */}
-          <p className="text-xs text-slate-500">순서와 상관없이 언제든 볼 수 있는 것</p>
-          <div className="flex flex-wrap gap-3">
-            <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
-              프로젝트 설정
-            </button>
-            {state.project.scenes.length > 0 && !skipped("sceneEdit") && (
-              <button
-                type="button"
-                data-testid="open-scene-edit"
-                className={secondaryButton}
-                onClick={() => onOpenSceneEdit(projectId)}
-              >
-                장면 편집
-              </button>
-            )}
-            {narrationInUse !== false && !skipped("narrationReview") && state.project.scenes.some((scene) => typeof scene.narration === "string" && scene.narration.trim()) && (
-              <button
-                type="button"
-                data-testid="open-narration-review"
-                className={secondaryButton}
-                onClick={() => onOpenNarrationReview(projectId)}
-              >
-                내레이션 확인
-              </button>
-            )}
-            <button type="button" className={secondaryButton} onClick={() => onOpenGallery(projectId)}>
-              생성 이미지 모음
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
-              onClick={() => setArchiveOpen(true)}
-            >
-              프로젝트 보관하기
-            </button>
-          </div>
-          {archiveOpen && (
-            <ArchiveProjectDialog
-              confirmationText={state.project.topic}
-              projectKind="short"
-              onCancel={() => setArchiveOpen(false)}
-              onConfirm={async (confirmation) => {
-                // Mapped here, not inside the dialog: this module's toDisplayError knows the short-project
-                // error codes (e.g. PROJECT_ARCHIVE_COLLISION), and the dialog is shared with the long-project
-                // screen, which maps its own codes differently. See ArchiveProjectDialog's catch block.
-                try {
-                  await archiveProject(projectId, { confirmation });
-                } catch (caught) {
-                  throw toDisplayError(caught);
-                }
-                onArchived();
-              }}
-            />
-          )}
+          {/* CLI Round 1213: the errors and warnings say why the project stopped (e.g. "서버가 꺼져서 중간에
+              멈췄습니다"), so they now sit right under the resume button instead of beneath the side tools. */}
           {/* Warnings and errors were previously shown as bare counts ("2건"), with the actual messages
               unreachable anywhere in the UI. A count the user cannot act on is not information. */}
           {state.project.errors.length > 0 && (
@@ -281,6 +218,69 @@ export function ProjectDetail({
                 ))}
               </ul>
             </section>
+          )}
+          {/* This row used to mix pipeline steps with side tools, so the same step appeared three times on one
+              screen: in the progress bar, in the resume button, and here. The bar owns the ordered steps and is
+              always on screen for this project; the resume button owns the next one. What is left here is only
+              what is NOT a step — hence the heading, which says so. */}
+          <p className="text-xs text-slate-500">순서와 상관없이 언제든 볼 수 있는 것</p>
+          <div data-testid="project-side-tools" className="flex flex-wrap gap-3">
+            <button type="button" className={secondaryButton} onClick={() => onOpenSettings(projectId)}>
+              프로젝트 설정
+            </button>
+            {state.project.scenes.length > 0 && !skipped("sceneEdit") && (
+              <button
+                type="button"
+                data-testid="open-scene-edit"
+                className={secondaryButton}
+                onClick={() => onOpenSceneEdit(projectId)}
+              >
+                장면 편집
+              </button>
+            )}
+            {narrationInUse !== false && !skipped("narrationReview") && state.project.scenes.some((scene) => typeof scene.narration === "string" && scene.narration.trim()) && (
+              <button
+                type="button"
+                data-testid="open-narration-review"
+                className={secondaryButton}
+                onClick={() => onOpenNarrationReview(projectId)}
+              >
+                내레이션 확인
+              </button>
+            )}
+            <button type="button" className={secondaryButton} onClick={() => onOpenGallery(projectId)}>
+              생성 이미지 모음
+            </button>
+          </div>
+          {/* CLI Round 1213: 보관하기 sat in the row headed "순서와 상관없이 언제든 볼 수 있는 것", next to the gallery,
+              though it is the one control here that takes the project off the list. Kept, behind the same
+              confirmation dialog, but set apart at the end so it does not read as one more thing to look at. */}
+          <div data-testid="project-archive-zone" className="border-t border-white/5 pt-4">
+            <button
+              type="button"
+              className="rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-300 hover:bg-rose-500/10"
+              onClick={() => setArchiveOpen(true)}
+            >
+              프로젝트 보관하기
+            </button>
+          </div>
+          {archiveOpen && (
+            <ArchiveProjectDialog
+              confirmationText={state.project.topic}
+              projectKind="short"
+              onCancel={() => setArchiveOpen(false)}
+              onConfirm={async (confirmation) => {
+                // Mapped here, not inside the dialog: this module's toDisplayError knows the short-project
+                // error codes (e.g. PROJECT_ARCHIVE_COLLISION), and the dialog is shared with the long-project
+                // screen, which maps its own codes differently. See ArchiveProjectDialog's catch block.
+                try {
+                  await archiveProject(projectId, { confirmation });
+                } catch (caught) {
+                  throw toDisplayError(caught);
+                }
+                onArchived();
+              }}
+            />
           )}
         </>
       )}
