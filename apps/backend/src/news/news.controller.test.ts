@@ -362,6 +362,25 @@ describe("what the screen is told about each publisher", () => {
  * first real reel got wrong (a summary cut into pieces, 271 characters into a line that holds 15).
  */
 describe("news reel card text route", () => {
+  it("returns a checked article summary from the same card-text call", async () => {
+    const { controller: news } = await summariser();
+    news.callCardProvider = async () => "제목1: 물가 오름세 한풀 꺾여\n제목2: 3.2%로 둔화\n자막1-1: 물가 상승률 3.2%\n본문요약: 통계청에 따르면 물가 상승률은 3.2%로 둔화됐다.";
+
+    const result = await news.cardText({ article: ARTICLE, pictures: [""] });
+    expect(result.summary).toContain("3.2%");
+    expect(result.check.missing).toEqual([]);
+    expect(result.dailyCalls.used).toBe(1);
+  });
+
+  it("reports a figure invented only in the article summary", async () => {
+    const { controller: news } = await summariser();
+    news.callCardProvider = async () => "제목1: 물가 오름세 한풀 꺾여\n제목2: 3.2%로 둔화\n자막1-1: 물가 상승률 3.2%\n본문요약: 물가 상승률은 7.8%였다.";
+
+    const result = await news.cardText({ article: ARTICLE, pictures: [""] });
+    expect(result.check.missing.map((claim) => claim.text)).toContain("7.8%");
+    expect(result.summary).toContain("7.8%");
+  });
+
   const ANSWER = [
     "제목1: 물가 오름세 한풀 꺾여",
     "제목2: 3.2%로 둔화",

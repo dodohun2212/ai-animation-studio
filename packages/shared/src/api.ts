@@ -2896,6 +2896,8 @@ export interface CreateNewsSummaryResponse {
  */
 export interface NewsReelCard {
   publisher: string;
+  /** Article-checked prose for the Instagram caption. Older and manually written cards may omit it. */
+  summary?: string;
   /** Fixed for the whole reel — the band does not change when the picture does. */
   headline: NewsReelHeadline;
   /**
@@ -3048,6 +3050,8 @@ export interface NewsReelTextSlot {
 }
 
 export interface CreateNewsReelCardTextResponse {
+  /** Article summary from the same paid call as the card text. Omitted when its label was absent or repeated. */
+  summary?: string;
   /** The headline lines a label arrived for, as the provider wrote them — never trimmed to fit. */
   headline: Partial<NewsReelHeadline>;
   /**

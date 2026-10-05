@@ -26,6 +26,10 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 `POST /projects/:projectId/videos/still-motion-preview`는 `{ sceneNumber, motion, subtitleLayout? }`을 받는다. `sceneNumber`는 1부터 시작한다. `subtitleLayout`은 명언 카드에만 허용되며 저장하지 않은 자막 크기·위치도 미리 보는 값이다. 응답은 한 사진 길이의 무음 `video/mp4` 바이너리다. 최종 병합과 같은 로컬 FFmpeg 필터·글자/뉴스 띠를 사용하며 프로젝트와 완성 영상을 바꾸지 않고 유료 Provider를 호출하지 않는다. 프론트는 응답을 Blob으로 읽는다.
 
+## 뉴스 릴 게시 본문용 요약
+
+`POST /news/card-text`는 기존 한 번의 글 생성 호출에서 카드 글과 함께 `summary?: string`을 돌려준다. 요약이 오면 카드 글과 함께 원문 기사 대조 결과 `check`에 포함된다. `POST /news/reels`의 `card.summary?: string`은 400자 이내의 비어 있지 않은 요약을 프로젝트에 저장한다. 과거 카드와 직접 작성한 카드에는 이 필드가 없을 수 있다. 화면은 요약이 없을 때 기존 제목·장면 자막 초안을 사용할 수 있다.
+
 ## 대표 Route (예시, 전체 목록 아님)
 
 마이그레이션 초기에 작성된 예시 목록이다. 지금은 단기·장기 프로젝트, Story,

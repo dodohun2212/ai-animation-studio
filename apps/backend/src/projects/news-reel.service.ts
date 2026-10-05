@@ -4,6 +4,7 @@ import * as path from "node:path";
 import {
   PHOTO_CARD_DURATIONS,
   PHOTO_CARD_MAX_PICTURES,
+  NEWS_SUMMARY_MAX_CHARS,
   WorkflowState,
   checkNewsReelCardText,
   isAspectRatio,
@@ -147,6 +148,9 @@ function validCard(value: unknown): NewsReelCard {
   const headline = data.headline as Record<string, unknown> | undefined;
   const captions = Array.isArray(data.captions) ? data.captions as unknown[] : undefined;
   if (typeof data.publisher !== "string" || !data.publisher.trim()) throw newsReelInvalidRequest();
+  if (data.summary !== undefined && (typeof data.summary !== "string" || !data.summary.trim() || data.summary.length > NEWS_SUMMARY_MAX_CHARS)) {
+    throw newsReelInvalidRequest(`뉴스 요약은 ${NEWS_SUMMARY_MAX_CHARS}자 이내로 적어 주세요.`);
+  }
   if (!headline || typeof headline.line1 !== "string" || typeof headline.line2 !== "string") throw newsReelInvalidRequest();
   if (!captions || captions.length === 0) throw newsReelInvalidRequest();
   for (const caption of captions) {
@@ -168,6 +172,7 @@ function validCard(value: unknown): NewsReelCard {
 
   const card: NewsReelCard = {
     publisher: data.publisher.trim(),
+    ...(data.summary === undefined ? {} : { summary: (data.summary as string).trim() }),
     headline: { line1: headline.line1, line2: headline.line2 },
     captions: captions.map((caption) => {
       const lines = caption as Record<string, unknown>;

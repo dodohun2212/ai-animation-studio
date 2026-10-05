@@ -16,10 +16,11 @@ describe("news reel card prompt", () => {
    * 🔴 이 한 줄이 이 프롬프트가 생긴 이유다. 요약을 시키면 **통신사 문단**이 오고, 첫 실물에서는 15자짜리
    * 줄에 **271자**가 왔다(docs/06_DECISIONS.md D-052).
    */
-  it("does not ask for a summary", () => {
+  it("asks for article prose separately from the short card lines", () => {
     const prompt = newsReelCardPrompt(ARTICLE, [""]);
-    expect(prompt).toContain("요약문이 아닙니다");
-    expect(prompt).not.toContain("요약해 주세요");
+    expect(prompt).toContain("본문요약: ");
+    expect(prompt).toContain("2~3문장");
+    expect(prompt).toContain("카드의 짧은 문구를 이어 붙이지 말고");
   });
 
   it("asks for each box separately, with what that box is for", () => {
@@ -28,7 +29,7 @@ describe("news reel card prompt", () => {
     expect(prompt).toContain("제목1");
     expect(prompt).toContain("제목2");
     expect(prompt).toContain("자막1-1");
-    expect(prompt).toContain("자막N-2");
+    expect(prompt).toContain("자막N-1");
     expect(prompt, "노란 줄이 어느 줄인지 말한다").toContain("노란색");
   });
 
@@ -65,9 +66,11 @@ describe("news reel card prompt", () => {
    */
   it("takes every limit from the contract rather than typing it", () => {
     const prompt = newsReelCardPrompt(ARTICLE, ["", ""]);
-    for (const field of NEWS_REEL_TEXT_FIELDS) {
+    for (const field of NEWS_REEL_TEXT_FIELDS.filter((one) => one.startsWith("headline"))) {
       expect(prompt, `${field} 의 한도가 프롬프트에 없습니다`).toContain(`${NEWS_REEL_TEXT_BOXES[field].limit}자 이내`);
     }
+    expect(prompt).toContain(`${NEWS_REEL_TEXT_BOXES["caption.line1"].limit + NEWS_REEL_TEXT_BOXES["caption.line2"].limit}자 이내 한 문장`);
+    expect(prompt).toContain(`각 줄 ${NEWS_REEL_TEXT_BOXES["caption.line1"].limit}자 이내`);
   });
 
   /**
@@ -124,6 +127,17 @@ describe("news reel card prompt", () => {
 });
 
 describe("news reel card answer", () => {
+  it("reads the article summary without adding it to the card's caption boxes", () => {
+    const parse = parseNewsReelCardText("제목1: 가\n제목2: 나\n자막1-1: 다\n본문요약: 기사에서 확인한 내용입니다.", 1);
+    expect(parse.summary).toBe("기사에서 확인한 내용입니다.");
+    expect(parse.ignored).toEqual([]);
+  });
+
+  it("does not choose between two article summaries", () => {
+    const parse = parseNewsReelCardText("본문요약: 첫째\n본문요약: 둘째", 1);
+    expect(parse.summary).toBeUndefined();
+  });
+
   it("reads every box out of a clean answer, a caption per picture", () => {
     const parse = parseNewsReelCardText([
       "제목1: 검찰청 폐지 하루 만에",

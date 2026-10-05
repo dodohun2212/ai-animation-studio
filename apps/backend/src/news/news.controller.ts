@@ -254,15 +254,14 @@ export class NewsController {
   }
 
   /**
-   * The card's four lines, from one article.
+   * The card lines and posting summary, from one article and one provider call.
    *
    * 🟠 **Same five steps, same order, same reasons as `summarise` above** — article first so a body we cannot
    * use costs nothing, `preflight()` before anything goes out, the call, `record()` whether it worked or not,
    * then the check. The one thing that differs is what is asked for.
    *
-   * 🔴 **The check runs on the four lines, not on a paragraph about them.** These lines are what gets burned
-   * under a real publisher's name, so these are the words that have to be found in the article. Checking a
-   * summary and then burning something else would be checking the wrong text.
+   * 🔴 **The check runs on the card lines and posting summary.** These are the words that will be burned or
+   * published under a real publisher's name, so the available claims must be compared with the article.
    *
    * 🔴 **Nothing here is a gate, and nothing here is trimmed.** A line that ran long, a box the model skipped,
    * a sentence it wrote outside the labels — all of it comes back as it arrived. The call was paid for; a
@@ -298,11 +297,12 @@ export class NewsController {
     const parsed = parseNewsReelCardText(answer, pictures.length);
     // 🟠 Every line joined, because the checker looks inside one text — and a figure invented in the third
     // picture's caption is no better than one invented in the headline.
-    const lines = [...Object.values(parsed.headline), ...parsed.captions.flatMap((caption) => Object.values(caption))];
+    const lines = [...Object.values(parsed.headline), ...parsed.captions.flatMap((caption) => Object.values(caption)), ...(parsed.summary ? [parsed.summary] : [])];
     const check = checkNewsSummary(lines.join("\n"), article.body);
     assertNewsSummaryCheck(check);
 
     return {
+      ...(parsed.summary === undefined ? {} : { summary: parsed.summary }),
       headline: parsed.headline,
       captions: parsed.captions,
       missing: parsed.missing,

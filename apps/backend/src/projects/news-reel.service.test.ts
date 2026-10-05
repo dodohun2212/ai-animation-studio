@@ -42,6 +42,23 @@ const request = (assetId: string, over: Partial<CreateNewsReelRequest> = {}): un
 });
 
 describe("news reel creation", () => {
+  it("persists the article summary for the later Instagram caption", async () => {
+    const { service, assetId } = await setup();
+    const card = { ...CARD, summary: "국회는 검찰청 폐지에 따른 후속 법률을 통과시켰다." };
+
+    const { project } = await service.create(request(assetId, { card }));
+    expect(project.newsReelCard?.summary).toBe(card.summary);
+  });
+
+  it("rejects an empty or oversized article summary", async () => {
+    const { service, assetId } = await setup();
+    for (const summary of ["  ", "가".repeat(401)]) {
+      await expect(service.create(request(assetId, { card: { ...CARD, summary } }))).rejects.toMatchObject({
+        response: { code: "NEWS_REEL_INVALID_REQUEST" },
+      });
+    }
+  });
+
   it("writes the card onto the project, so the merge can draw it later", async () => {
     const { service, projects, assetId } = await setup();
 
@@ -190,4 +207,3 @@ describe("news reel creation", () => {
     expect(newsReelCardFor(stored)?.captions).toEqual([captions[0], captions[0], captions[0]]);
   });
 });
-

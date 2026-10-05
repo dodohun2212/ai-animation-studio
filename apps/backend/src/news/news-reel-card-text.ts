@@ -1,5 +1,6 @@
 import {
   NEWS_REEL_TEXT_BOXES,
+  NEWS_SUMMARY_MAX_CHARS,
   type NewsArticleInput,
   type NewsReelHeadline,
   type NewsReelTextField,
@@ -7,7 +8,7 @@ import {
 } from "@ai-animation-studio/shared";
 
 /**
- * What the model is asked for when the answer is a **card**, not a summary.
+ * What the model is asked for when the answer includes card text and posting prose.
  *
  * 🔴 **The prompt is not what makes this safe.** A model told to use only the article's figures uses fewer
  * invented ones and still invents some — `checkNewsSummary` runs on what comes back, exactly as it does for
@@ -19,7 +20,7 @@ import {
  * run, into a line that holds 15 (docs/06_DECISIONS.md D-052). Asking one question and cutting the answer into three
  * pieces cannot produce three things that do different jobs.
  *
- * 🔴 **Three values, three jobs** (read off MBC's own reels — docs/06_DECISIONS.md D-052):
+ * 🔴 **Card lines have three jobs** (read off MBC's own reels — docs/06_DECISIONS.md D-052):
  *
  * ```
  * 제목 1줄   상황 · 맥락      「이 대통령 회견 하루 만에」
@@ -41,12 +42,13 @@ import {
  */
 const HEADLINE_LABELS = { "headline.line1": "제목1", "headline.line2": "제목2" } as const;
 const captionLabel = (scene: number, line: 1 | 2): string => `자막${scene + 1}-${line}`;
+const SUMMARY_LABEL = "본문요약";
 
 const JOBS: Readonly<Record<NewsReelTextField, string>> = {
   "headline.line1": "무슨 일이 있었는지의 **배경·상황**. 사람이 이 줄만 보고 「무슨 얘긴지」 알 수 있어야 합니다.",
   "headline.line2": "그래서 **결국 어떻게 됐는지** 한 방으로. 이 줄이 노란색으로 나갑니다 — 제일 세게 남는 줄입니다.",
   "caption.line1": "그 그림이 떠 있는 동안 아래에 깔리는 자막. **무엇이 있었는지**, 언제·어디인지를 짧은 문장으로.",
-  "caption.line2": "자막이 한 줄로 모자랄 때만 씁니다. **모자라지 않으면 이 줄은 아예 쓰지 마십시오.**",
+  "caption.line2": "",
 };
 
 const limitOf = (field: NewsReelTextField): number => NEWS_REEL_TEXT_BOXES[field].limit;
@@ -62,12 +64,12 @@ export function newsReelCardPrompt(article: NewsArticleInput, pictures: readonly
   return [
     "아래 기사로 **짧은 뉴스 릴 카드**에 얹을 글을 써 주세요.",
     "",
-    `**요약문이 아닙니다.** 릴은 그림 ${sceneCount}장이 차례로 넘어가고, 위에는 제목 두 줄이 릴 내내 고정으로, 아래에는 **그림마다 다른 자막**이 깔립니다. 한 문단을 쓰고 자르는 것이 아니라, 아래 줄을 각각 따로 써 주십시오.`,
+    `릴은 그림 ${sceneCount}장이 차례로 넘어가고, 위에는 제목 두 줄이 릴 내내 고정으로, 아래에는 **그림마다 다른 자막**이 깔립니다. 카드 글과 게시 본문용 요약을 각각 써 주십시오.`,
     "",
     `- **${HEADLINE_LABELS["headline.line1"]}**: ${limitOf("headline.line1")}자 이내. ${JOBS["headline.line1"]}`,
     `- **${HEADLINE_LABELS["headline.line2"]}**: ${limitOf("headline.line2")}자 이내. ${JOBS["headline.line2"]}`,
-    `- **자막N-1** (N = 1부터 ${sceneCount}까지, N번째 그림): ${limitOf("caption.line1")}자 이내. ${JOBS["caption.line1"]}`,
-    `- **자막N-2**: ${limitOf("caption.line2")}자 이내. ${JOBS["caption.line2"]}`,
+    `- **자막N-1** (N = 1부터 ${sceneCount}까지, N번째 그림): ${limitOf("caption.line1") + limitOf("caption.line2")}자 이내 한 문장. ${JOBS["caption.line1"]} 영상에서는 띄어쓰기에서 두 줄(각 줄 ${limitOf("caption.line1")}자 이내)로 나눕니다.`,
+    `- **${SUMMARY_LABEL}**: 게시 본문에서 기사를 읽을 수 있도록 핵심을 2~3문장, ${NEWS_SUMMARY_MAX_CHARS}자 이내의 한 줄로 요약합니다. 카드의 짧은 문구를 이어 붙이지 말고 기사 내용으로 씁니다.`,
     ...(sceneCount > 1
       ? ["- 자막은 **그림마다 다른 사실**을 씁니다. 같은 말을 되풀이하지 않고, 기사가 전하는 순서대로 이어지게 씁니다."]
       : []),
@@ -80,11 +82,12 @@ export function newsReelCardPrompt(article: NewsArticleInput, pictures: readonly
     "**그런데 숫자·날짜·인용문은 기사에 적힌 그대로만 씁니다.** 표현은 새로 짓되 **사실은 기사 안에서만** 가져옵니다. 기사에 없는 숫자·날짜·인용문은 절대 만들어 넣지 않습니다. 기사가 말하지 않은 원인이나 결과도 쓰지 않습니다.",
     "- 숫자는 그 줄에 **꼭 있어야 할 때만** 씁니다. 카드에서 숫자는 자리를 많이 먹습니다.",
     "",
-    "출력은 아래 모양 그대로, 다른 말 없이 써 주세요. 머리말·따옴표·목록 기호를 붙이지 않습니다. 자막N-2 는 필요할 때만 덧붙입니다.",
+    "출력은 아래 모양 그대로, 다른 말 없이 써 주세요. 머리말·따옴표·목록 기호를 붙이지 않습니다.",
     "",
     `${HEADLINE_LABELS["headline.line1"]}: `,
     `${HEADLINE_LABELS["headline.line2"]}: `,
     ...scenes.map((scene) => `${captionLabel(scene, 1)}: `),
+    `${SUMMARY_LABEL}: `,
     "",
     `제목: ${article.title}`,
     "",
@@ -125,6 +128,7 @@ function pictureLines(pictures: readonly string[]): string[] {
 }
 
 export interface NewsReelCardTextParse {
+  summary?: string;
   headline: Partial<NewsReelHeadline>;
   /** `sceneCount` long; an entry is empty when nothing arrived for that picture. */
   captions: Partial<{ line1: string; line2: string }>[];
@@ -174,10 +178,20 @@ export function parseNewsReelCardText(text: string, sceneCount: number): NewsRee
   const values = new Map<string, { slot: NewsReelTextSlot; value: string }>();
   const repeated = new Map<string, NewsReelTextSlot>();
   const ignored: string[] = [];
+  let summary: string | undefined;
+  let summaryRepeated = false;
 
   for (const line of text.split(/\r\n|\r|\n/)) {
     if (line.trim() === "") continue;
     const match = LABEL_PATTERN.exec(line);
+    if (match?.[1] === SUMMARY_LABEL) {
+      const value = unwrap(match[2]!);
+      if (value) {
+        if (summary !== undefined || summaryRepeated) { summary = undefined; summaryRepeated = true; }
+        else summary = value;
+      }
+      continue;
+    }
     const slot = match ? slots.get(match[1]!) : undefined;
     if (!match || slot === undefined) { ignored.push(line.trim()); continue; }
     const value = unwrap(match[2]!);
@@ -202,6 +216,7 @@ export function parseNewsReelCardText(text: string, sceneCount: number): NewsRee
 
   const required = [...slots.values()].filter((slot) => NEWS_REEL_TEXT_BOXES[slot.field].required);
   return {
+    ...(summary === undefined ? {} : { summary }),
     headline,
     captions,
     missing: required.filter((slot) => !values.has(slotKey(slot)) ),
