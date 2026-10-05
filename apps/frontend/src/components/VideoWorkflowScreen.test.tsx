@@ -665,6 +665,35 @@ describe("VideoWorkflowScreen", () => {
     expect(screen.getByTestId("video-review-prompt-3").textContent).toContain("Scene 3 motion prompt");
   });
 
+  // CLI Round 1256: the recorded sent text is what this clip was made from; without it, the scene's prompt is named as such.
+  it("shows the exact submitted prompt as what made the clip, and labels the scene prompt honestly when none was recorded", async () => {
+    const sent = "Scene 2, edited before sending\nDo not render readable writing in frame: no signs, labels, captions or logos.";
+    const reviews = sixReviews().map((review) => review.sceneNumber === 2 ? { ...review, submittedPrompt: sent } : review);
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    renderScreen(vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(reviews))));
+
+    const submitted = await screen.findByTestId("video-review-prompt-2");
+    expect(submitted).toHaveAttribute("data-source", "submitted");
+    expect(submitted.querySelector("summary")?.textContent).toBe("이 영상을 만든 프롬프트 보기");
+    expect(submitted.querySelector("p")?.textContent?.trim()).toBe(sent);
+
+    const authored = screen.getByTestId("video-review-prompt-3");
+    expect(authored).toHaveAttribute("data-source", "authored");
+    expect(authored.querySelector("summary")?.textContent).toBe("장면에 적힌 동작 프롬프트 보기");
+    expect(authored.textContent).toContain("Scene 3 motion prompt");
+    expect(authored.textContent).not.toContain("이 영상을 만든");
+  });
+
+  it("rejects a review whose submittedPrompt is not a string rather than displaying it", async () => {
+    const broken = reviewResponse(sixReviews()) as unknown as { reviews: Array<Record<string, unknown>> };
+    broken.reviews = broken.reviews.map((review) => ({ ...review, submittedPrompt: 42 }));
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    renderScreen(vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, broken)));
+
+    const alert = await screen.findByTestId("review-load-error");
+    expect(alert).toHaveAttribute("data-error-code", "CLIENT_MALFORMED_RESPONSE");
+  });
+
   // Item 6 (CLI Round 862, re-wired in Round 867): the source still and the clip are drawn in the project's own
   // shape, now read from the progress response's own `aspectRatio` (required — see makeProgress's comment)
   // rather than the review response's project — a square project's pictures in a square box, not cropped into

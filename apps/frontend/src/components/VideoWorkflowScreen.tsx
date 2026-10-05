@@ -1019,14 +1019,26 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                                 {review.status === "approved" ? "확정 완료" : pending ? "확정 중..." : "이 영상으로 확정"}
                               </button>
                             </div>
-                            {scene?.motionPrompt && (
-                              <details data-testid={`video-review-prompt-${review.sceneNumber}`} className="text-xs text-slate-400">
+                            {/* CLI Round 1256: 「이 영상을 만든 프롬프트」 is only said of the text actually sent for this
+                                clip (`submittedPrompt`, recorded at submission). Without that record the scene's own
+                                motion prompt is still shown, under its own name — an edit in the preview, a regeneration
+                                instruction and the provider's appended line would all be missing from it. */}
+                            {review.submittedPrompt !== undefined ? (
+                              <details data-testid={`video-review-prompt-${review.sceneNumber}`} data-source="submitted" className="text-xs text-slate-400">
                                 <summary className="cursor-pointer text-slate-300">이 영상을 만든 프롬프트 보기</summary>
+                                <p className="mt-1 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-slate-900/60 p-2 text-slate-300">
+                                  {review.submittedPrompt}
+                                </p>
+                              </details>
+                            ) : scene?.motionPrompt ? (
+                              <details data-testid={`video-review-prompt-${review.sceneNumber}`} data-source="authored" className="text-xs text-slate-400">
+                                <summary className="cursor-pointer text-slate-300">장면에 적힌 동작 프롬프트 보기</summary>
                                 <p className="mt-1 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-slate-900/60 p-2 text-slate-300">
                                   {scene.motionPrompt}
                                 </p>
+                                <p className="mt-1 text-slate-500">이 영상에 실제로 보낸 문장은 기록되어 있지 않습니다. 확인 화면에서 고친 내용이나 자동으로 붙는 문장은 여기에 없습니다.</p>
                               </details>
-                            )}
+                            ) : null}
                             {(scene?.dialogue_speaker !== undefined || scene?.dialogue_text !== undefined) && (
                               <dl
                                 data-testid={`video-review-dialogue-${review.sceneNumber}`}

@@ -199,7 +199,10 @@ function isVideoReview(value: unknown): value is VideoReview {
     isNonEmptyString(value.updatedAt) &&
     // Optional: omitted entirely when nothing was actually charged for this scene (e.g. local fake mode).
     // A malformed value is rejected rather than displayed — a wrong cost is worse than no cost.
-    (value.costUsd === undefined || (typeof value.costUsd === "number" && Number.isFinite(value.costUsd) && value.costUsd >= 0))
+    (value.costUsd === undefined || (typeof value.costUsd === "number" && Number.isFinite(value.costUsd) && value.costUsd >= 0)) &&
+    // CLI Round 1256: the exact text sent to the provider for this clip. Optional (old records, fake clips); shown
+    // verbatim, so only its type is checked — no length limit that could refuse a real past request.
+    (value.submittedPrompt === undefined || typeof value.submittedPrompt === "string")
   );
 }
 
