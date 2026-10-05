@@ -76,6 +76,7 @@ describe("local fake video workflow", () => {
     expect(JSON.stringify(review)).not.toContain(projectsRoot); expect(review.reviews).toHaveLength(6);
     // No provider made these placeholders, so no model is named for them (VideoReview.model).
     expect(review.reviews.every((item) => item.model === undefined)).toBe(true);
+    expect(review.reviews.every((item) => item.submittedPrompt === undefined)).toBe(true);
     expect(review.staleness).toEqual({ imageStale: [], styleStale: [], videoStale: [], videoFormatStale: [], narrationStale: [], referenceStale: [] });
   });
 

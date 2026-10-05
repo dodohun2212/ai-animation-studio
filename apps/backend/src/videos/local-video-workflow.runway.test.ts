@@ -57,11 +57,12 @@ function newWorkflow(deps: Awaited<ReturnType<typeof setupWithConnectedRunway>>)
 }
 
 /** Routes fetch calls by URL: POST submit -> a fresh task id; GET task -> RUNNING on the 1st check, SUCCEEDED after; GET output URL -> fixed bytes. */
-function runwayFetchMock(options: { failTaskId?: string; neverSucceedTaskId?: string; failBodies?: Record<string, Record<string, unknown>> } = {}) {
+function runwayFetchMock(options: { failTaskId?: string; neverSucceedTaskId?: string; failBodies?: Record<string, Record<string, unknown>>; onSubmitBody?: (body: Record<string, unknown>) => void } = {}) {
   const checkCounts = new Map<string, number>();
   let nextTaskId = 1;
   return vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith("/v1/image_to_video")) {
+      if (typeof init?.body === "string") options.onSubmitBody?.(JSON.parse(init.body) as Record<string, unknown>);
       const taskId = `task-${nextTaskId++}`;
       return { ok: true, status: 200, json: async () => ({ id: taskId }), headers: { get: () => null } } as unknown as Response;
     }
@@ -417,7 +418,7 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
     }
   });
 
-  it("appends a one-off additionalInstruction to the resubmitted scene's prompt without persisting it into the record", async () => {
+  it("appends a one-off additionalInstruction without changing the authored prompt and records the exact provider prompt", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
     const fetchMock = runwayFetchMock({ failTaskId: "task-1" });
@@ -439,7 +440,9 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
 
     // Not stored: the record's own prompt field stays the plain scene prompt.
     const project = await deps.projects.findById("video_workflow");
-    expect(String(recordForScene1(project.video_generation_records as Array<Record<string, unknown>>).prompt)).toBe(basePrompt);
+    const record = recordForScene1(project.video_generation_records as Array<Record<string, unknown>>);
+    expect(String(record.prompt)).toBe(basePrompt);
+    expect(record.submitted_prompt).toBe(JSON.parse(String((submitCall[1] as RequestInit).body)).promptText);
   });
 
   it("reports a retry cost estimate reflecting real recorded spend for a Runway job", async () => {
@@ -652,7 +655,8 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
   it("reports each scene's real recorded cost in the review response, accumulating across a regeneration", async () => {
     const deps = await setupWithConnectedRunway();
     const workflow = newWorkflow(deps);
-    const fetchMock = runwayFetchMock();
+    const submittedBodies: Record<string, unknown>[] = [];
+    const fetchMock = runwayFetchMock({ onSubmitBody: (body) => submittedBodies.push(body) });
     vi.stubGlobal("fetch", fetchMock);
     vi.useFakeTimers();
     let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
@@ -668,6 +672,7 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
 
     const firstReview = await workflow.getReview("video_workflow", deps.accepted.jobId);
     expect(firstReview.reviews.every((review) => review.costUsd === 0.25)).toBe(true);
+    expect(firstReview.reviews.map((review) => review.submittedPrompt)).toEqual(submittedBodies.slice(0, 6).map((body) => body.promptText));
 
     // Regenerate scene 1 and let it succeed again — its recorded cost should accumulate, not replace.
     await workflow.regenerate("video_workflow", deps.accepted.jobId, [1]);
@@ -678,6 +683,7 @@ ${NO_LEGIBLE_TEXT_VIDEO_RULE}` });
 
     const secondReview = await workflow.getReview("video_workflow", deps.accepted.jobId);
     expect(secondReview.reviews.find((review) => review.sceneNumber === 1)?.costUsd).toBeCloseTo(0.5, 8);
+    expect(secondReview.reviews.find((review) => review.sceneNumber === 1)?.submittedPrompt).toBe(submittedBodies[6]?.promptText);
     expect(secondReview.reviews.filter((review) => review.sceneNumber !== 1).every((review) => review.costUsd === 0.25)).toBe(true);
   });
 

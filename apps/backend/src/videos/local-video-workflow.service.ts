@@ -13,6 +13,7 @@ import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import { SCENE_REVIEW_STATUSES,
   MAX_SCENE_COUNT,
   providerTaskFailure,
+  runwayVideoPromptText,
   videoSceneEstimatedCostUsd,
   WorkflowState,
   type ApproveVideoReviewResponse,
@@ -65,6 +66,8 @@ type VideoRecord = Record<string, unknown> & {
   runway_claimed_at?: string;
   /** One-off regenerate() instruction, applied only to the Runway submission still pending for this record — see runwayInputForScene(). Never read for staleness (record.prompt alone is), and always overwritten (to a value or to undefined) on every regenerate() call so a stale instruction from an earlier regeneration can never leak into a later one that didn't ask for it. */
   additional_instruction?: string;
+  /** Exact final Runway prompt for the latest provider attempt; separate from the authored prompt used for staleness. */
+  submitted_prompt?: string;
 };
 type StoredReview = { scene_number: SceneNumber; status: "pending" | "approved"; updated_at: string };
 
@@ -310,7 +313,15 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
   private async claimSceneForSubmission(projectId: string, jobId: string, scene: SceneNumber, claimedAt: string): Promise<void> {
     const project = await this.projects.findById(projectId);
     const record = this.records(project, jobId).find((item) => item.scene_number === scene)!;
-    const claimed = this.replaceRecords(project, [{ ...record, status: "submitting", runway_claimed_at: claimedAt }]);
+    const authoredPrompt = typeof record.additional_instruction === "string" && record.additional_instruction
+      ? `${String(record.prompt)}\n${record.additional_instruction}`
+      : String(record.prompt);
+    const claimed = this.replaceRecords(project, [{
+      ...record,
+      status: "submitting",
+      runway_claimed_at: claimedAt,
+      submitted_prompt: runwayVideoPromptText(authoredPrompt, recordedVideoModel(record.model)),
+    }]);
     claimed.updated_at = claimedAt;
     await this.projects.save(claimed);
   }
@@ -473,7 +484,14 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
       const costUsd = costsByScene[scene];
       // The clip's own model, from its record (VideoReview.model) — only for a clip a provider made.
       const model = record.execution_mode === "runway" ? recordedVideoModel(record.model) : undefined;
-      return { sceneNumber: scene, status: review?.status ?? "pending", updatedAt: review?.updated_at ?? timestamp, ...(costUsd !== undefined ? { costUsd } : {}), ...(model ? { model } : {}) };
+      return {
+        sceneNumber: scene,
+        status: review?.status ?? "pending",
+        updatedAt: review?.updated_at ?? timestamp,
+        ...(costUsd !== undefined ? { costUsd } : {}),
+        ...(model ? { model } : {}),
+        ...(record.execution_mode === "runway" && typeof record.submitted_prompt === "string" ? { submittedPrompt: record.submitted_prompt } : {}),
+      };
     });
   }
 
@@ -682,7 +700,7 @@ export class LocalVideoWorkflowService implements OnModuleDestroy {
     if (!trimmedInstruction && records.some((record) => selected.includes(record.scene_number) && stillUnchanged(record))) throw videoRetryNeedsChangedInput();
     try { for (const scene of selected) await this.archive(project.project_id, scene); } catch { throw videoStorageError(); }
     const reset = records.filter((record) => selected.includes(record.scene_number)).map((record) => ({
-      ...record, status: "created" as const,
+      ...record, status: "created" as const, submitted_prompt: undefined,
       ...(rebuiltPrompt.has(record.scene_number) ? { prompt: rebuiltPrompt.get(record.scene_number)! } : {}),
       ...(record.dialogue_enabled === true ? { generate_dialogue_audio: Boolean(String((project.scenes[record.scene_number - 1] as StoredScene | undefined)?.dialogue_text ?? "").trim()) } : {}),
       runway_task_id: undefined, runway_submitted_at: undefined, runway_last_checked_at: undefined, runway_claimed_at: undefined, error: undefined, failure_code: undefined, billed_credits: undefined,
