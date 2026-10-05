@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
+import { VIDEO_MODEL_OPTIONS, runwayVideoPromptText } from "@ai-animation-studio/shared";
 import type { GetLongEpisodeVideoPreviewResponse, LongEpisodeStatus, LongEpisodeVideoProgress, LongEpisodeVideoReview, RecoverLongEpisodeVideosResponse, SceneNumber, VideoModelOption } from "@ai-animation-studio/shared";
 
 import { approveLongEpisodeVideoReview, episodeSceneErrorMessage, getLongEpisode, getLongEpisodeCurrentVideoJob, getLongEpisodeVideoPreview, getLongEpisodeVideoProgress, getLongEpisodeVideoReview, longEpisodeVideoContentUrl, recoverLongEpisodeVideos, regenerateAllLongEpisodeVideos, regenerateLongEpisodeVideo, restartLongEpisodeVideoGeneration, startLongEpisodeVideoGeneration, stopLongEpisodeVideoGeneration, toLongProjectDisplayError } from "../api/longProjectsApi.js";
@@ -384,6 +384,15 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                   <textarea data-testid={`episode-video-prompt-${scene.sceneNumber}`} className={textareaClassName} value={prompts[scene.sceneNumber] ?? ""} disabled={confirmStart || busy} onChange={(event) => setPrompts((current) => ({ ...current, [scene.sceneNumber]: event.target.value }))} />
                 </label>
                 <span className="text-xs text-slate-500">{(prompts[scene.sceneNumber] ?? "").length} / {LIMIT}</span>
+                {/* CLI Round 1241: what Runway will actually receive — the text above plus the model's own no-text line,
+                    composed by the same shared function the adapter uses, so this cannot drift from what is sent. */}
+                <details data-testid={`episode-video-full-prompt-${scene.sceneNumber}`} className="text-xs text-slate-400">
+                  <summary className="cursor-pointer text-slate-300">실제로 전송할 전체 프롬프트</summary>
+                  <p data-testid={`episode-video-full-prompt-text-${scene.sceneNumber}`} className="mt-1 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-slate-900/60 p-2 text-slate-300">
+                    {runwayVideoPromptText(prompts[scene.sceneNumber] ?? "", preview.model)}
+                  </p>
+                  <p className="mt-1 text-slate-500">마지막 줄은 영상 안에 글자가 그려지지 않도록 전송할 때 자동으로 붙는 문장입니다.</p>
+                </details>
                 {/* The server drops sections in a fixed order to fit the limit and says which. The short project
                     has shown this since its preview shipped; the Episode threw the list away, so a scene could
                     lose its pacing or performance direction and the only way to find out was a finished clip
@@ -754,6 +763,17 @@ export function LongEpisodeVideoWorkflowScreen({ projectId, episodeNumber, onBac
                 <p className="text-xs text-slate-400 tabular-nums" data-testid={`episode-video-review-cost-${review.sceneNumber}`}>
                   이 장면에 쓴 비용: ${review.costUsd.toFixed(2)}
                 </p>
+              )}
+              {/* CLI Round 1241: exactly what was sent for this clip, as the server recorded it at submission — shown
+                  whole, never re-split or re-composed. Absent for clips that never reached a provider or predate the
+                  record, and then there is nothing to open rather than a sentence made up after the fact. */}
+              {review.submittedPrompt !== undefined && (
+                <details data-testid={`episode-video-review-prompt-${review.sceneNumber}`} className="text-xs text-slate-400">
+                  <summary className="cursor-pointer text-slate-300">이 영상을 만든 프롬프트 보기</summary>
+                  <p className="mt-1 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-slate-900/60 p-2 text-slate-300">
+                    {review.submittedPrompt}
+                  </p>
+                </details>
               )}
               <div className="flex justify-end gap-3">
                 <button type="button" className={smallOutlineButton} disabled={review.status === "approved"} onClick={() => void approve(review.sceneNumber)}>{review.status === "approved" ? "확정 완료" : "이 영상으로 확정"}</button>

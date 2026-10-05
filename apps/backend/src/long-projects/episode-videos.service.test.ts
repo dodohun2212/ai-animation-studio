@@ -85,6 +85,7 @@ describe("EpisodeVideosService", () => {
 
     const { reviews } = await videos.review("long", 1, started.jobId);
     expect(reviews.map((item) => item.sceneNumber), "the clips are still there and still readable").toEqual([1, 2, 3, 4, 5, 6]);
+    expect(reviews.every((item) => !("submittedPrompt" in item)), "local fake clips were not sent to a provider").toBe(true);
 
     await expect(videos.approve("long", 1, started.jobId, "1", { approved: true }), "but the stage has moved on")
       .rejects.toMatchObject({ response: { code: "LONG_EPISODE_VIDEOS_NOT_ALLOWED" } });

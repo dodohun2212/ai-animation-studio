@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { runwayVideoPromptText } from "@ai-animation-studio/shared";
 
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
@@ -53,13 +54,13 @@ afterEach(async () => {
 /** What the mock "downloads". Distinct from the local placeholder so a test can tell which one was written. */
 const RUNWAY_BODY = Buffer.concat([Buffer.from("000000186674797069736F6D", "hex"), Buffer.from("real runway output bytes for this scene")]);
 
-function runwayFetchMock(options: { failTaskId?: string; failBodies?: Record<string, Record<string, unknown>> } = {}) {
+function runwayFetchMock(options: { failTaskId?: string; failBodies?: Record<string, Record<string, unknown>>; onSubmitBody?: (body: Record<string, unknown>) => void } = {}) {
   const checkCounts = new Map<string, number>();
   let nextTaskId = 1;
   return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
-    void init;
     const url = String(input);
     if (url.endsWith("/v1/image_to_video")) {
+      if (typeof init?.body === "string") options.onSubmitBody?.(JSON.parse(init.body) as Record<string, unknown>);
       const taskId = `task-${nextTaskId++}`;
       return { ok: true, status: 200, json: async () => ({ id: taskId }), headers: { get: () => null } } as unknown as Response;
     }
@@ -430,13 +431,16 @@ describe("real Runway episode video generation", () => {
   it("reports each scene's real recorded cost in the review response, accumulating across a regeneration, scoped per Episode", async () => {
     const deps = await setupWithConnectedRunway();
     const videos = newVideos(deps);
-    const fetchMock = runwayFetchMock();
+    const submittedBodies: Record<string, unknown>[] = [];
+    const fetchMock = runwayFetchMock({ onSubmitBody: (body) => submittedBodies.push(body) });
     vi.stubGlobal("fetch", fetchMock);
     vi.useFakeTimers();
     let now = new Date("2026-08-23T10:00:00.000Z"); vi.setSystemTime(now);
 
     const preview = await videos.preview("long", 1);
-    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts: preview.scenes.map(({ sceneNumber, prompt }) => ({ sceneNumber, prompt })) });
+    const prompts = preview.scenes.map(({ sceneNumber, prompt }, index) => ({ sceneNumber, prompt: index === 0 ? "A changed prompt for the first scene." : prompt }));
+    const expected = prompts.map(({ prompt }) => runwayVideoPromptText(prompt, preview.model));
+    const started = await videos.start("long", 1, { approved: true, confirmationId: preview.confirmationId, userRequestId: "request_1", prompts });
     let progress = await videos.run("long", 1, started.jobId);
     for (let scene = 1; scene <= 6; scene++) {
       now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
@@ -448,8 +452,11 @@ describe("real Runway episode video generation", () => {
 
     const firstReview = await videos.review("long", 1, started.jobId);
     expect(firstReview.reviews.every((review) => review.costUsd === 0.25)).toBe(true);
+    expect(submittedBodies.map((body) => body.promptText)).toEqual(expected);
+    expect(firstReview.reviews.map((review) => review.submittedPrompt)).toEqual(expected);
 
-    await videos.regenerate("long", 1, started.jobId, "1", { approved: true });
+    const instruction = "Use soft sunrise lighting.";
+    await videos.regenerate("long", 1, started.jobId, "1", { approved: true, additionalInstruction: instruction });
     now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
     await videos.progress("long", 1, started.jobId);
     now = new Date(now.getTime() + (RUNWAY_POLL_INTERVAL_SECONDS + 1) * 1000); vi.setSystemTime(now);
@@ -457,6 +464,9 @@ describe("real Runway episode video generation", () => {
 
     const secondReview = await videos.review("long", 1, started.jobId);
     expect(secondReview.reviews.find((review) => review.sceneNumber === 1)?.costUsd).toBeCloseTo(0.5, 8);
+    const regeneratedPrompt = runwayVideoPromptText(`${prompts[0]!.prompt}\n${instruction}`, preview.model);
+    expect(submittedBodies[6]?.promptText).toBe(regeneratedPrompt);
+    expect(secondReview.reviews.find((review) => review.sceneNumber === 1)?.submittedPrompt).toBe(regeneratedPrompt);
     expect(secondReview.reviews.filter((review) => review.sceneNumber !== 1).every((review) => review.costUsd === 0.25)).toBe(true);
   });
 

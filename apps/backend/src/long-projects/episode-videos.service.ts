@@ -1,4 +1,4 @@
-import { isAspectRatio, RUNWAY_RATIO_FOR_ASPECT, videoModelOption, videoModelTakesDuration, videoModelTakesRatio } from "@ai-animation-studio/shared";
+import { isAspectRatio, RUNWAY_RATIO_FOR_ASPECT, runwayVideoPromptText, videoModelOption, videoModelTakesDuration, videoModelTakesRatio } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { storedSceneCount } from "../projects/stored-scene-count.js";
 import { assertEpisodeListed, readLongProjectJson } from "./long-project-json.js";
@@ -44,14 +44,16 @@ const MP4 = PLACEHOLDER_MP4;
 const statuses: readonly LongEpisodeStatus[] = LONG_EPISODE_STATUSES;
 type ObjectMap = { [key: string]: unknown };
 type Episode = ObjectMap & { number: number; state: LongEpisodeStatus; approved: boolean; script: { scenes?: unknown }; script_revision: number; updated_at: string; duration_seconds: number; scene_count?: number };
-/** `prompt` is what was actually sent to the provider — a submission has to be reproducible from it. `base_prompt` is the plain scene prompt, present only when a one-off regeneration instruction made the two differ, and it is what staleness compares against. */
+/** `prompt` is the authored text passed to the adapter; staleness compares `base_prompt ?? prompt` against the scene. */
 type VideoRecord = { scene_number: SceneNumber; job_id: string; user_request_id: string; confirmation_id: string; input_hash: string; prompt: string; base_prompt?: string; status: "created" | "submitting" | "running" | "succeeded" | "interrupted" | "failed"; execution_mode: "local_fake_no_provider" | "runway"; completed_at?: string; runway_task_id?: string;
   /** Set only while status is "submitting" — see claimSceneForSubmission. */
   runway_claimed_at?: string; runway_submitted_at?: string; runway_last_checked_at?: string; error?: string; failure_code?: string;
   /** The provider's final charge for this failed attempt, in credits, when it said (`cost.credits`). */
   billed_credits?: number;
   /** The model the job was confirmed under. Absent on records written before a second model existed — those were all sent to the default (recordedVideoModel). */
-  model?: VideoModel };
+  model?: VideoModel;
+  /** Exact provider prompt including the model-specific suffix. Written with the submission claim; absent for local fake or older records. */
+  submitted_prompt?: string };
 type Record = VideoRecord;
 /** What a record's status may be on disk: the job statuses, plus the pre-POST claim the screens never see as such. */
 const RECORD_STATUSES = [...VIDEO_JOB_STATUSES, "submitting"] as const;
@@ -305,6 +307,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
   private async claimSceneForSubmission(id: string, number: number, records: VideoRecord[], sceneNumber: SceneNumber, claimedAt: string): Promise<void> {
     const record = records.find((item) => item.scene_number === sceneNumber)!;
     record.status = "submitting"; record.runway_claimed_at = claimedAt;
+    record.submitted_prompt = runwayVideoPromptText(record.prompt, recordedVideoModel(record.model));
     await this.saveRecords(id, number, records);
   }
 
@@ -731,6 +734,7 @@ export class EpisodeVideosService implements OnModuleDestroy {
       const record = records.find((item) => item.scene_number === selected)!;
       if (additionalInstruction) { const base = record.base_prompt ?? record.prompt; record.base_prompt = base; record.prompt = `${base}
 ${additionalInstruction}`; }
+      delete record.submitted_prompt;
       record.status = "created";
       delete record.completed_at; delete record.runway_task_id; delete record.runway_submitted_at; delete record.runway_last_checked_at; delete record.error; delete record.failure_code; delete record.billed_credits;
     }
@@ -756,7 +760,32 @@ ${additionalInstruction}`; }
    * one asks the only question a read has to: are the clips actually there. An Episode mid-generation still
    * fails that, so "there is nothing yet" stays a refusal rather than an empty list.
    */
-  async review(projectId: string, number: number, job: string): Promise<GetLongEpisodeVideoReviewResponse> { const id = projectId.trim(); const episode = await this.loadEpisode(id, number); const sceneNumbers = sceneNumbersFor(this.sceneCount(episode)); const records = await this.records(id, number, this.sceneCount(episode), job); if (!(await Promise.all(sceneNumbers.map((item) => this.validVideo(this.video(id, number, item))))).every(Boolean)) throw longEpisodeVideosNotAllowed(); const reviews = await this.loadReviews(id, number, true); const now = episode.updated_at; const costsByScene = this.budget ? await this.budget.costsByScene(this.budgetProjectKey(id, number)) : {}; return { episode: this.detail(episode), reviews: sceneNumbers.map((item) => { const review = reviews.find((value) => value.scene_number === item); const costUsd = costsByScene[item]; return { sceneNumber: item, status: review?.status || "pending", updatedAt: review?.updated_at || now, ...(costUsd !== undefined ? { costUsd } : {}) }; }), staleness: await this.videoStaleness(id, number, episode, records) }; }
+  async review(projectId: string, number: number, job: string): Promise<GetLongEpisodeVideoReviewResponse> {
+    const id = projectId.trim();
+    const episode = await this.loadEpisode(id, number);
+    const sceneNumbers = sceneNumbersFor(this.sceneCount(episode));
+    const records = await this.records(id, number, this.sceneCount(episode), job);
+    if (!(await Promise.all(sceneNumbers.map((item) => this.validVideo(this.video(id, number, item))))).every(Boolean)) throw longEpisodeVideosNotAllowed();
+    const reviews = await this.loadReviews(id, number, true);
+    const now = episode.updated_at;
+    const costsByScene = this.budget ? await this.budget.costsByScene(this.budgetProjectKey(id, number)) : {};
+    return {
+      episode: this.detail(episode),
+      reviews: sceneNumbers.map((sceneNumber) => {
+        const review = reviews.find((value) => value.scene_number === sceneNumber);
+        const record = records.find((value) => value.scene_number === sceneNumber);
+        const costUsd = costsByScene[sceneNumber];
+        return {
+          sceneNumber,
+          status: review?.status || "pending",
+          updatedAt: review?.updated_at || now,
+          ...(costUsd !== undefined ? { costUsd } : {}),
+          ...(typeof record?.submitted_prompt === "string" ? { submittedPrompt: record.submitted_prompt } : {}),
+        };
+      }),
+      staleness: await this.videoStaleness(id, number, episode, records),
+    };
+  }
   /**
    * Which clips were paid for against a script that has since changed.
    *

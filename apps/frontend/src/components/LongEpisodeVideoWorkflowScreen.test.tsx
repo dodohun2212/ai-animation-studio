@@ -1,6 +1,7 @@
 import type { LongEpisodeStatus, LongEpisodeDetail, LongEpisodeVideoProgress } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NO_LEGIBLE_TEXT_VIDEO_RULE, runwayVideoPromptText } from "@ai-animation-studio/shared";
 import { jsonResponse, sequence, stubFetchByRoute, withStatus } from "../api/testUtils.js";
 import { LongEpisodeVideoWorkflowScreen } from "./LongEpisodeVideoWorkflowScreen.js";
 
@@ -1077,5 +1078,37 @@ describe("LongEpisodeVideoWorkflowScreen", () => {
     expect(next.compareDocumentPosition(reviewSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(next);
     expect(onOpenMerge).toHaveBeenCalledWith("long", 1);
+  });
+
+  // CLI Round 1241: the text Runway will receive is visible before the paid button, including the line the adapter adds.
+  it("shows the full prompt that will be sent, following the edit and ending in the model's no-text line", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /videos/generations/current": { jobId: null }, "GET /videos/preview": preview }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const textarea = await screen.findByTestId("episode-video-prompt-2");
+    expect(screen.getByTestId("episode-video-full-prompt-text-2").textContent).toBe(runwayVideoPromptText("prompt 2", "gen4_turbo"));
+    fireEvent.change(textarea, { target: { value: "a quiet street at dusk" } });
+    const full = screen.getByTestId("episode-video-full-prompt-text-2").textContent!;
+    expect(full).toBe(runwayVideoPromptText("a quiet street at dusk", "gen4_turbo"));
+    expect(full.startsWith("a quiet street at dusk\n")).toBe(true);
+    expect(full.endsWith(NO_LEGIBLE_TEXT_VIDEO_RULE)).toBe(true);
+  });
+
+  // CLI Round 1241: after the fact, each clip shows exactly what was sent for it — and nothing when nothing was recorded.
+  it("opens the prompt each clip was made from, verbatim, and offers nothing for a clip with no record", async () => {
+    const sent = "scene one, as edited\nDo not render readable writing in frame: no signs, labels, captions or logos.";
+    const review = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({ sceneNumber, status: "pending", updatedAt: "2026-08-23T00:00:00.000Z", ...(sceneNumber === 1 ? { submittedPrompt: sent } : {}) }));
+    vi.stubGlobal("fetch", stubFetchByRoute({
+      "GET /videos/generations/current": { jobId: "job" },
+      "GET /videos/generations/job": progress("succeeded", [1, 2, 3, 4, 5, 6]),
+      "GET /videos/generations/job/review": { episode: episode("videos_review"), reviews: review, staleness: { videoStale: [] } },
+      ...sceneVersionRoutes(),
+    }));
+    render(<LongEpisodeVideoWorkflowScreen projectId="long" episodeNumber={1} onBack={() => {}} onOpenMerge={() => {}} />);
+
+    const details = await screen.findByTestId("episode-video-review-prompt-1");
+    expect(details.textContent).toContain("이 영상을 만든 프롬프트 보기");
+    expect(details.querySelector("p")?.textContent?.trim()).toBe(sent);
+    expect(screen.queryByTestId("episode-video-review-prompt-2")).toBeNull();
   });
 });

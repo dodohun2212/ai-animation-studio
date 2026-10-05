@@ -1,4 +1,4 @@
-import { DEFAULT_VIDEO_MODEL, NO_LEGIBLE_TEXT_VIDEO_RULE, providerTaskFailure, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODEL_OPTIONS, VIDEO_MODELS, videoModelSupportsDialogueAudio, videoModelTakesRatio, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
+import { DEFAULT_VIDEO_MODEL, providerTaskFailure, runwayVideoPromptText, runwayVideoTextRuleFor, SEEDANCE_TEXT_CONSTRAINT, RUNWAY_PROMPT_MAX_LENGTH, RUNWAY_VIDEO_RATIOS, VIDEO_MODEL_OPTIONS, VIDEO_MODELS, videoModelSupportsDialogueAudio, videoModelTakesRatio, type RunwayVideoRatio, type SceneFailureRemedy, type VideoModel } from "@ai-animation-studio/shared";
 // Types only — erased at build, so no SDK code ever runs here (see `requestBodyFor` below for why that matters).
 import type { ImageToVideoCreateParams } from "@runwayml/sdk/resources/image-to-video";
 import { assertRealNetworkCallAllowed } from "../providers/no-test-network.guard.js";
@@ -141,10 +141,8 @@ function seedanceParts<const R extends string>({ promptImage, promptText, durati
  * — and it notes the model readily renders text (ad slogans, subtitles, speech bubbles), so the line matters more
  * there. No longer than the shared rule: RUNWAY_PROMPT_AUTHORING_LIMIT reserves room for that length.
  */
-export const SEEDANCE_TEXT_CONSTRAINT = "Avoid generating subtitles, logos, watermarks or any readable text.";
-export function textRuleFor(model: VideoModel): string {
-  return model.startsWith("seedance") ? SEEDANCE_TEXT_CONSTRAINT : NO_LEGIBLE_TEXT_VIDEO_RULE;
-}
+export { SEEDANCE_TEXT_CONSTRAINT };
+export const textRuleFor = runwayVideoTextRuleFor;
 
 /**
  * 🔴 WAN reads a bare image string as a *reference* image, not as the first frame — its field is "an image or
@@ -342,14 +340,13 @@ export async function createRunwayImageToVideoTask(
   options: RetryOptions & { model?: VideoModel; ratio?: string; durationSeconds?: number; lastFrame?: { imageBytes: Buffer; imageMimeType: string }; generateDialogueAudio?: boolean } = {},
 ): Promise<{ taskId: string }> {
   // Appended here rather than at either caller: this is the one door to Runway, both pipelines come through it,
-  // and a third caller cannot forget it. The prompt a person confirmed is what gets recorded; this line is only
-  // ever sent — see NO_LEGIBLE_TEXT_VIDEO_RULE for the four live scenes that ask Runway for lettering, and for
-  // why recording it instead would mark all 43 recorded prompts stale.
+  // and a third caller cannot forget it. The caller-authored prompt stays the staleness input. Long Episodes
+  // also snapshot this final text separately as `submitted_prompt` for later inspection; never compare that
+  // snapshot to the authored scene, or the appended policy line alone would mark 43 existing clips stale.
   const authored = prompt.trim();
   if (!authored) throw new RunwayAdapterError("invalid_request", "Runway 프롬프트가 비어 있습니다.");
   const model = options.model ?? RUNWAY_MODEL;
-  const text = `${authored}
-${textRuleFor(model)}`;
+  const text = runwayVideoPromptText(authored, model);
   if (utf16Length(text) > RUNWAY_PROMPT_MAX_LENGTH) throw new RunwayAdapterError("invalid_request", `Runway 프롬프트가 ${RUNWAY_PROMPT_MAX_LENGTH} UTF-16 코드 유닛을 초과했습니다.`);
   const requestBody = requestBodyFor(model, {
     promptImage: imageDataUri(imageBytes, imageMimeType), promptText: text, ratio: options.ratio ?? "720:1280", duration: options.durationSeconds ?? 5,

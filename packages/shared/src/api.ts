@@ -977,7 +977,14 @@ export interface LongEpisodeVideoProgress {
   retryEstimate?: { perSceneCostUsd: number; budget: BudgetPreview; pendingSceneCount: number };
 }
 /** costUsd: actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded. */
-export interface LongEpisodeVideoReview { sceneNumber: SceneNumber; status: SceneReviewStatus; updatedAt: string; costUsd?: number; }
+export interface LongEpisodeVideoReview {
+  sceneNumber: SceneNumber;
+  status: SceneReviewStatus;
+  updatedAt: string;
+  costUsd?: number;
+  /** Exact final prompt text sent to the provider for this clip, including model-specific appended rules. Omitted for old records or clips made without a provider request. */
+  submittedPrompt?: string;
+}
 /**
  * Which already-paid-for clips no longer match the script they were made from.
  *

@@ -680,7 +680,7 @@ function isEpisodeVideoProgress(value: unknown): value is LongEpisodeVideoProgre
  * notice reads undefined as free.
  */
 const isStartEpisodeVideoResponse = (value: unknown): value is StartLongEpisodeVideoGenerationResponse => isRecord(value) && typeof value.paidProvider === "boolean" && isNonEmptyString(value.jobId) && Array.isArray(value.acceptedSceneNumbers) && value.acceptedSceneNumbers.length >= MIN_SCENE_COUNT && value.acceptedSceneNumbers.length <= MAX_SCENE_COUNT && value.acceptedSceneNumbers.every(isSceneNumber) && isLongEpisodeDetail(value.episode);
-function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (SCENE_REVIEW_STATUSES as readonly string[]).includes(value.status as string) && isNonEmptyString(value.updatedAt) && (value.costUsd === undefined || isFiniteNonNegative(value.costUsd)); }
+function isEpisodeVideoReview(value: unknown): value is LongEpisodeVideoReview { return isRecord(value) && isSceneNumber(value.sceneNumber) && (SCENE_REVIEW_STATUSES as readonly string[]).includes(value.status as string) && isNonEmptyString(value.updatedAt) && (value.costUsd === undefined || isFiniteNonNegative(value.costUsd)) && (value.submittedPrompt === undefined || typeof value.submittedPrompt === "string"); }
 /** `staleness` is required by the contract, so a response without it is malformed — not a screen that quietly shows no badges. */
 const isLongEpisodeVideoStaleness = (value: unknown): value is LongEpisodeVideoStaleness =>
   isRecord(value) && Array.isArray(value.videoStale) && value.videoStale.every(isSceneNumber);

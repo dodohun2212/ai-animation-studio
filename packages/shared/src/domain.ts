@@ -557,11 +557,24 @@ export const RUNWAY_PROMPT_MAX_LENGTH = 1_000;
  * The first of those is the whole documented failure in one scene: a shot whose final beat is lettering, with
  * a camera move onto it.
  *
- * Request-time only, exactly like the image rule and for the same reason: putting a constant line into the
- * *recorded* prompt would mark all 43 recorded prompts stale — 43 scenes reading "your prompt has changed"
- * because of a line no person wrote.
+ * Appended to provider text, not to the authored prompt or hash staleness compares. Folding it into either
+ * would mark the 43 existing clips that share these scenes stale because of a line the person did not write.
+ * A history snapshot of the final provider text is a separate field and must not become the staleness input.
  */
 export const NO_LEGIBLE_TEXT_VIDEO_RULE = "Do not render readable writing in frame: no signs, labels, captions or logos.";
+
+/** Seedance's equivalent rule, in wording recommended by its provider. */
+export const SEEDANCE_TEXT_CONSTRAINT = "Avoid generating subtitles, logos, watermarks or any readable text.";
+
+/** The exact no-readable-text suffix appended to each Runway prompt for the selected model. */
+export function runwayVideoTextRuleFor(model: VideoModel): string {
+  return model.startsWith("seedance") ? SEEDANCE_TEXT_CONSTRAINT : NO_LEGIBLE_TEXT_VIDEO_RULE;
+}
+
+/** Final prompt text sent to Runway. The caller-authored part remains separate in saved prompt records. */
+export function runwayVideoPromptText(authoredPrompt: string, model: VideoModel): string {
+  return `${authoredPrompt.trim()}\n${runwayVideoTextRuleFor(model)}`;
+}
 
 /**
  * What a prompt may be *before* the rule above is appended — the limit every screen and every check that

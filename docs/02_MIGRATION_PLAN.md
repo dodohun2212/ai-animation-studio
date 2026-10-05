@@ -4632,4 +4632,5 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 
 ## 2026-10-06 — 장편 영상 전송 프롬프트 가시성 점검
 
-- `LongEpisodeVideoWorkflowScreen`은 장면별 프롬프트를 전송 전에 보여 주고 수정할 수 있으며, 수정 문자열이 실제 시작 요청에 그대로 들어간다. Runway 어댑터는 여기에 모델별 읽을 수 있는 글자 금지 문장을 덧붙이지만 이 마지막 문자열은 미리보기에 없고, 완료 뒤 검토 응답·카드에도 프롬프트가 없어 확인할 수 없다. Cowork가 코드 흐름을 읽고 7화 실화면(기존 생성 완료라 전송 전 UI는 열리지 않음)에서 다른 동작 없이 확인했다(1238). 계약 후보는 `LongEpisodeVideoReview.submittedPrompt?: string`로 provider에 보낸 최종 문자열을 사후 제공한다. 실제 전송·승인·유료 호출 없음.
+- `LongEpisodeVideoWorkflowScreen`은 장면별 authored prompt를 편집할 수 있지만 어댑터의 모델별 문장과 완료 후 기록은 볼 수 없었다. 공용 `runwayVideoPromptText`가 어댑터와 미리보기에서 같은 최종 요청 문자열을 만들고, 접힌 프리뷰에서 전문을 보여 준다. 제출 시 백엔드는 같은 문자열을 별도 `submitted_prompt` 필드에 저장하고 검토 응답의 선택적 `LongEpisodeVideoReview.submittedPrompt`로 돌려준다. staleness에 쓰는 authored prompt와 해시는 그대로다. 재생성 시 이전 값을 지워 다음 제출 값으로 교체하며, 과거 레코드나 local fake는 값이 없으므로 검토 UI에서 숨긴다.
+- Cowork가 미리보기와 검토 카드 UI, API guard 및 회귀 테스트를 추가했다. 프로젝트 12의 7화 실화면은 이미 완료되어 전송 전 화면을 열 수 없었지만 기존 프롬프트 없는 기록에서 오류·가짜 문구가 나오지 않는 것을 확인했다(1242). 전체 검증 통과: backend 2019 pass/1 skip, frontend 1965 pass, shared 130 pass, desktop 38 pass; 전체 타입검사·빌드 통과. 네트워크는 mock만 사용했고 유료 provider 호출은 0회. 실제 장편 재생성·Runway 전송은 하지 않았다.
