@@ -29,6 +29,9 @@ export const QUOTE_FONT_FAMILY = "Noto Serif KR";
  */
 const PHOTO_CARD_REVEAL_SHARE = 0.5;
 
+/** A single short strike on the first picture. ASS vector shapes keep this effect local and license-free. */
+const PHOTO_CARD_STRIKE = { flashStart: 0.08, flashEnd: 0.20, boltEnd: 0.28, tintEnd: 0.44 } as const;
+
 /** ASS timestamp: H:MM:SS.CC (centiseconds), per the format's fixed field widths. Exported so the news reel
  * card builds its cues with the same clock rather than a second copy of this arithmetic. */
 export function timestamp(seconds: number): string {
@@ -189,6 +192,13 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
    */
   const revealAt = (index: number) =>
     !reveal || body.length <= 1 ? 0 : (index / body.length) * (durationSeconds * PHOTO_CARD_REVEAL_SHARE);
+  const strikeY = heading !== undefined ? headingY : lineY(0);
+  const strikeSize = heading !== undefined ? headSize : bodySize;
+  const strikeText = heading ?? body[0];
+  const strikeStyle = heading !== undefined ? "Quote" : "Body";
+  const strike = reveal && strikeText && durationSeconds > PHOTO_CARD_STRIKE.tintEnd
+    ? photoCardStrikeCues(strikeStyle, strikeText, centerX, strikeY, strikeSize, width, height)
+    : [];
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -204,12 +214,42 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ...strike,
     ...(heading !== undefined ? [cue("Quote", headingY, heading)] : []),
     // One positioned cue per line rather than one `\N` cue, which is what lets them arrive in turn. A single
     // line reveals at 0 and renders exactly where the one static cue put it — there is nothing to sequence.
     ...body.map((line, index) => cue("Body", lineY(index), line, revealAt(index))),
     "",
   ].join("\n");
+}
+
+/** The photo, glyphs and bolt share one clock. Later pictures already show the settled card. */
+function photoCardStrikeCues(style: "Quote" | "Body", content: string, x: number, y: number, size: number, width: number, height: number): string[] {
+  const { flashStart, flashEnd, boltEnd, tintEnd } = PHOTO_CARD_STRIKE;
+  const event = (layer: number, start: number, end: number, overrides: string, drawing: string) =>
+    `Dialogue: ${layer},${timestamp(start)},${timestamp(end)},${style},,0,0,0,,{${overrides}}${drawing}`;
+  const polygon = (points: [number, number][], halfWidth: number) => {
+    const left = points.map(([px, py]) => [Math.round(px - halfWidth), Math.round(py)]);
+    const right = [...points].reverse().map(([px, py]) => [Math.round(px + halfWidth), Math.round(py)]);
+    return `m ${left[0]!.join(" ")} ${[...left.slice(1), ...right].map((point) => `l ${point.join(" ")}`).join(" ")}`;
+  };
+  const startY = Math.max(0, y - size * 3.8);
+  const path: [number, number][] = [
+    [x + size * 1.15, startY], [x + size * 0.5, y - size * 2.35],
+    [x + size * 0.85, y - size * 1.8], [x + size * 0.12, y - size * 0.7], [x, y],
+  ];
+  const branch: [number, number][] = [path[2]!, [x + size * 1.45, y - size * 1.25], [x + size * 1.15, y - size * 0.7]];
+  const glow = `${polygon(path, Math.max(4, size * 0.16))} ${polygon(branch, Math.max(2, size * 0.09))}`;
+  const core = `${polygon(path, Math.max(2, size * 0.045))} ${polygon(branch, Math.max(1, size * 0.025))}`;
+  const clipHalfWidth = Math.round(size * 0.75);
+  const clip = `\\clip(${x - clipHalfWidth},${Math.round(y - size)},${x + clipHalfWidth},${Math.round(y + size)})`;
+  return [
+    // Layer 0 covers the full picture while the existing caption remains legible above it.
+    event(0, flashStart, flashEnd, "\\an7\\pos(0,0)\\p1\\bord0\\shad0\\1c&HFFFFFF&\\1a&H78&", `m 0 0 l ${width} 0 l ${width} ${height} l 0 ${height}`),
+    event(3, flashStart, tintEnd, `\\an5\\pos(${x},${y})${clip}\\1c&HFFFF99&\\bord0\\shad0`, escapeDialogueText(content)),
+    event(4, flashStart, boltEnd, "\\an7\\pos(0,0)\\p1\\bord0\\shad0\\blur10\\1c&HFFCC66&\\1a&H55&", glow),
+    event(5, flashStart, boltEnd, "\\an7\\pos(0,0)\\p1\\bord0\\shad0\\blur1\\1c&HFFFFFF&", core),
+  ];
 }
 
 /**

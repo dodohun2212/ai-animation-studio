@@ -17,7 +17,7 @@ function styleRow(ass: string, name: string): string[] {
 }
 
 function cueY(ass: string, styleName: string): number {
-  const row = ass.split("\n").find((line) => line.startsWith("Dialogue: ") && line.includes(`,${styleName},,`));
+  const row = ass.split("\n").find((line) => line.startsWith("Dialogue: 0,") && line.includes(`,${styleName},,`) && line.includes("\\an5\\pos("));
   if (!row) throw new Error(`no ${styleName} cue in:\n${ass}`);
   const match = /\\pos\((\d+),(\d+)\)/.exec(row);
   if (!match) throw new Error(`no pos in: ${row}`);
@@ -70,6 +70,30 @@ describe("photo card subtitles", () => {
 
     expect(ass).not.toContain("Quote,,");
     expect(cueY(ass, "Body")).toBe(Math.round(HEIGHT * PHOTO_CARD_SUBTITLE_CENTER.default));
+  });
+
+  it("strikes the first card's text while briefly flashing the full picture", () => {
+    const ass = card("권토중래\n다시 일어선다");
+    const effects = ass.split("\n").filter((line) => /^Dialogue: [345],/.test(line));
+    expect(effects).toHaveLength(3);
+    expect(ass).toContain(`Dialogue: 0,0:00:00.08,0:00:00.20,Quote,,0,0,0,,{\\an7\\pos(0,0)\\p1`);
+    expect(ass).toContain(`m 0 0 l ${WIDTH} 0 l ${WIDTH} ${HEIGHT} l 0 ${HEIGHT}`);
+    expect(effects[0]).toContain("\\clip(");
+    expect(effects[0]).toContain("\\1c&HFFFF99&");
+    expect(effects[0]).toContain("권토중래");
+    expect(effects[1]).toContain("\\blur10");
+    expect(effects[2]).toContain("\\blur1");
+    expect(effects[2]).toContain("0:00:00.28");
+    expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:05.00,Quote");
+  });
+
+  it("does not strike later pictures or plain scene subtitles", () => {
+    const later = sceneSubtitleAss("권토중래\n다시 일어선다", 5, WIDTH, HEIGHT, "photo-card", {}, undefined, false);
+    const scene = sceneSubtitleAss("장면 자막", 5, WIDTH, HEIGHT);
+    expect(later).not.toContain("\\p1");
+    expect(scene).not.toContain("\\p1");
+    const oneLine = card("다시 일어선다");
+    expect(oneLine).toContain("Dialogue: 3,0:00:00.08,0:00:00.44,Body");
   });
 
   it("keeps a long line off the edges of the frame even though the lines are positioned", () => {
