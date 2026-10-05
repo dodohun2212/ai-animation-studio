@@ -84,6 +84,12 @@ describe("photo card subtitles", () => {
     expect(effects[0]).toContain("\\clip(");
     expect(ass).toContain("\\1c&HB8E6FF&");
     expect(ass).toContain("\\1c&HE8F6FF&");
+    expect(ass).toContain("\\1c&HD8EEFF&");
+    expect(ass).toContain("\\1a&HA8&\\t(40,100,\\1a&HD8&)");
+    const bloomLines = ass.split("\n").filter((line) => line.startsWith("Dialogue: 2,"));
+    expect(bloomLines).toHaveLength(3);
+    expect(bloomLines.map((line) => line.match(/\\1a&(H[0-9A-F]+&)/)?.[1])).toEqual(["H90&", "HB0&", "HC8&"]);
+    expect(bloomLines.every((line) => /\\blur\d+\\1c&HD8EEFF&/.test(line))).toBe(true);
     expect(ass).toContain("\\1c&HFFFFFF&");
     expect(ass).not.toContain("&HFFCC66&");
     expect(ass).not.toContain("&HFFFF99&");

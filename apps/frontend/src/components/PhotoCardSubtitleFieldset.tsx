@@ -1,8 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { AspectRatio, PhotoCardSubtitleColors, PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
+import type { AspectRatio, PhotoCardEffect, PhotoCardSubtitleColors, PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 import {
+  DEFAULT_PHOTO_CARD_EFFECT,
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
+  isPhotoCardEffect,
   MERGE_FRAME_FOR_ASPECT,
+  PHOTO_CARD_EFFECTS,
   PHOTO_CARD_HEADING_RATIO,
   PHOTO_CARD_SUBTITLE_CENTER,
   PHOTO_CARD_SUBTITLE_CSS_RATIO,
@@ -42,8 +45,18 @@ interface Props {
   disabled?: boolean;
 }
 
+/** A card saved before effects existed has no `effect`, and the server reads that as the lightning — so does this. */
+const effectOf = (layout: PhotoCardSubtitleLayout): PhotoCardEffect => layout.effect ?? DEFAULT_PHOTO_CARD_EFFECT;
+
 const sameLayout = (a: PhotoCardSubtitleLayout, b: PhotoCardSubtitleLayout): boolean =>
-  a.scale === b.scale && a.center === b.center;
+  a.scale === b.scale && a.center === b.center && effectOf(a) === effectOf(b);
+
+/** 첫 사진에 들어가는 효과의 이름. 목록은 공유 PHOTO_CARD_EFFECTS 가 정하고, 여기는 화면에 쓰는 말만 둡니다. */
+const EFFECT_LABEL: Record<PhotoCardEffect, string> = { lightning: "번개", none: "없음" };
+
+/** §3.2 입력 필드 — select 도 같은 입력 표면입니다. */
+const selectField =
+  "mt-1.5 w-full rounded-xl border border-white/10 bg-slate-900/70 px-3.5 py-2.5 text-sm text-slate-100 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:opacity-50";
 
 /** The long side of the frame the renderer works in. Sizes are said in these pixels, which is the unit a person can picture. */
 const REFERENCE_HEIGHT = 1920;
@@ -360,6 +373,31 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
             </p>
           </div>
 
+          <div>
+            <label className="block text-sm text-slate-300" htmlFor="photo-card-subtitle-effect">효과</label>
+            <select
+              id="photo-card-subtitle-effect"
+              data-testid="photo-card-subtitle-effect"
+              className={selectField}
+              value={effectOf(layout)}
+              disabled={disabled}
+              // Always sent explicitly once chosen — leaving it out means "lightning" to the server, which is right
+              // for an old card but would silently undo a person who just picked 「없음」.
+              onChange={(event) => {
+                if (isPhotoCardEffect(event.target.value)) onChange({ ...layout, effect: event.target.value });
+              }}
+            >
+              {PHOTO_CARD_EFFECTS.map((effect) => (
+                <option key={effect} value={effect} className="bg-slate-900 text-slate-100">{EFFECT_LABEL[effect]}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-slate-500" data-testid="photo-card-subtitle-effect-note">
+              {effectOf(layout) === "lightning"
+                ? "첫 사진에서 번개가 위에서 내리친 뒤, 화면이 잠깐 어두워졌다가 천천히 돌아옵니다. 움직임은 아래 움직임 미리보기에서 볼 수 있습니다."
+                : "효과 없이 글자만 차례로 나타납니다."}
+            </p>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {/*
               🔴 저장된 값으로 돌아오는 길. 「기본값으로」는 **공장 기본값**이라, 이미 한 번 만들어 둔 카드에서는
@@ -384,7 +422,8 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
               data-testid="photo-card-subtitle-reset"
               className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
               disabled={disabled || atDefault}
-              onClick={() => onChange({ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT })}
+              // 크기·위치만 공장 기본값으로. 고른 효과는 따로 고른 것이라 그대로 둡니다.
+              onClick={() => onChange({ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, ...(layout.effect ? { effect: layout.effect } : {}) })}
             >
               기본값으로
             </button>

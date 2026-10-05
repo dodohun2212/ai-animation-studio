@@ -34,7 +34,7 @@ const PHOTO_CARD_LIGHTNING = {
   leaderStart: 0, leaderEnd: 0.08,
   strokes: [[0.08, 0.18, 0], [0.24, 0.30, 0x30], [0.34, 0.38, 0x60]] as const,
   afterglowEnd: 0.70,
-  flashAlpha: [0x50, 0x98, 0xc0] as const,
+  flashAlpha: [0xa8, 0xd0, 0xe4] as const,
   dimStart: 0.38, dimPeak: 0.55, dimEnd: 3.0, dimAlpha: 0x90,
   bloomEnd: 0.90,
 } as const;
@@ -318,8 +318,9 @@ function photoCardLightningCues(style: "Quote" | "Body", content: string, x: num
   const { main, branches } = lightningShape(content, x, y, size, width, height);
   const coreWidth = Math.max(2, size * 0.09);
   const mainCore = ribbon(main, coreWidth * 0.7, coreWidth * 1.2);
-  const branchCore = branches.map((branch) => ribbon(branch, coreWidth * 0.6, 0.5)).join(" ");
+  const branchCore = branches.map((branch) => ribbon(branch, coreWidth * 0.85, 0.5)).join(" ");
   const out: string[] = [];
+  const channelBloom = ribbon(main, size * 1.6, size * 1.6);
 
   // A lower layer darkens the whole still, then eases back to its original brightness.
   const dimEnd = Math.min(light.dimEnd, durationSeconds);
@@ -340,7 +341,10 @@ function photoCardLightningCues(style: "Quote" | "Body", content: string, x: num
   light.strokes.forEach(([start, end, alpha], index) => {
     const strokeAlpha = (value: number) => `&H${Math.min(255, value + alpha).toString(16).padStart(2, "0").toUpperCase()}&`;
     const shape = index === 0 ? `${mainCore} ${branchCore}` : mainCore;
-    out.push(event(1, start, end, `${draw}\\1c&HFFFFFF&\\1a&H${light.flashAlpha[index]!.toString(16).toUpperCase()}&`, frame));
+    const flashFade = index === 0 ? "\\t(40,100,\\1a&HD8&)" : "";
+    out.push(event(1, start, end, `${draw}\\1c&HE8F6FF&\\1a&H${light.flashAlpha[index]!.toString(16).toUpperCase()}&${flashFade}`, frame));
+    const bloomAlpha = [0x90, 0xb0, 0xc8][index]!;
+    out.push(event(2, start, end, `${draw}\\blur${Math.round(size * 1.4)}\\1c&HD8EEFF&\\1a&H${bloomAlpha.toString(16).toUpperCase()}&`, channelBloom));
     out.push(event(4, start, end, `${draw}\\blur${Math.round(size * 0.6)}\\1c&HB8E6FF&\\1a${strokeAlpha(0x50)}`, shape));
     out.push(event(5, start, end, `${draw}\\blur${Math.round(size * 0.12)}\\1c&HE8F6FF&\\1a${strokeAlpha(0x20)}`, shape));
     out.push(event(6, start, end, `${draw}\\blur1\\1c&HFFFFFF&\\1a${strokeAlpha(0)}`, shape));

@@ -488,4 +488,66 @@ describe("PhotoCardSubtitleFieldset", () => {
       expect(shadowText(node)).toMatch(new RegExp(`0(px)? ${Math.round(size * PHOTO_CARD_SUBTITLE_DROP_Y_RATIO)}px 1px`));
     }
   });
+  /** 캡틴D 요청(1180): 첫 사진의 효과를 고를 수 있게. 고른 값은 명시해서 보내고, 크기·위치를 움직여도 지워지지 않습니다. */
+  describe("effect choice", () => {
+    it("starts on the lightning for a card that never chose, which is what the server burns when it is left out", () => {
+      renderFieldset(TWO_PART, { scale: 0.03, center: 0.4 });
+      const select = screen.getByTestId("photo-card-subtitle-effect") as HTMLSelectElement;
+      expect(select.value).toBe("lightning");
+      expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([["lightning", "번개"], ["none", "없음"]]);
+    });
+
+    it("reports the chosen effect explicitly, keeping size and position", () => {
+      const onChange = renderFieldset(TWO_PART, { scale: 0.03, center: 0.4 });
+      fireEvent.change(screen.getByTestId("photo-card-subtitle-effect"), { target: { value: "none" } });
+      expect(onChange).toHaveBeenCalledWith({ scale: 0.03, center: 0.4, effect: "none" });
+    });
+
+    it("keeps the chosen effect when a slider moves", () => {
+      const onChange = renderFieldset(TWO_PART, { scale: 0.03, center: 0.4, effect: "none" });
+      fireEvent.change(screen.getByTestId("photo-card-subtitle-center"), { target: { value: "0.5" } });
+      expect(onChange).toHaveBeenCalledWith({ scale: 0.03, center: 0.5, effect: "none" });
+    });
+
+    it("keeps the chosen effect when size and position go back to the factory default", () => {
+      const onChange = renderFieldset(TWO_PART, { scale: 0.04, center: 0.6, effect: "none" });
+      fireEvent.click(screen.getByTestId("photo-card-subtitle-reset"));
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, effect: "none" });
+    });
+
+    it("offers the way back when only the effect differs from the finished video", () => {
+      render(
+        <PhotoCardSubtitleFieldset
+          projectId="card_1" quote={TWO_PART} aspectRatio="9:16"
+          layout={{ scale: 0.031, center: 0.5, effect: "none" }} savedLayout={{ scale: 0.031, center: 0.5 }} onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByTestId("photo-card-subtitle-restore")).toBeTruthy();
+    });
+
+    it("treats a saved card with no effect as the lightning it was burned with", () => {
+      render(
+        <PhotoCardSubtitleFieldset
+          projectId="card_1" quote={TWO_PART} aspectRatio="9:16"
+          layout={{ scale: 0.031, center: 0.5, effect: "lightning" }} savedLayout={{ scale: 0.031, center: 0.5 }} onChange={vi.fn()}
+        />,
+      );
+      expect(screen.queryByTestId("photo-card-subtitle-restore")).toBeNull();
+    });
+
+    it("says what the choice does", () => {
+      renderFieldset(TWO_PART, { scale: 0.03, center: 0.4, effect: "none" });
+      expect(screen.getByTestId("photo-card-subtitle-effect-note").textContent).toContain("효과 없이");
+    });
+
+    it("cannot be changed while the merge is busy", () => {
+      render(
+        <PhotoCardSubtitleFieldset
+          projectId="card_1" quote={TWO_PART} aspectRatio="9:16"
+          layout={{ scale: 0.031, center: 0.5 }} onChange={vi.fn()} disabled
+        />,
+      );
+      expect((screen.getByTestId("photo-card-subtitle-effect") as HTMLSelectElement).disabled).toBe(true);
+    });
+  });
 });
