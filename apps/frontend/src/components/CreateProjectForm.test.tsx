@@ -180,4 +180,50 @@ describe("CreateProjectForm", () => {
     expect(screen.getByTestId("flower-name")).toBeTruthy();
     expect(screen.queryByLabelText("영상 주제")).toBeNull();
   });
+
+  // CLI Round 1227
+  it("moves the start choice with the arrow keys, keeping one tab stop on the checked option", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<CreateProjectForm onCreated={() => {}} onCancel={() => {}} />);
+
+    const ai = screen.getByTestId("create-source-ai");
+    expect(ai).toHaveAttribute("aria-checked", "true");
+    expect(ai).toHaveAttribute("tabindex", "0");
+    expect(screen.getByTestId("create-source-flower")).toHaveAttribute("tabindex", "-1");
+
+    ai.focus();
+    fireEvent.keyDown(ai, { key: "ArrowRight" });
+    const flower = screen.getByTestId("create-source-flower");
+    expect(flower).toHaveAttribute("aria-checked", "true");
+    expect(flower).toHaveAttribute("tabindex", "0");
+    expect(document.activeElement).toBe(flower);
+    expect(screen.getByTestId("flower-name")).toBeTruthy();
+
+    fireEvent.keyDown(flower, { key: "ArrowLeft" });
+    expect(screen.getByTestId("create-source-ai")).toHaveAttribute("aria-checked", "true");
+    expect(document.activeElement).toBe(screen.getByTestId("create-source-ai"));
+    expect(screen.getByLabelText("영상 주제")).toBeTruthy();
+  });
+
+  // CLI Round 1227
+  it("ties each field error to its input with aria-invalid and aria-describedby", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<CreateProjectForm onCreated={() => {}} onCancel={() => {}} />);
+
+    const folder = screen.getByLabelText("폴더 이름");
+    const topic = screen.getByLabelText("영상 주제");
+    expect(folder).not.toHaveAttribute("aria-invalid");
+    expect(folder.getAttribute("aria-describedby")).toBe("projectId-hint");
+    expect(topic).not.toHaveAttribute("aria-describedby");
+
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 생성" }));
+    await screen.findAllByRole("alert");
+
+    expect(folder).toHaveAttribute("aria-invalid", "true");
+    const folderIds = folder.getAttribute("aria-describedby")!.split(" ");
+    expect(folderIds).toContain("projectId-hint");
+    expect(document.getElementById(folderIds[1]!)?.textContent).toBe("폴더 이름을 입력하세요.");
+    expect(topic).toHaveAttribute("aria-invalid", "true");
+    expect(document.getElementById(topic.getAttribute("aria-describedby")!)?.textContent).toBe("영상 주제를 입력하세요.");
+  });
 });

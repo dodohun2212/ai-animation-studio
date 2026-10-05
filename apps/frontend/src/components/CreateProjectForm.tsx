@@ -1,10 +1,11 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { Project } from "@ai-animation-studio/shared";
 
 import { createProject, toDisplayError } from "../api/projectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
 import { CreateFlowerReelForm } from "./CreateFlowerReelForm.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSectionRoomy, outlineButton, primaryButton } from "./ui/surfaces.js";
 
 interface CreateProjectFormProps {
   onCreated: (project: Project) => void;
@@ -34,6 +35,9 @@ const fieldClassName =
  */
 type ScriptSource = "ai" | "flower";
 
+/** The radio group's order, which the arrow keys walk. */
+const SOURCES: readonly ScriptSource[] = ["ai", "flower"];
+
 export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProps) {
   const [source, setSource] = useState<ScriptSource>("ai");
   const [projectId, setProjectId] = useState("");
@@ -45,6 +49,31 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
   // batched, so two rapid clicks could both read `submitting === false`
   // before either re-render commits and disables the button.
   const submittingRef = useRef(false);
+  /*
+   * CLI Round 1227: the two choices are `role="radio"` buttons, so they owe the radio-group keyboard contract —
+   * one tab stop for the group (the checked one), arrows move the choice and the focus together, Space/Enter
+   * still select through the button's own click. Before this, only Tab and click worked.
+   */
+  const sourceRefs = useRef<Partial<Record<ScriptSource, HTMLButtonElement | null>>>({});
+  const [focusSource, setFocusSource] = useState(false);
+  useEffect(() => {
+    if (!focusSource) return;
+    sourceRefs.current[source]?.focus();
+    setFocusSource(false);
+  }, [focusSource, source]);
+
+  function handleSourceKey(event: KeyboardEvent<HTMLButtonElement>): void {
+    const index = SOURCES.indexOf(source);
+    let next: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % SOURCES.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index - 1 + SOURCES.length) % SOURCES.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = SOURCES.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    setSource(SOURCES[next]!);
+    setFocusSource(true);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -87,9 +116,12 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
       type="button"
       role="radio"
       aria-checked={source === value}
+      tabIndex={source === value ? 0 : -1}
+      ref={(element) => { sourceRefs.current[value] = element; }}
       data-testid={`create-source-${value}`}
       disabled={submitting}
       onClick={() => setSource(value)}
+      onKeyDown={handleSourceKey}
       className={`flex-1 rounded-xl border p-3.5 text-left disabled:opacity-50 ${source === value ? "border-violet-400/70 bg-violet-500/10" : "border-white/10 hover:bg-white/5"}`}
     >
       <span className="block text-sm font-semibold text-slate-100">{label}</span>
@@ -134,7 +166,7 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
     {header}
     {picker}
     <form
-      className="mt-5 max-w-xl space-y-5 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6"
+      className={`mt-5 max-w-xl ${cardSectionRoomy}`}
       onSubmit={handleSubmit}
       noValidate
     >
@@ -148,18 +180,22 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
         {/* 🔴 The rule said 한글을 쓸 수 없다 and that was not true: both allow-lists are `\p{L}`, which accepts
             Hangul, and every 명언 card on this machine is named in Korean. The first field of the app was
             refusing names the server would have taken. Only the space is a real refusal. */}
-        <p className="mt-1 text-xs text-slate-500">
+        <p id="projectId-hint" className="mt-1 text-xs text-slate-500">
           이 이름으로 컴퓨터에 프로젝트 폴더가 만들어집니다. 한글·영문·숫자와 _ - 를 쓸 수 있고 띄어쓰기는 쓸 수 없습니다. 만든 뒤에는 바꿀 수 없습니다.
         </p>
+        {/* CLI Round 1227: the error is tied to its own field, not only announced — a screen reader landing on
+            the input hears both the rule and what was wrong with what was typed. */}
         <input
           id="projectId"
+          aria-invalid={fieldErrors.projectId ? true : undefined}
+          aria-describedby={fieldErrors.projectId ? "projectId-hint projectId-error" : "projectId-hint"}
           className={fieldClassName}
           value={projectId}
           onChange={(event) => setProjectId(event.target.value)}
           disabled={submitting}
         />
         {fieldErrors.projectId && (
-          <p className="mt-1.5 text-sm text-rose-400" role="alert">
+          <p id="projectId-error" className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.projectId}
           </p>
         )}
@@ -170,13 +206,15 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
         </label>
         <input
           id="topic"
+          aria-invalid={fieldErrors.topic ? true : undefined}
+          aria-describedby={fieldErrors.topic ? "topic-error" : undefined}
           className={fieldClassName}
           value={topic}
           onChange={(event) => setTopic(event.target.value)}
           disabled={submitting}
         />
         {fieldErrors.topic && (
-          <p className="mt-1.5 text-sm text-rose-400" role="alert">
+          <p id="topic-error" className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.topic}
           </p>
         )}
@@ -189,14 +227,14 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
       <div className="flex gap-3 pt-1">
         <button
           type="submit"
-          className="rounded bg-bone px-5 py-2.5 text-sm font-semibold text-ground disabled:opacity-50"
+          className={primaryButton}
           disabled={submitting}
         >
           {submitting ? "생성 중..." : "프로젝트 생성"}
         </button>
         <button
           type="button"
-          className="rounded-full border border-white/10 px-5 py-2.5 text-sm text-slate-300 hover:bg-white/5"
+          className={outlineButton}
           onClick={onCancel}
           disabled={submitting}
         >
