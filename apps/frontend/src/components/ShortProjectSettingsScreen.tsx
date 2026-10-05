@@ -1524,6 +1524,10 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               type="button"
               data-testid={justCreated ? "finish-setup-button" : "settings-done-button"}
               className={onResume ? outlineButton : primaryButton}
+              /* CLI Round 1243: 「설정 끝내기」 reads as finishing — saving — but it only ever called onBack, so edits in
+                 the top box were dropped without a word while the forward button beside it was already refused for
+                 exactly that. Refused on the same condition now; the header's 「돌아가기」 stays the way out. */
+              disabled={formUnsaved}
               onClick={onBack}
             >
               {/*
@@ -1538,7 +1542,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             </button>
             {onResume && <ContinueToNextStep projectId={projectId} onResume={onResume} disabled={formUnsaved} />}
           </div>
-          {onResume && formUnsaved && (
+          {formUnsaved && (
             /* Refused rather than hidden, and the reason names the button that clears it. The box at the top is
                the one thing on this page that does not save itself, and this is the one control that could carry
                someone past it. */

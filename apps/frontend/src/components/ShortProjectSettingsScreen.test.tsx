@@ -306,6 +306,33 @@ describe("ShortProjectSettingsScreen", () => {
     expect(onResume).not.toHaveBeenCalled();
   });
 
+  // CLI Round 1243: 「설정 끝내기」 used to drop the top box's unsaved edits silently, with or without a next step.
+  it("refuses 설정 끝내기 while the top form has unsaved edits, and says why even with no next step offered", async () => {
+    const fetchMock = stubFetchByRoute({
+      "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+      "GET /projects/sample_project/settings/cast": { cast: [] },
+      "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+      "GET /projects/sample_project/settings/continuity": { link: null },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onBack = vi.fn();
+    render(<ShortProjectSettingsScreen projectId="sample_project" onBack={onBack} />);
+
+    const done = await screen.findByTestId("settings-done-button") as HTMLButtonElement;
+    expect(done.disabled).toBe(false);
+    expect(screen.queryByTestId("settings-unsaved-warning")).toBeNull();
+
+    fireEvent.change(await screen.findByDisplayValue("별의 지도"), { target: { value: "다른 이름" } });
+    expect((screen.getByTestId("settings-done-button") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("settings-unsaved-warning").textContent).toContain("설정 저장");
+    fireEvent.click(screen.getByTestId("settings-done-button"));
+    expect(onBack).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByDisplayValue("다른 이름"), { target: { value: "별의 지도" } });
+    expect((screen.getByTestId("settings-done-button") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("settings-unsaved-warning")).toBeNull();
+  });
+
   it("omits the setup banner and finish button when reopened later for an existing project", async () => {
     const fetchMock = stubFetchByRoute({
       "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
