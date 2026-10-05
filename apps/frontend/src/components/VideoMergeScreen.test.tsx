@@ -85,6 +85,8 @@ function renderScreen(
   clipFacts?: Record<number, { width: number; height: number; hasAudio: boolean }>,
   /** 서버가 `dialogueAudioDefault: true` 로 판정한 장면 번호들(CLI Round 1124). 없으면 어느 장면도 아닙니다. */
   dialogueDefaults?: readonly number[],
+  /** CLI Round 1248: the blocked notice's way to the scene video step. Absent keeps every older test unchanged. */
+  onOpenVideoWorkflow?: (projectId: string, jobId: string) => void,
 ) {
   // The confirmation count comes from the video review route, never from a field on the scene — no response has
   // ever carried one (see the note above the COMPLETED-project test). A test says which scenes are confirmed by
@@ -106,7 +108,7 @@ function renderScreen(
     return call(input, init);
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { fetchMock, render: render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} onOpenInstagramPost={onOpenInstagramPost} />) };
+  return { fetchMock, render: render(<VideoMergeScreen projectId="sample_project" onBack={() => {}} onOpenInstagramPost={onOpenInstagramPost} onOpenVideoWorkflow={onOpenVideoWorkflow} />) };
 }
 
 /** A completed project whose merge used a track that requires credit — the state the notice exists for. */
@@ -374,6 +376,32 @@ describe("VideoMergeScreen", () => {
     const button = screen.getByTestId("open-merge-confirm-button");
     expect(button).toBeDisabled();
     expect(button.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // CLI Round 1248
+  it("sends the blocked notice's button to the scene video step of the project's current job", async () => {
+    const onOpenVideoWorkflow = vi.fn();
+    renderScreen(vi.fn(), {}, undefined, [], [1, 2, 3, 4], undefined, undefined, undefined, undefined, onOpenVideoWorkflow);
+
+    const blocked = await screen.findByTestId("merge-blocked");
+    expect(blocked.textContent).toContain("2개 있습니다");
+    const go = await screen.findByTestId("merge-open-video-workflow");
+    expect(blocked.contains(go)).toBe(true);
+    fireEvent.click(go);
+    expect(onOpenVideoWorkflow).toHaveBeenCalledWith("sample_project", DEFAULT_JOB_ID);
+  });
+
+  // CLI Round 1248
+  it("offers no such button when everything is confirmed or when nowhere to go was given", async () => {
+    renderScreen(vi.fn(), {}, undefined, [], [1, 2, 3, 4]);
+    await screen.findByTestId("merge-blocked");
+    expect(screen.queryByTestId("merge-open-video-workflow")).toBeNull();
+    cleanup();
+
+    renderScreen(vi.fn(), {}, undefined, [], undefined, undefined, undefined, undefined, undefined, vi.fn());
+    await waitFor(() => expect(screen.getByTestId("merge-approved-count").textContent).toContain("6개 확정됨"));
+    expect(screen.queryByTestId("merge-blocked")).toBeNull();
+    expect(screen.queryByTestId("merge-open-video-workflow")).toBeNull();
   });
 
   /** No job at all: nothing to ask, so nothing is claimed — and the review route is not called. */

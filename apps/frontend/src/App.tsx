@@ -1016,6 +1016,7 @@ export function App() {
                 projectId={screen.projectId}
                 onBack={() => setScreen({ name: "detail", projectId: screen.projectId })}
                 onOpenInstagramPost={(projectId) => setScreen({ name: "instagramPost", initialProjectId: projectId })}
+                onOpenVideoWorkflow={(projectId, jobId) => setScreen({ name: "videoWorkflow", projectId, jobId })}
               />
             )}
             {/* One notice for all seven: the screens stay as they are, and the router decides they do not

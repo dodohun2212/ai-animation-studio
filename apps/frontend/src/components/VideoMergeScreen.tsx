@@ -14,12 +14,15 @@ import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
 import { StillMotionFieldset } from "./StillMotionFieldset.js";
 import { SceneSubtitleFieldset, type SubtitledScene } from "./SceneSubtitleFieldset.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { smallOutlineButton } from "./ui/surfaces.js";
 import { FinalVideoGenerationSourceNotice } from "./GenerationSourceNotice.js";
 
 interface Props {
   projectId: string;
   onBack: () => void;
   onOpenInstagramPost?: (projectId: string) => void;
+  /** CLI Round 1248: the scene video step the blocked notice sends the person back to. */
+  onOpenVideoWorkflow?: (projectId: string, jobId: string) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -134,7 +137,7 @@ function mergeContentSentence(mode: MediaMode | null): string | null {
   return "음성도 자막도 꺼져 있어 장면 영상만 이어 붙입니다.";
 }
 
-export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Props) {
+export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost, onOpenVideoWorkflow }: Props) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -148,6 +151,8 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
   const [sceneCount, setSceneCount] = useState<number | null>(null);
   /** How many of them are actually confirmed. Null until the project loads — see `blocked` for why that matters. */
   const [approvedCount, setApprovedCount] = useState<number | null>(null);
+  /** The project's current video job — where 「장면 영상 확정하러 가기」 goes. Null when the project has none. */
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   /**
    * A photo card, which has no scene videos and never will.
    *
@@ -299,6 +304,7 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
          * leave it unblocked, the server is still the real gate.
          */
         const jobId = response.project.currentVideoJobId;
+        setCurrentJobId(jobId ?? null);
         if (jobId) {
           void getVideoReview(projectId, jobId)
             .then((review) => {
@@ -536,9 +542,21 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
       {blocked && approvedCount !== null && sceneCount !== null && (
         /* Named before the button is reached, not after the server refuses — the person can go back and
            confirm the rest instead of reading an error they did not cause. */
-        <p role="status" data-testid="merge-blocked" className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
-          아직 확정하지 않은 장면이 {sceneCount - approvedCount}개 있습니다. 장면 영상 화면에서 모두 확정한 뒤에 최종 영상을 만들 수 있습니다.
-        </p>
+        <div role="status" data-testid="merge-blocked" className="space-y-2 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <p>아직 확정하지 않은 장면이 {sceneCount - approvedCount}개 있습니다. 장면 영상 화면에서 모두 확정한 뒤에 최종 영상을 만들 수 있습니다.</p>
+          {/* CLI Round 1248: the sentence named the screen to go to and offered no way there but the ribbon or
+              the back button. The job is the one this count was read from; without one there is nowhere to send. */}
+          {currentJobId !== null && onOpenVideoWorkflow && (
+            <button
+              type="button"
+              data-testid="merge-open-video-workflow"
+              className={smallOutlineButton}
+              onClick={() => onOpenVideoWorkflow(projectId, currentJobId)}
+            >
+              장면 영상 확정하러 가기
+            </button>
+          )}
+        </div>
       )}
 
       {(!result || remaking) && photoCard && quote.length > 0 && (
