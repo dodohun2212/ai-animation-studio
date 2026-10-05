@@ -1038,7 +1038,6 @@ export function App() {
                 stopped at "만들어졌습니다" would leave the person to find the next step themselves. */}
             {screen.name === "photoCard" && (
               <PhotoCardListScreen
-                onBack={() => setScreen({ name: "list" })}
                 onCreateNew={() => setScreen({ name: "photoCardCreate" })}
                 onOpenCard={(projectId) => setScreen({ name: "detail", projectId })}
               />

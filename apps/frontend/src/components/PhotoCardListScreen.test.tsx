@@ -11,7 +11,7 @@ function stub(projects: unknown) {
 }
 
 function renderScreen(onOpenCard = vi.fn(), onCreateNew = vi.fn()) {
-  render(<PhotoCardListScreen onBack={() => {}} onCreateNew={onCreateNew} onOpenCard={onOpenCard} />);
+  render(<PhotoCardListScreen onCreateNew={onCreateNew} onOpenCard={onOpenCard} />);
   return { onOpenCard, onCreateNew };
 }
 
@@ -93,5 +93,15 @@ describe("PhotoCardListScreen", () => {
      * 머리글만 조용히 틀립니다 — 그리고 머리글은 사람이 제일 먼저 믿는 숫자입니다.
      */
     expect(screen.getByTestId("photo-card-count").textContent).toBe(String(screen.getAllByTestId(/^photo-card-open-/).length));
+  });
+
+  // CLI Round 1250: no 「← 프로젝트 목록으로」 at the foot of the card list — the sidebar is the way between lists.
+  it("ends the list without a button back to the short-project list", async () => {
+    stub({ projects: [makeProject({ id: "c1", photoCard: true })] });
+    renderScreen();
+
+    await screen.findByTestId("photo-card-open-c1");
+    expect(screen.queryByTestId("photo-card-list-back")).toBeNull();
+    expect(screen.queryByRole("button", { name: /프로젝트 목록으로/ })).toBeNull();
   });
 });

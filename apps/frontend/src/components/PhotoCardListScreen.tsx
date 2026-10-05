@@ -7,7 +7,6 @@ import { ProjectFrame } from "./ProjectList.js";
 import { primaryButton } from "./ui/surfaces.js";
 
 interface Props {
-  onBack: () => void;
   /** 새 카드를 만들러 가는 곳. */
   onCreateNew: () => void;
   /** 이미 있는 카드가 열리는 곳. */
@@ -38,7 +37,7 @@ function PlusIcon() {
  * 🟢 프레임은 `ProjectList` 의 것을 **그대로 씁니다.** 카드도 결국 같은 프로젝트라, 사본을 만들면
  * 「완료는 이렇게 보인다」가 두 곳에서 갈립니다.
  */
-export function PhotoCardListScreen({ onBack, onCreateNew, onOpenCard }: Props) {
+export function PhotoCardListScreen({ onCreateNew, onOpenCard }: Props) {
   const [cards, setCards] = useState<ProjectSummary[] | null>(null);
   const [error, setError] = useState<DisplayError | null>(null);
 
@@ -104,9 +103,9 @@ export function PhotoCardListScreen({ onBack, onCreateNew, onOpenCard }: Props) 
         보관함의 그림에 문장을 얹어 짧은 영상으로 만듭니다. 그림은 이미 만들어 둔 것을 그대로 쓰기 때문에 여기서는 돈이 나가지 않습니다.
       </p>
 
-      <button type="button" data-testid="photo-card-list-back" className="mt-6 text-xs text-bone-dim transition-colors hover:text-bone" onClick={onBack}>
-        <span aria-hidden="true">←</span> 프로젝트 목록으로
-      </button>
+      {/* CLI Round 1250: 「← 프로젝트 목록으로」 stood here, under all the cards, and went to the short-project list —
+          a sibling sidebar entry, not this list's parent (cards are kept out of that list on purpose). The sidebar
+          already goes there in one click, and the short-project and news-reel lists carry no such button. */}
     </section>
   );
 }
