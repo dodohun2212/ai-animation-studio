@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
+import { RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODEL_OPTIONS, runwayVideoPromptText } from "@ai-animation-studio/shared";
 import type { BudgetPreview, SceneNumber, StartVideoGenerationResponse, VideoModelOption, VideoPromptPreview } from "@ai-animation-studio/shared";
 
 import { getVideoPromptPreview, toVideoPreviewDisplayError } from "../api/videoPreviewApi.js";
@@ -440,6 +440,16 @@ export function VideoPromptPreviewScreen({ projectId, onBack, onSubmitted = () =
                   >
                     {length} / {PROMPT_UTF16_LIMIT}
                   </p>
+                  {/* CLI Round 1252: what the provider will actually receive — the text above plus the model's own
+                      no-text line, built by the same shared function the adapter uses (the long-form screen has had
+                      this since 1241), so it cannot drift from what is sent. */}
+                  <details data-testid={`prompt-full-${preview.sceneNumber}`} className="text-xs text-slate-400">
+                    <summary className="cursor-pointer text-slate-300">실제로 전송할 전체 프롬프트</summary>
+                    <p data-testid={`prompt-full-text-${preview.sceneNumber}`} className="mt-1 whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-slate-900/60 p-2 text-slate-300">
+                      {runwayVideoPromptText(promptText, preview.model)}
+                    </p>
+                    <p className="mt-1 text-slate-500">마지막 줄은 영상 안에 글자가 그려지지 않도록 전송할 때 자동으로 붙는 문장입니다.</p>
+                  </details>
                   {/* The Backend drops sections in a fixed order to fit Runway's prompt limit, and used to do it
                       with no signal anywhere — a scene quietly lost its continuity or performance direction and
                       the only way to notice was that the finished video was wrong. This describes the prompt the

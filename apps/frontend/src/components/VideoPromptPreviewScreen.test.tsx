@@ -1,5 +1,5 @@
 import type { GetVideoPromptPreviewResponse, StartVideoGenerationResponse, VideoPromptPreview } from "@ai-animation-studio/shared";
-import { RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODEL_OPTIONS } from "@ai-animation-studio/shared";
+import { NO_LEGIBLE_TEXT_VIDEO_RULE, RUNWAY_PROMPT_AUTHORING_LIMIT, VIDEO_MODEL_OPTIONS, runwayVideoPromptText } from "@ai-animation-studio/shared";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -834,5 +834,26 @@ describe("VideoPromptPreviewScreen blocked approval reason", () => {
     fireEvent.change(textarea, { target: { value: "Scene 2 again" } });
     expect(screen.queryByTestId("open-confirm-blocked-reason")).toBeNull();
     expect(screen.getByTestId("open-confirm-button")).not.toBeDisabled();
+  });
+});
+
+// CLI Round 1252: the exact text the provider will receive is visible before approval, and follows the edit.
+describe("VideoPromptPreviewScreen full provider prompt", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the full prompt per scene, including the model's appended no-text line, and follows edits", async () => {
+    renderScreen(vi.fn().mockResolvedValueOnce(jsonResponse(200, makePreviewResponse())));
+    await screen.findByTestId("preview-list");
+
+    expect(screen.getByTestId("prompt-full-text-2").textContent).toBe(runwayVideoPromptText("Scene 2 prompt", "gen4_turbo"));
+    const textarea = screen.getByLabelText("Runway 프롬프트", { selector: "#prompt-2" }) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "a lantern swaying in the wind" } });
+    const full = screen.getByTestId("prompt-full-text-2").textContent!;
+    expect(full).toBe(runwayVideoPromptText("a lantern swaying in the wind", "gen4_turbo"));
+    expect(full.startsWith("a lantern swaying in the wind\n")).toBe(true);
+    expect(full.endsWith(NO_LEGIBLE_TEXT_VIDEO_RULE)).toBe(true);
+    expect(screen.getByTestId("prompt-full-text-1").textContent).toBe(runwayVideoPromptText("Scene 1 prompt", "gen4_turbo"));
   });
 });

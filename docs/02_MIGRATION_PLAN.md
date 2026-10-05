@@ -4650,3 +4650,8 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 
 - 명언 카드 목록 맨 아래 「프로젝트 목록으로」 버튼은 상단 내비게이션과 겹치고, 카드 상세에서 목록으로 돌아가는 동작과 혼동될 수 있어 제거했다. 카드 상세 머리글의 「목록으로」 동작은 유지한다. 화면에서 쓰지 않게 된 `onBack` prop과 App 연결도 제거했다.
 - Cowork가 화면·라우터·회귀 테스트를 바꿨다(1251). 실화면은 읽기만 해 카드 목록에 하단 버튼이 없고 카드 28개가 그대로인 것을 확인했다. 전체 타입검사, frontend 1970 tests, 전체 build 통과; 소스 SHA-256 전후 동일. 저장·생성·유료 호출 없음.
+
+## 2026-10-06 — 단기 영상 전송 프롬프트 미리보기
+
+- `VideoPromptPreviewScreen`의 장면별 편집 칸 아래에 실제 provider 요청 문자열 전체를 펼쳐 보는 항목을 추가했다. 장편 화면과 같은 shared `runwayVideoPromptText`를 사용하므로 편집값과 모델별 자동 추가 문장이 실제 전송과 일치한다. Cowork 테스트로 문장 편집 후 전체 문자열이 바뀌는 것을 확인했다(1253); 실화면에 확인 대기 프로젝트가 없어 실전송 화면은 열지 않았다. 전체 타입검사, frontend 1971 tests, 전체 build 통과; SHA-256 전후 동일. provider 호출 없음.
+- 별도 요청: 전송 후 검토에서 실제 최종 provider prompt를 보여 주기 위해 `VideoReview.submittedPrompt?: string`을 저장 계약으로 추가하고 제출 시점에 백엔드에서 기록한다. 과거 및 local fake 기록은 생략한다.
