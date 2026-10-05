@@ -111,14 +111,21 @@ export function StorySecretsCard({ projectId }: Props) {
 
   return (
     <CollapsibleCard
-      title="비밀·복선"
+      /*
+        CLI Round 1199: 「비밀·복선」이라는 제목이 늘 보여 필수 입력처럼 읽혔습니다. 제목을 「추가 설정 (선택)」으로
+        두고, 무엇이 들어 있는지는 접힌 상태의 요약이 말합니다. 접기는 이 한 번뿐입니다(안에 또 접지 않습니다).
+      */
+      title="추가 설정 (선택)"
       testId="story-secrets-card"
       summary={
         (bible?.secrets.length ?? 0) + (bible?.foreshadowing.length ?? 0) === 0
-          ? "없음"
+          ? "비밀·복선 없음"
           : `비밀 ${bible?.secrets.length ?? 0} · 복선 ${bible?.foreshadowing.length ?? 0}`
       }
     >
+      <p className="text-sm text-slate-300" data-testid="story-secrets-intro">
+        비밀·복선 — 회차마다 언제부터 드러내도 되는지 정해 두는 이야기 장치입니다. 없어도 작품은 그대로 만들어집니다.
+      </p>
       <p className="text-sm text-slate-400">적은 글이 대본에 <strong className="text-slate-300">그대로</strong> 전달됩니다.</p>
       {error && <p role="alert" data-error-code={error.code} className="text-sm text-rose-400">{error.message}</p>}
       {loading && <p className="text-sm text-slate-400">불러오는 중...</p>}

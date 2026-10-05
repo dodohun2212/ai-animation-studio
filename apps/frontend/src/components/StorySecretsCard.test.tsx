@@ -137,4 +137,17 @@ describe("StorySecretsCard", () => {
     expect(alert).toHaveAttribute("data-error-code", "LONG_PROJECT_STORAGE_ERROR");
     expect(alert.textContent).not.toContain("absolute");
   });
+  /** CLI Round 1199: 비밀·복선은 「추가 설정 (선택)」 한 번 접기 뒤에. 제목이 필수 입력처럼 읽히지 않게. */
+  it("sits behind one closed 「추가 설정 (선택)」 and names what is inside while closed", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(jsonResponse(200, { storyBible: emptyBible })));
+    render(<StorySecretsCard projectId="long_test" />);
+    const card = screen.getByTestId("story-secrets-card") as HTMLDetailsElement;
+    expect(card.open).toBe(false);
+    expect(card.querySelector("summary")!.textContent).toContain("추가 설정 (선택)");
+    await screen.findByTestId("story-secrets-empty-secrets");
+    expect(card.querySelector("summary")!.textContent).toContain("비밀·복선 없음");
+    // 안에 또 접지 않습니다.
+    expect(card.querySelectorAll("details").length).toBe(0);
+    expect(screen.getByTestId("story-secrets-intro").textContent).toContain("없어도 작품은 그대로");
+  });
 });

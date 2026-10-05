@@ -171,16 +171,37 @@ describe("PhotoCardScreen", () => {
       expect(line()).toContain("= 20초");
     });
 
-    /** CLI Round 1187: 사진 수 × 한 장당 길이가 릴스 한도 180초를 넘는 값은 목록에 없고, 넘게 되면 바로 내려옵니다. */
-    it("offers only the lengths the picture count can take, up to the 180-second Reel", async () => {
+    /**
+     * CLI Round 1187 → 캡틴D 2026-10-05: 목록 대신 1초 단위로 직접 적습니다. 범위는 1초 ~ 사진 수 × 길이가 릴스 한도
+     * 180초를 넘지 않는 가장 긴 값.
+     */
+    it("takes any whole second up to what the picture count allows within the 180-second Reel", async () => {
       await renderWith(many.slice(0, 4));
-      const options = () => Array.from((screen.getByTestId("photo-card-seconds") as HTMLSelectElement).options).map((option) => Number(option.value));
+      const field = () => screen.getByTestId("photo-card-seconds") as HTMLInputElement;
       // 한 장도 안 골랐을 땐 한 장이 받을 수 있는 전부.
-      expect(options()).toEqual([5, 10, 15, 20, 30, 45, 60, 90, 120, 180]);
+      expect(field().type).toBe("number");
+      expect(field().min).toBe("1");
+      expect(field().max).toBe("180");
+      expect(field().step).toBe("1");
       for (const one of many.slice(0, 4)) pick(one.assetId);
-      expect(options()).toEqual([5, 10, 15, 20, 30, 45]);
-      fireEvent.change(screen.getByTestId("photo-card-seconds"), { target: { value: "45" } });
+      expect(field().max).toBe("45");
+      fireEvent.change(field(), { target: { value: "7" } });
+      expect(screen.getByTestId("photo-card-length").textContent).toContain("한 장당 7초 = 28초");
+      fireEvent.change(field(), { target: { value: "45" } });
       expect(screen.getByTestId("photo-card-length").textContent).toContain("= 180초 / 최대 180초");
+    });
+
+    it("does not take a length past the limit, says so, and settles to the limit on leaving the field", async () => {
+      await renderWith(many.slice(0, 4));
+      for (const one of many.slice(0, 4)) pick(one.assetId);
+      fireEvent.change(screen.getByTestId("photo-card-seconds"), { target: { value: "12" } });
+      fireEvent.change(screen.getByTestId("photo-card-seconds"), { target: { value: "50" } });
+      expect(screen.getByTestId("photo-card-seconds-invalid").textContent).toContain("1~45초");
+      // 넘는 값은 올려 보내지 않습니다 — 합계는 마지막 허용값(12초) 그대로.
+      expect(screen.getByTestId("photo-card-length").textContent).toContain("= 48초");
+      fireEvent.blur(screen.getByTestId("photo-card-seconds"));
+      expect((screen.getByTestId("photo-card-seconds") as HTMLInputElement).value).toBe("45");
+      expect(screen.queryByTestId("photo-card-seconds-invalid")).toBeNull();
     });
 
     it("steps a too-long length down to the longest one still allowed when a picture is added", async () => {
@@ -188,9 +209,9 @@ describe("PhotoCardScreen", () => {
       for (const one of many.slice(0, 4)) pick(one.assetId);
       fireEvent.change(screen.getByTestId("photo-card-seconds"), { target: { value: "45" } });
       pick(many[4]!.assetId);
-      // 5장 × 45초 = 225초는 안 됩니다. 남은 것 중 가장 긴 30초(150초)로.
-      await waitFor(() => expect((screen.getByTestId("photo-card-seconds") as HTMLSelectElement).value).toBe("30"));
-      expect(screen.getByTestId("photo-card-length").textContent).toContain("= 150초");
+      // 5장 × 45초 = 225초는 안 됩니다. 허용되는 가장 긴 36초(180초)로.
+      await waitFor(() => expect((screen.getByTestId("photo-card-seconds") as HTMLInputElement).value).toBe("36"));
+      expect(screen.getByTestId("photo-card-length").textContent).toContain("= 180초");
     });
 
     /**

@@ -6,6 +6,7 @@ import { GlobalStyleAssetCard } from "./GlobalStyleAssetCard.js";
 import { ProtagonistAssetCard } from "./ProtagonistAssetCard.js";
 import { Spinner } from "./Spinner.js";
 import { StorySecretsCard } from "./StorySecretsCard.js";
+import { LONG_STORY_HINTS, filledCountLabel } from "./ui/longStoryHints.js";
 import { StoryWorldCard } from "./StoryWorldCard.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 
@@ -34,16 +35,20 @@ type State = {
 const fieldClassName =
   "mt-1.5 w-full rounded-xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
-function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
+function Field({ label, value, onChange, multiline = false, hint }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean; hint?: string }) {
   return (
-    <label className="block text-sm text-slate-300">
-      {label}
-      {multiline ? (
-        <textarea className={fieldClassName} value={value} onChange={(event) => onChange(event.target.value)} rows={3} />
-      ) : (
-        <input className={fieldClassName} value={value} onChange={(event) => onChange(event.target.value)} />
-      )}
-    </label>
+    <div>
+      <label className="block text-sm text-slate-300">
+        {label}
+        {multiline ? (
+          <textarea className={fieldClassName} value={value} onChange={(event) => onChange(event.target.value)} rows={3} />
+        ) : (
+          <input className={fieldClassName} value={value} onChange={(event) => onChange(event.target.value)} />
+        )}
+      </label>
+      {/* 라벨 밖: 칸의 접근성 이름은 라벨 그대로 두고, 겹쳐 보이는 칸끼리 무엇이 다른지만 말합니다(CLI Round 1199). */}
+      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+    </div>
   );
 }
 
@@ -150,8 +155,8 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
         <form className="grid gap-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
           <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
           <Field label="제목" value={state.settings.title} onChange={(value) => setField("title", value)} />
-          <Field label="한 줄 줄거리" value={state.settings.logline} onChange={(value) => setField("logline", value)} />
-          <Field label="개요" value={state.settings.overview} onChange={(value) => setField("overview", value)} multiline />
+          <Field label="한 줄 줄거리" value={state.settings.logline} onChange={(value) => setField("logline", value)} hint={LONG_STORY_HINTS.logline} />
+          <Field label="개요" value={state.settings.overview} onChange={(value) => setField("overview", value)} multiline hint={LONG_STORY_HINTS.overview} />
           <Field label="장르" value={state.settings.genre} onChange={(value) => setField("genre", value)} />
           <Field label="톤" value={state.settings.tone} onChange={(value) => setField("tone", value)} />
           <Field label="테마" value={state.settings.theme} onChange={(value) => setField("theme", value)} />
@@ -325,18 +330,19 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           {/* Closed by default: these shape the story rather than the video, and a blank one is a complete
               answer — the AI decides. Someone with nothing particular in mind never has to open it. */}
           <details className="md:col-span-2 rounded-xl border border-white/10 bg-slate-950/30" data-testid="long-settings-story-group">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-100">이야기 흐름 <span className="font-normal text-slate-500">(비워 둬도 됩니다)</span></summary>
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-100">이야기 흐름 <span className="font-normal text-slate-500">(선택 · {filledCountLabel([state.settings.audience, state.settings.notes, state.settings.startingState, state.settings.midpoint, state.settings.endingDirection, state.settings.storyFlowSummary])})</span></summary>
             <div className="grid gap-4 px-4 pb-4 md:grid-cols-2">
-          <Field label="누가 볼 영상인가" value={state.settings.audience} onChange={(value) => setField("audience", value)} />
-          <Field label="메모" value={state.settings.notes} onChange={(value) => setField("notes", value)} multiline />
-          <Field label="시작 상태" value={state.settings.startingState} onChange={(value) => setField("startingState", value)} multiline />
-          <Field label="중간 전개" value={state.settings.midpoint} onChange={(value) => setField("midpoint", value)} multiline />
-          <Field label="결말 방향" value={state.settings.endingDirection} onChange={(value) => setField("endingDirection", value)} multiline />
+          <Field label="누가 볼 영상인가" value={state.settings.audience} onChange={(value) => setField("audience", value)} hint={LONG_STORY_HINTS.audience} />
+          <Field label="메모" value={state.settings.notes} onChange={(value) => setField("notes", value)} multiline hint={LONG_STORY_HINTS.notes} />
+          <Field label="시작 상태" value={state.settings.startingState} onChange={(value) => setField("startingState", value)} multiline hint={LONG_STORY_HINTS.startingState} />
+          <Field label="중간 전개" value={state.settings.midpoint} onChange={(value) => setField("midpoint", value)} multiline hint={LONG_STORY_HINTS.midpoint} />
+          <Field label="결말 방향" value={state.settings.endingDirection} onChange={(value) => setField("endingDirection", value)} multiline hint={LONG_STORY_HINTS.endingDirection} />
           <Field
             label="스토리 흐름 요약"
             value={state.settings.storyFlowSummary}
             onChange={(value) => setField("storyFlowSummary", value)}
             multiline
+            hint={LONG_STORY_HINTS.storyFlowSummary}
           />
             </div>
           </details>

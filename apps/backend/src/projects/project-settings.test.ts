@@ -184,6 +184,11 @@ describe("short project settings", () => {
     expect(parseShortProjectSettings({ ...settingsRequest, sceneCount: 12, clipDurationSeconds: 15 }, 1))
       .toMatchObject({ sceneCount: 12, clipDurationSeconds: 15, durationSeconds: 180 });
     expect(() => parseShortProjectSettings({ ...settingsRequest, sceneCount: 12, clipDurationSeconds: 20 }, 1)).toThrow();
+    expect(parseShortProjectSettings({ ...settingsRequest, sceneCount: 5, clipDurationSeconds: 36 }, 1))
+      .toMatchObject({ clipDurationSeconds: 36, durationSeconds: 180 });
+    for (const clipDurationSeconds of [0, 7.5, 37]) {
+      expect(() => parseShortProjectSettings({ ...settingsRequest, sceneCount: 5, clipDurationSeconds }, 1)).toThrow();
+    }
 
     const stored = createStoredProject("card", "topic", "2026-08-22T00:00:00.000Z");
     stored.lore_context = { photo_card: true, scene_count: 12, clip_duration_seconds: 15 };
@@ -194,6 +199,8 @@ describe("short project settings", () => {
     expect(parseShortProjectSettings({ ...settingsRequest, sceneCount: 4, clipDurationSeconds: 45 }, 2, true))
       .toMatchObject({ sceneCount: 4, clipDurationSeconds: 45, durationSeconds: 180 });
     expect(() => parseShortProjectSettings({ ...settingsRequest, sceneCount: 4, clipDurationSeconds: 60 }, 2, true)).toThrow();
+    expect(parseShortProjectSettings({ ...settingsRequest, sceneCount: 4, clipDurationSeconds: 7 }, 2, true))
+      .toMatchObject({ clipDurationSeconds: 7, durationSeconds: 28 });
 
     const stored = createStoredProject("news_reel", "topic", "2026-10-05T00:00:00.000Z");
     stored.lore_context = {

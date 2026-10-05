@@ -396,17 +396,24 @@ export const videoModelTakesAspect = (option: VideoModelOption, aspect: AspectRa
  */
 export const PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS = 180;
 export const PHOTO_CARD_DURATIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180] as const;
-export type PhotoCardDurationSeconds = (typeof PHOTO_CARD_DURATIONS)[number];
+export type PhotoCardDurationSeconds = number;
 
-/** Available equal per-picture holds for this card size, respecting the total Reel duration cap. */
+/** The screen may ask before any picture is selected; treat zero as one for its input maximum. */
+export function photoCardMaxDurationSeconds(pictureCount: number): number {
+  if (!Number.isInteger(pictureCount) || pictureCount < 0) return 0;
+  return Math.floor(PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS / Math.max(1, pictureCount));
+}
+
+/** Suggested equal per-picture holds; direct input may use any whole second within the cap. */
 export function photoCardDurationChoices(pictureCount: number): PhotoCardDurationSeconds[] {
   if (!Number.isInteger(pictureCount) || pictureCount < 1) return [];
   return PHOTO_CARD_DURATIONS.filter((seconds) => seconds * pictureCount <= PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS);
 }
 
-/** Server-side mirror of the screen's duration choices. */
+/** Accept any whole-second hold whose complete photo card fits the Reel duration cap. */
 export function isPhotoCardDurationAllowed(value: unknown, pictureCount: number): value is PhotoCardDurationSeconds {
-  return typeof value === "number" && photoCardDurationChoices(pictureCount).includes(value as PhotoCardDurationSeconds);
+  return Number.isInteger(pictureCount) && pictureCount >= 1 &&
+    typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= photoCardMaxDurationSeconds(pictureCount);
 }
 
 /**

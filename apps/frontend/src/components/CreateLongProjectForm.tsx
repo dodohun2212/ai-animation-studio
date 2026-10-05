@@ -4,6 +4,7 @@ import { CLIP_DURATION_CHOICES, MAX_SCENE_COUNT, MIN_SCENE_COUNT, type LongProje
 import { createLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { LONG_STORY_HINTS, filledCountLabel } from "./ui/longStoryHints.js";
 
 interface CreateLongProjectFormProps {
   onCreated: (project: LongProject) => void;
@@ -54,22 +55,28 @@ function Field({
   onChange,
   multiline = false,
   disabled,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   multiline?: boolean;
   disabled: boolean;
+  /** 칸 아래 한 줄 설명. 라벨 밖에 두어 칸의 이름(접근성 이름)은 라벨 그대로입니다. */
+  hint?: string;
 }) {
   return (
-    <label className="block text-sm text-slate-300">
-      {label}
-      {multiline ? (
-        <textarea className={fieldClassName} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} rows={3} />
-      ) : (
-        <input className={fieldClassName} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
-      )}
-    </label>
+    <div>
+      <label className="block text-sm text-slate-300">
+        {label}
+        {multiline ? (
+          <textarea className={fieldClassName} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} rows={3} />
+        ) : (
+          <input className={fieldClassName} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
+        )}
+      </label>
+      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+    </div>
   );
 }
 
@@ -186,14 +193,14 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
         )}
       </div>
       <div className="md:col-span-2">
-        <Field label="한 줄 줄거리" value={settings.logline} onChange={(value) => setField("logline", value)} disabled={submitting} multiline />
+        <Field label="한 줄 줄거리" value={settings.logline} onChange={(value) => setField("logline", value)} disabled={submitting} multiline hint={LONG_STORY_HINTS.logline} />
         {fieldErrors.logline && (
           <p className="mt-1.5 text-sm text-rose-400" role="alert">
             {fieldErrors.logline}
           </p>
         )}
       </div>
-      <Field label="개요" value={settings.overview} onChange={(value) => setField("overview", value)} disabled={submitting} multiline />
+      <Field label="개요" value={settings.overview} onChange={(value) => setField("overview", value)} disabled={submitting} multiline hint={LONG_STORY_HINTS.overview} />
       <Field label="장르" value={settings.genre} onChange={(value) => setField("genre", value)} disabled={submitting} />
       <Field label="톤" value={settings.tone} onChange={(value) => setField("tone", value)} disabled={submitting} />
       <Field label="테마" value={settings.theme} onChange={(value) => setField("theme", value)} disabled={submitting} />
@@ -284,18 +291,34 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
           <option value="4:5">4:5</option>
         </select>
       </div>
-      <Field label="누가 볼 영상인가" value={settings.audience} onChange={(value) => setField("audience", value)} disabled={submitting} />
-      <Field label="메모" value={settings.notes} onChange={(value) => setField("notes", value)} disabled={submitting} multiline />
-      <Field label="시작 상태" value={settings.startingState} onChange={(value) => setField("startingState", value)} disabled={submitting} multiline />
-      <Field label="중간 전개" value={settings.midpoint} onChange={(value) => setField("midpoint", value)} disabled={submitting} multiline />
-      <Field label="결말 방향" value={settings.endingDirection} onChange={(value) => setField("endingDirection", value)} disabled={submitting} multiline />
-      <Field
-        label="스토리 흐름 요약"
-        value={settings.storyFlowSummary}
-        onChange={(value) => setField("storyFlowSummary", value)}
-        disabled={submitting}
-        multiline
-      />
+      {/*
+        CLI Round 1199: 이야기 방향 여섯 칸은 처음부터 다 펼쳐져 있어 「다 채워야 하나」로 읽혔습니다. 설정 화면의
+        「이야기 흐름」 묶음과 같은 모양으로 접어 둡니다. 비워 둬도 되는 칸이고(AI가 알아서 정합니다), 펼쳐 적은 값은
+        예전과 똑같이 요청에 실립니다. <details> 라 접혀 있어도 칸은 DOM 에 있어 값이 사라지지 않습니다.
+      */}
+      <details className="md:col-span-2 rounded-xl border border-white/10 bg-slate-950/30" data-testid="long-create-story-group">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-100">
+          추가 설정 (선택) · 이야기 흐름{" "}
+          <span className="font-normal text-slate-500" data-testid="long-create-story-group-summary">
+            {filledCountLabel([settings.audience, settings.notes, settings.startingState, settings.midpoint, settings.endingDirection, settings.storyFlowSummary])}
+          </span>
+        </summary>
+        <div className="grid gap-4 px-4 pb-4 md:grid-cols-2">
+          <Field label="누가 볼 영상인가" value={settings.audience} onChange={(value) => setField("audience", value)} disabled={submitting} hint={LONG_STORY_HINTS.audience} />
+          <Field label="메모" value={settings.notes} onChange={(value) => setField("notes", value)} disabled={submitting} multiline hint={LONG_STORY_HINTS.notes} />
+          <Field label="시작 상태" value={settings.startingState} onChange={(value) => setField("startingState", value)} disabled={submitting} multiline hint={LONG_STORY_HINTS.startingState} />
+          <Field label="중간 전개" value={settings.midpoint} onChange={(value) => setField("midpoint", value)} disabled={submitting} multiline hint={LONG_STORY_HINTS.midpoint} />
+          <Field label="결말 방향" value={settings.endingDirection} onChange={(value) => setField("endingDirection", value)} disabled={submitting} multiline hint={LONG_STORY_HINTS.endingDirection} />
+          <Field
+            label="스토리 흐름 요약"
+            value={settings.storyFlowSummary}
+            onChange={(value) => setField("storyFlowSummary", value)}
+            disabled={submitting}
+            multiline
+            hint={LONG_STORY_HINTS.storyFlowSummary}
+          />
+        </div>
+      </details>
 
       {submitError && (
         <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={submitError.code}>

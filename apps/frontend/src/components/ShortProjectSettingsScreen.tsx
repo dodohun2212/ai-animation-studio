@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { SHORT_PROJECT_LEAD_CAST_ROLE, isShortProjectCastLead,
   CLIP_DURATION_CHOICES,
   PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS,
-  photoCardDurationChoices,
+  photoCardMaxDurationSeconds,
+  type PhotoCardDurationSeconds,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
   videoModelTakesDuration,
@@ -28,6 +29,7 @@ import { ContinueToNextStep } from "./ui/ContinueToNextStep.js";
 import type { ResumeTarget } from "../utils/resumeTarget.js";
 import { cardSectionWide as cardSection, dangerOutlineButton, outlineButton, primaryButton, scrollList, smallDangerOutlineButton, smallOutlineButton } from "./ui/surfaces.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { PhotoCardSecondsSelect } from "./ui/PhotoCardSecondsSelect.js";
 
 interface Props {
   projectId: string;
@@ -55,8 +57,8 @@ type State = {
   aspectRatioChangeable: boolean;
   /**
    * A photo card or news reel (CLI Round 1190). Its "clip length" is how long each still picture is held, not a
-   * paid generation: the lengths come from `photoCardDurationChoices(사진 수)` under the 180-second Reel cap,
-   * and the model's price and range lines say nothing true about it.
+   * paid generation: any whole second from 1 to `photoCardMaxDurationSeconds(사진 수)` under the 180-second Reel
+   * cap, typed by the second (캡틴D 2026-10-05), and the model's price and range lines say nothing true about it.
    */
   pictureCard: boolean;
 };
@@ -928,10 +930,8 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
    */
   const [videoModel, setVideoModel] = useState<VideoModelOption | null>(null);
   /* item 5(D1): the lengths offered — CLIP_DURATION_CHOICES that this model takes, or all of them before the model is known. */
-  const shownClipDurations: readonly number[] = state.pictureCard
-    // 사진 카드·뉴스 릴: 사진 수 × 한 장당 길이가 릴스 한도 180초 안인 것만. 모델과는 상관이 없습니다.
-    ? photoCardDurationChoices(state.settings?.sceneCount ?? 1)
-    : videoModel ? CLIP_DURATION_CHOICES.filter((seconds) => videoModelTakesDuration(videoModel, seconds)) : CLIP_DURATION_CHOICES;
+  // 사진 카드·뉴스 릴은 이 목록을 쓰지 않습니다 — 아래에서 1초 단위 입력칸(PhotoCardSecondsSelect)을 씁니다.
+  const shownClipDurations: readonly number[] = videoModel ? CLIP_DURATION_CHOICES.filter((seconds) => videoModelTakesDuration(videoModel, seconds)) : CLIP_DURATION_CHOICES;
   /** Only a picture card has a whole-Reel cap; an ordinary project's length is the model's question, asked below. */
   const pictureCardTooLong = state.pictureCard && state.settings !== null
     && state.settings.sceneCount * state.settings.clipDurationSeconds > PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS;
@@ -1226,6 +1226,22 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           <div>
           <label className="block text-sm text-slate-300">
             {state.pictureCard ? "한 장당 길이(초)" : "클립 길이(초)"}
+            {state.pictureCard ? (
+              /* 사진 카드·뉴스 릴: 1초 단위로 직접 적습니다(캡틴D 2026-10-05). 저장된 값이 한도를 넘었으면 조용히 고치지 않고
+                 아래 합계 줄이 말하고 저장을 막습니다 — 그래서 autoClamp 를 끕니다. */
+              <PhotoCardSecondsSelect
+                testId="settings-clip-duration"
+                className={fieldClassName}
+                pictureCount={state.settings.sceneCount}
+                value={state.settings.clipDurationSeconds as PhotoCardDurationSeconds}
+                autoClamp={false}
+                showHint={false}
+                onChange={(clipDurationSeconds) => {
+                  setField("clipDurationSeconds", clipDurationSeconds);
+                  setField("durationSeconds", state.settings!.sceneCount * clipDurationSeconds);
+                }}
+              />
+            ) : (
             <select
               data-testid="settings-clip-duration"
               className={fieldClassName}
@@ -1252,6 +1268,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                 </option>
               )}
             </select>
+            )}
           </label>
             {/* 🔴 이 칸은 **영상비를 두 배로 바꾸는 칸**인데, 화면에는 초 수만 있었습니다. 5초와 10초 사이에서
                 고르는 사람은 길이를 고르는 게 아니라 금액을 고르고 있고, 그 금액은 모델마다 다릅니다(카탈로그
@@ -1261,7 +1278,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
                 모델 요율로 조용히 떨어져 최대 13.6배 낮은 값을 보여 줍니다(Cowork Round 771). */}
             {state.pictureCard && (
               <span data-testid="settings-picture-card-cap" className="mt-1 block text-xs text-slate-500">
-                사진은 돈이 들지 않습니다. 릴스는 모두 합쳐 {PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS}초까지라, 사진 수에 따라 넘는 길이는 목록에서 빠집니다.
+                사진은 돈이 들지 않습니다. 1초 단위로 적을 수 있고, 릴스는 모두 합쳐 {PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS}초까지라 사진 {state.settings.sceneCount}장이면 한 장당 최대 {photoCardMaxDurationSeconds(state.settings.sceneCount)}초입니다.
               </span>
             )}
             {videoModel && !state.pictureCard && (

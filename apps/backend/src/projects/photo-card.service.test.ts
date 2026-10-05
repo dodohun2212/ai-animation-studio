@@ -419,6 +419,10 @@ describe("PhotoCardService", () => {
     await expect(service.create({ ...body(...twelvePictures), clipDurationSeconds: 20 as never })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     await expect(service.create({ ...body(...twelvePictures), clipDurationSeconds: 15 as never })).resolves.toBeDefined();
     await expect(service.create({ ...body(asset.asset_id), projectId: "card_long", clipDurationSeconds: 180 as never })).resolves.toBeDefined();
+    await expect(service.create({ ...body(asset.asset_id), projectId: "card_seven", clipDurationSeconds: 7 })).resolves.toBeDefined();
+    for (const clipDurationSeconds of [0, 7.5]) {
+      await expect(service.create({ ...body(asset.asset_id), clipDurationSeconds })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    }
   });
 
   it("stores the orientation where everything that renders reads it", async () => {

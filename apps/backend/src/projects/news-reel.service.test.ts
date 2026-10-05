@@ -53,6 +53,12 @@ describe("news reel creation", () => {
     const stored = await projects.findById("news_three_minutes");
     expect(stored.scenes).toHaveLength(12);
     expect(stored.lore_context.clip_duration_seconds).toBe(15);
+    await expect(service.create(request(assetId, { projectId: "news_seven", clipDurationSeconds: 7 })))
+      .resolves.toMatchObject({ project: { id: "news_seven" } });
+    for (const clipDurationSeconds of [0, 7.5]) {
+      await expect(service.create(request(assetId, { clipDurationSeconds })))
+        .rejects.toMatchObject({ response: { code: "NEWS_REEL_INVALID_REQUEST" } });
+    }
   });
 
   it("persists the article summary for the later Instagram caption", async () => {

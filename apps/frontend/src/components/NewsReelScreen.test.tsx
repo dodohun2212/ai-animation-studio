@@ -892,17 +892,20 @@ describe("NewsReelScreen 무엇에 대한 기사인지", () => {
     expect(screen.getByTestId(`news-reel-picture-asset-${국회.assetId}`)).toBeTruthy();
     expect(screen.queryByTestId("news-reel-picture-folder-hidden")).toBeNull();
   });
-  /** CLI Round 1187: 뉴스 릴도 사진 수 × 한 장당 길이가 180초를 넘는 값은 고를 수 없습니다. */
-  it("offers only the per-picture lengths that keep the reel within 180 seconds", async () => {
+  /** CLI Round 1187 → 캡틴D 2026-10-05: 뉴스 릴도 1초 단위로 적고, 사진 수 × 한 장당 길이가 180초를 넘을 수 없습니다. */
+  it("takes whole seconds up to what keeps the reel within 180 seconds", async () => {
     stubWithFolders();
     await open();
-    const options = () => [...(screen.getByTestId("news-reel-seconds") as HTMLSelectElement).options].map((option) => Number(option.value));
-    expect(options()).toContain(180);
+    const field = () => screen.getByTestId("news-reel-seconds") as HTMLInputElement;
+    expect(field().max).toBe("180");
 
     fireEvent.click(await screen.findByTestId(`news-reel-picture-asset-${국회.assetId}`));
     fireEvent.click(screen.getByTestId(`news-reel-picture-asset-${주식.assetId}`));
-    // 두 장이면 90초(=180초)까지.
-    expect(options()).toEqual([5, 10, 15, 20, 30, 45, 60, 90]);
+    // 두 장이면 90초(=180초)까지, 1초 단위.
+    expect(field().max).toBe("90");
+    expect(field().step).toBe("1");
+    fireEvent.change(field(), { target: { value: "37" } });
+    expect(screen.getByTestId("news-reel-picture-length").textContent).toContain("= 74초");
     expect(screen.getByTestId("news-reel-seconds-cap").textContent).toContain("180초");
   });
 });

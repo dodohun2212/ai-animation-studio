@@ -194,4 +194,56 @@ describe("CreateLongProjectForm", () => {
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+  /** CLI Round 1199: 이야기 방향 여섯 칸은 접힌 「추가 설정 (선택)」 안 — 펼치지 않아도 만들 수 있고, 펼쳐 적은 값은 그대로 실립니다. */
+  it("keeps the six story-direction fields in a closed optional group", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
+    const group = screen.getByTestId("long-create-story-group") as HTMLDetailsElement;
+    expect(group.open).toBe(false);
+    expect(group.textContent).toContain("추가 설정 (선택)");
+    for (const label of ["누가 볼 영상인가", "메모", "시작 상태", "중간 전개", "결말 방향", "스토리 흐름 요약"]) {
+      expect(group.contains(screen.getByLabelText(label))).toBe(true);
+    }
+    // 필수 칸과 개요는 바깥에 그대로.
+    expect(group.contains(screen.getByLabelText("한 줄 줄거리"))).toBe(false);
+    expect(group.contains(screen.getByLabelText("개요"))).toBe(false);
+    expect(screen.getByTestId("long-create-story-group-summary").textContent).toBe("비워 둬도 됩니다");
+  });
+
+  it("creates with only the required fields, the optional group never opened", async () => {
+    const project = makeLongProject({ id: "long_test" });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { project }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onCreated = vi.fn();
+    render(<CreateLongProjectForm onCreated={onCreated} onCancel={() => {}} />);
+    fillRequiredFields("long_test", "우주 방랑자", "귀환 이야기");
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(project));
+    expect((screen.getByTestId("long-create-story-group") as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it("sends what was written in the optional group, and counts it in the closed summary", async () => {
+    const project = makeLongProject({ id: "long_test" });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { project }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
+    fillRequiredFields("long_test", "우주 방랑자", "귀환 이야기");
+    fireEvent.change(screen.getByLabelText("중간 전개"), { target: { value: "동료가 배신한다" } });
+    fireEvent.change(screen.getByLabelText("결말 방향"), { target: { value: "집으로 돌아온다" } });
+    expect(screen.getByTestId("long-create-story-group-summary").textContent).toBe("2칸 적음");
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(body.settings.midpoint).toBe("동료가 배신한다");
+    expect(body.settings.endingDirection).toBe("집으로 돌아온다");
+  });
+
+  it("says how the look-alike fields differ, without changing their names", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<CreateLongProjectForm onCreated={() => {}} onCancel={() => {}} />);
+    expect(screen.getByText("무슨 이야기인지 한 문장으로.")).toBeTruthy();
+    expect(screen.getByText(/한 줄 줄거리보다 길게/)).toBeTruthy();
+    expect(screen.getByText(/판을 뒤집는 사건 하나/)).toBeTruthy();
+    expect(screen.getByText(/시작·중간·결말을 이어서/)).toBeTruthy();
+  });
 });

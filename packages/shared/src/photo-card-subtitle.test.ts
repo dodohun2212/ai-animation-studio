@@ -7,6 +7,7 @@ import {
   isPhotoCardSubtitleLayout,
   isPhotoCardEffect,
   photoCardDurationChoices,
+  photoCardMaxDurationSeconds,
   PHOTO_CARD_DARKENING,
   PHOTO_CARD_DURATIONS,
   PHOTO_CARD_EFFECTS,
@@ -106,8 +107,16 @@ describe("photo card subtitle bounds", () => {
     expect(photoCardDurationChoices(2)).toEqual([5, 10, 15, 20, 30, 45, 60, 90]);
     expect(photoCardDurationChoices(12)).toEqual([5, 10, 15]);
     expect(photoCardDurationChoices(0)).toEqual([]);
+    expect(photoCardMaxDurationSeconds(0)).toBe(180);
+    expect(photoCardMaxDurationSeconds(4)).toBe(45);
+    expect(photoCardMaxDurationSeconds(5)).toBe(36);
     expect(isPhotoCardDurationAllowed(180, 1)).toBe(true);
     expect(isPhotoCardDurationAllowed(15, 12)).toBe(true);
+    expect(isPhotoCardDurationAllowed(7, 4)).toBe(true);
+    expect(isPhotoCardDurationAllowed(36, 5)).toBe(true);
+    expect(isPhotoCardDurationAllowed(37, 5)).toBe(false);
+    expect(isPhotoCardDurationAllowed(0, 5)).toBe(false);
+    expect(isPhotoCardDurationAllowed(7.5, 5)).toBe(false);
     expect(isPhotoCardDurationAllowed(20, 12)).toBe(false);
     expect(isPhotoCardDurationAllowed(120, 2)).toBe(false);
     expect(PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS).toBe(180);
