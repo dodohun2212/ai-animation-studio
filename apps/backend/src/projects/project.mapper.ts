@@ -144,10 +144,12 @@ export function storedSubtitleLayout(stored: StoredProject): PhotoCardSubtitleLa
   const scale = stored.lore_context.subtitle_scale;
   const center = stored.lore_context.subtitle_center;
   const effect = stored.lore_context.subtitle_effect;
+  const darkening = stored.lore_context.subtitle_darkening;
   const candidate = {
     scale: typeof scale === "number" ? scale : DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.scale,
     center: typeof center === "number" ? center : DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.center,
     ...(effect === undefined ? {} : { effect }),
+    ...(darkening === undefined ? {} : { darkening }),
   };
   // A stored value outside the published range cannot have come from this app's own refusal, so it is a hand-
   // edited file rather than a choice — the defaults are the honest answer, not a video made from a number the

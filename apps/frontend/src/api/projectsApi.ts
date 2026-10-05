@@ -2,6 +2,7 @@ import {
   API_ROUTES,
   MAX_SCENE_COUNT,
   isClipDurationSeconds,
+  PHOTO_CARD_DURATIONS,
   type ArchiveProjectRequest,
   type ArchiveProjectResponse,
   type CreateProjectRequest,
@@ -202,7 +203,10 @@ function isShortProjectSettings(value: unknown): value is ShortProjectSettings {
     // can type.
     value.sceneCount < 1 ||
     value.sceneCount > MAX_SCENE_COUNT ||
-    !isClipDurationSeconds(value.clipDurationSeconds) ||
+    // A photo card / news reel holds each picture 5–180 s (PHOTO_CARD_DURATIONS), past a clip's 1–30 s. Shape only:
+    // whether this many pictures may take that hold is the screen's and the server's question (CLI Round 1192),
+    // and refusing it here would hide the very card whose over-long total the screen has to show.
+    !(isClipDurationSeconds(value.clipDurationSeconds) || (PHOTO_CARD_DURATIONS as readonly unknown[]).includes(value.clipDurationSeconds)) ||
     !Number.isInteger(value.durationSeconds) ||
     (value.durationSeconds as number) <= 0 ||
     typeof value.narrationEnabled !== "boolean" ||
@@ -231,7 +235,9 @@ function isGetProjectSettingsResponse(value: unknown): value is GetProjectSettin
   return isRecord(value)
     && isShortProjectSettings(value.settings)
     && typeof value.sceneCountChangeable === "boolean"
-    && typeof value.aspectRatioChangeable === "boolean";
+    && typeof value.aspectRatioChangeable === "boolean"
+    // CLI Round 1190: present only for a photo card or news reel.
+    && (value.pictureCard === undefined || value.pictureCard === true);
 }
 
 function isUpdateProjectSettingsResponse(value: unknown): value is UpdateProjectSettingsResponse {

@@ -171,6 +171,28 @@ describe("PhotoCardScreen", () => {
       expect(line()).toContain("= 20초");
     });
 
+    /** CLI Round 1187: 사진 수 × 한 장당 길이가 릴스 한도 180초를 넘는 값은 목록에 없고, 넘게 되면 바로 내려옵니다. */
+    it("offers only the lengths the picture count can take, up to the 180-second Reel", async () => {
+      await renderWith(many.slice(0, 4));
+      const options = () => Array.from((screen.getByTestId("photo-card-seconds") as HTMLSelectElement).options).map((option) => Number(option.value));
+      // 한 장도 안 골랐을 땐 한 장이 받을 수 있는 전부.
+      expect(options()).toEqual([5, 10, 15, 20, 30, 45, 60, 90, 120, 180]);
+      for (const one of many.slice(0, 4)) pick(one.assetId);
+      expect(options()).toEqual([5, 10, 15, 20, 30, 45]);
+      fireEvent.change(screen.getByTestId("photo-card-seconds"), { target: { value: "45" } });
+      expect(screen.getByTestId("photo-card-length").textContent).toContain("= 180초 / 최대 180초");
+    });
+
+    it("steps a too-long length down to the longest one still allowed when a picture is added", async () => {
+      await renderWith(many.slice(0, 5));
+      for (const one of many.slice(0, 4)) pick(one.assetId);
+      fireEvent.change(screen.getByTestId("photo-card-seconds"), { target: { value: "45" } });
+      pick(many[4]!.assetId);
+      // 5장 × 45초 = 225초는 안 됩니다. 남은 것 중 가장 긴 30초(150초)로.
+      await waitFor(() => expect((screen.getByTestId("photo-card-seconds") as HTMLSelectElement).value).toBe("30"));
+      expect(screen.getByTestId("photo-card-length").textContent).toContain("= 150초");
+    });
+
     /**
      * 🔴 이 짝이 이 묶음에서 제일 중요합니다. 「12장이 찼다」를 이유로 격자 전체를 닫으면, 잘못 고른 한 장을
      * **바꿀 수가 없어서** 사람이 갇힙니다 — 나가는 길은 폼을 처음부터 다시 채우는 것뿐입니다.

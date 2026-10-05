@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
-import { API_ROUTES, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_CSS_RATIO, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO } from "@ai-animation-studio/shared";
+import { API_ROUTES, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_DARKENING, PHOTO_CARD_SUBTITLE_CSS_RATIO, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO } from "@ai-animation-studio/shared";
 
 import { jsonResponse } from "../api/testUtils.js";
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
@@ -548,6 +548,60 @@ describe("PhotoCardSubtitleFieldset", () => {
         />,
       );
       expect((screen.getByTestId("photo-card-subtitle-effect") as HTMLSelectElement).disabled).toBe(true);
+    });
+  });
+  /** CLI Round 1187: 번개 뒤 어두워짐을 고르는 칸. 옛 카드는 값이 없고, 그건 그 카드가 구워진 43.5% 입니다. */
+  describe("darkening", () => {
+    it("starts at the shared default for a card that never chose, with the server's own bounds", () => {
+      renderFieldset(TWO_PART, { scale: 0.03, center: 0.4 });
+      const slider = screen.getByTestId("photo-card-subtitle-darkening") as HTMLInputElement;
+      expect(Number(slider.value)).toBe(PHOTO_CARD_DARKENING.default);
+      expect(Number(slider.min)).toBe(PHOTO_CARD_DARKENING.min);
+      expect(Number(slider.max)).toBe(PHOTO_CARD_DARKENING.max);
+      expect(Number(slider.step)).toBe(PHOTO_CARD_DARKENING.step);
+      expect(screen.getByTestId("photo-card-subtitle-darkening-value").textContent).toBe(`${PHOTO_CARD_DARKENING.default}%`);
+    });
+
+    it("reports the chosen darkening, keeping everything else", () => {
+      const onChange = renderFieldset(TWO_PART, { scale: 0.03, center: 0.4, effect: "lightning" });
+      fireEvent.change(screen.getByTestId("photo-card-subtitle-darkening"), { target: { value: "62.5" } });
+      expect(onChange).toHaveBeenCalledWith({ scale: 0.03, center: 0.4, effect: "lightning", darkening: 62.5 });
+    });
+
+    it("keeps the darkening when another slider moves", () => {
+      const onChange = renderFieldset(TWO_PART, { scale: 0.03, center: 0.4, darkening: 10 });
+      fireEvent.change(screen.getByTestId("photo-card-subtitle-scale"), { target: { value: "0.04" } });
+      expect(onChange).toHaveBeenCalledWith({ scale: 0.04, center: 0.4, darkening: 10 });
+    });
+
+    it("has no darkening control when there is no lightning to darken after", () => {
+      renderFieldset(TWO_PART, { scale: 0.03, center: 0.4, effect: "none" });
+      expect(screen.queryByTestId("photo-card-subtitle-darkening")).toBeNull();
+    });
+
+    it("offers the way back when only the darkening differs, and treats a missing one as the default", () => {
+      const { rerender } = render(
+        <PhotoCardSubtitleFieldset
+          projectId="card_1" quote={TWO_PART} aspectRatio="9:16"
+          layout={{ scale: 0.031, center: 0.5, darkening: 20 }} savedLayout={{ scale: 0.031, center: 0.5 }} onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByTestId("photo-card-subtitle-restore")).toBeTruthy();
+      rerender(
+        <PhotoCardSubtitleFieldset
+          projectId="card_1" quote={TWO_PART} aspectRatio="9:16"
+          layout={{ scale: 0.031, center: 0.5, darkening: PHOTO_CARD_DARKENING.default }} savedLayout={{ scale: 0.031, center: 0.5 }} onChange={vi.fn()}
+        />,
+      );
+      expect(screen.queryByTestId("photo-card-subtitle-restore")).toBeNull();
+    });
+
+    it("lets 「기본값으로」 put a changed darkening back", () => {
+      const onChange = renderFieldset(TWO_PART, { ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, darkening: 70 });
+      const reset = screen.getByTestId("photo-card-subtitle-reset") as HTMLButtonElement;
+      expect(reset.disabled).toBe(false);
+      fireEvent.click(reset);
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT });
     });
   });
 });

@@ -180,6 +180,30 @@ describe("short project settings", () => {
     expect(parseShortProjectSettings({ ...settingsRequest, sceneCount: 4, clipDurationSeconds: 10 })).toMatchObject({ clipDurationSeconds: 10, durationSeconds: 40 });
   });
 
+  it("allows photo card holds above clip limits only when their total stays within 180 seconds", () => {
+    expect(parseShortProjectSettings({ ...settingsRequest, sceneCount: 12, clipDurationSeconds: 15 }, 1))
+      .toMatchObject({ sceneCount: 12, clipDurationSeconds: 15, durationSeconds: 180 });
+    expect(() => parseShortProjectSettings({ ...settingsRequest, sceneCount: 12, clipDurationSeconds: 20 }, 1)).toThrow();
+
+    const stored = createStoredProject("card", "topic", "2026-08-22T00:00:00.000Z");
+    stored.lore_context = { photo_card: true, scene_count: 12, clip_duration_seconds: 15 };
+    expect(toShortProjectSettings(stored)).toMatchObject({ sceneCount: 12, clipDurationSeconds: 15, durationSeconds: 180 });
+  });
+
+  it("allows news reel holds above clip limits under the same 180-second total", () => {
+    expect(parseShortProjectSettings({ ...settingsRequest, sceneCount: 4, clipDurationSeconds: 45 }, 2, true))
+      .toMatchObject({ sceneCount: 4, clipDurationSeconds: 45, durationSeconds: 180 });
+    expect(() => parseShortProjectSettings({ ...settingsRequest, sceneCount: 4, clipDurationSeconds: 60 }, 2, true)).toThrow();
+
+    const stored = createStoredProject("news_reel", "topic", "2026-10-05T00:00:00.000Z");
+    stored.lore_context = {
+      scene_count: 4,
+      clip_duration_seconds: 45,
+      news_reel_card: { headline: { title: "headline" }, captions: [{}, {}, {}, {}] },
+    };
+    expect(toShortProjectSettings(stored)).toMatchObject({ sceneCount: 4, clipDurationSeconds: 45, durationSeconds: 180 });
+  });
+
   it("trims strings and omits blank optional style entries", () => {
     const parsed = parseShortProjectSettings({
       ...settingsRequest,

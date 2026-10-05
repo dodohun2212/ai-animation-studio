@@ -189,6 +189,32 @@ describe("ProjectsService", () => {
     expect(await service.getProjectSettings("flags")).toMatchObject({ sceneCountChangeable: false, aspectRatioChangeable: false });
   });
 
+  it("marks picture card settings without adding a false flag to ordinary projects", async () => {
+    await service.createProject({ projectId: "picture_settings", topic: "사진 카드" });
+    await service.createProject({ projectId: "news_reel_settings", topic: "뉴스 릴" });
+    await service.createProject({ projectId: "ordinary_settings", topic: "일반 영상" });
+    const repository = new LocalProjectRepository(root);
+    const pictureProject = await repository.findById("picture_settings");
+    pictureProject.lore_context.photo_card = true;
+    pictureProject.lore_context.scene_count = 4;
+    pictureProject.lore_context.clip_duration_seconds = 45;
+    await repository.save(pictureProject);
+    const newsProject = await repository.findById("news_reel_settings");
+    newsProject.lore_context.scene_count = 4;
+    newsProject.lore_context.clip_duration_seconds = 45;
+    newsProject.lore_context.news_reel_card = { headline: { title: "기사" }, captions: [{}, {}, {}, {}] };
+    await repository.save(newsProject);
+
+    expect(await service.getProjectSettings("picture_settings")).toMatchObject({ pictureCard: true, settings: { clipDurationSeconds: 45 } });
+    expect(await service.getProjectSettings("news_reel_settings")).toMatchObject({ pictureCard: true, settings: { clipDurationSeconds: 45 } });
+    expect(await service.getProjectSettings("ordinary_settings")).not.toHaveProperty("pictureCard");
+
+    const current = (await service.getProjectSettings("news_reel_settings")).settings;
+    const { durationSeconds: _durationSeconds, sceneImageContinuityEnabled: _continuity, ...settings } = current;
+    const saved = await service.updateProjectSettings("news_reel_settings", { settings: { ...settings, clipDurationSeconds: 30 } });
+    expect(saved.settings).toMatchObject({ clipDurationSeconds: 30, durationSeconds: 120 });
+  });
+
   it("returns an empty cast for a project that has never set one", async () => {
     await service.createProject({ projectId: "cast_project", topic: "topic" });
     expect(await service.getProjectCast("cast_project")).toEqual({ cast: [] });

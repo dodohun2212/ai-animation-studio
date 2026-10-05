@@ -42,6 +42,19 @@ const request = (assetId: string, over: Partial<CreateNewsReelRequest> = {}): un
 });
 
 describe("news reel creation", () => {
+  it("offers longer holds while refusing a card whose total duration exceeds 180 seconds", async () => {
+    const { service, assetId, projects } = await setup();
+    const assetIds = Array.from({ length: 12 }, () => assetId);
+    const card = { ...CARD, captions: Array.from({ length: 12 }, (_, index) => ({ line1: `사진 ${index + 1}`, line2: null })) };
+    await expect(service.create(request(assetId, { projectId: "news_too_long", assetIds, card, clipDurationSeconds: 20 })))
+      .rejects.toMatchObject({ response: { code: "NEWS_REEL_INVALID_REQUEST" } });
+    await expect(service.create(request(assetId, { projectId: "news_three_minutes", assetIds, card, clipDurationSeconds: 15 })))
+      .resolves.toMatchObject({ project: { id: "news_three_minutes" } });
+    const stored = await projects.findById("news_three_minutes");
+    expect(stored.scenes).toHaveLength(12);
+    expect(stored.lore_context.clip_duration_seconds).toBe(15);
+  });
+
   it("persists the article summary for the later Instagram caption", async () => {
     const { service, assetId } = await setup();
     const card = { ...CARD, summary: "국회는 검찰청 폐지에 따른 후속 법률을 통과시켰다." };

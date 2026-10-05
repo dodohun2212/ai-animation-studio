@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Asset } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS } from "@ai-animation-studio/shared";
 
 import { Spinner } from "../Spinner.js";
 import { cardSectionRoomy as cardSection } from "./surfaces.js";
@@ -208,10 +209,10 @@ export function PicturePicker({
           고른 그림 중 {hiddenPicked}장은 다른 주제라 지금 안 보입니다 — 빼시려면 「전체」를 눌러 주세요.
         </p>
       )}
-      <p className="text-xs text-slate-400 tabular-nums" data-testid={`${testIdPrefix}-length`}>
+      <p className={`text-xs tabular-nums ${totalSeconds > PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS ? "text-rose-400" : "text-slate-400"}`} data-testid={`${testIdPrefix}-length`}>
         {assetIds.length === 0
           ? "아직 고른 그림이 없습니다. 고른 순서대로 한 장씩 이어 붙습니다."
-          : `사진 ${assetIds.length}장 × 한 장당 ${seconds}초 = ${totalSeconds}초`}
+          : `사진 ${assetIds.length}장 × 한 장당 ${seconds}초 = ${totalSeconds}초 / 최대 ${PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS}초`}
       </p>
       {atLimit && (
         /* 🔴 「더 못 고른다」만 말하면 사람은 화면이 고장 난 줄 압니다. 왜 닫혔는지와 **어떻게 여는지**를

@@ -1130,17 +1130,14 @@ describe("a photo card's subtitle colours, for the preview", () => {
    * the number arriving from the card was never looked at. Same seam as Round 951.
    *
    * 🟠 `-t` immediately before `-i <picture>` is measured rather than a stand-in, because that is literally how
-   * long ffmpeg holds the still. Both allowed durations are run so a hard-coded constant cannot pass.
+   * long ffmpeg holds the still. Every duration allowed for three pictures is run so a hard-coded constant cannot pass.
    *
-   * 🔴 And two silent fallbacks sit on the path, each currently harmless only because another file happens to
-   * agree: `toShortProjectSettings` drops to `DEFAULT_CLIP_DURATION_SECONDS` when the stored duration fails
-   * `isClipDurationSeconds` (PHOTO_CARD_DURATIONS [5,10] ⊂ CLIP_DURATION_LIMITS [1,30] — narrow the limits and
-   * a 5-second card silently becomes the default length), and to `DEFAULT_SCENE_COUNT` when the scene count
-   * fails its check (held only by `minimumSceneCountFor` returning 1 for cards). Neither would throw. The
-   * screen would keep saying 30초 over a file that is not.
+   * 🔴 The old fallback returned five seconds for photo holds above 30 because it ran them through the video
+   * clip duration guard. Photo cards now have their own shared duration guard, which also checks the card's
+   * scene count against the 180-second total; ordinary generated video keeps the existing model-independent range.
    */
   it("holds each picture for the length the card was made with, once per picture", async () => {
-    for (const chosen of PHOTO_CARD_DURATIONS) {
+    for (const chosen of PHOTO_CARD_DURATIONS.filter((seconds) => seconds * 3 <= 180)) {
       const { projectsRoot, projects } = await card(3, chosen);
       const calls: string[][] = [];
       await new LocalVideoMergeService(projects, projectsRoot, sampling(calls)).merge("video_merge");
@@ -1216,28 +1213,31 @@ describe("a photo card's subtitle colours, for the preview", () => {
     expect(await projects.findById("video_merge")).toMatchObject({ workflow_state: WorkflowState.VideosApproved, final_video_path: null });
   });
 
-  it("accepts a photo card effect for merge and local preview, persists successful choices, and rejects unknown choices", async () => {
+  it("persists successful effect and darkening choices while preview stays unsaved", async () => {
     const { projectsRoot, projects } = await card(1);
     const calls: string[][] = [];
     const ass = new Map<string, string>();
     const service = new LocalVideoMergeService(projects, projectsRoot, sampling(calls, ass));
 
-    await expect(service.merge("video_merge", { subtitleLayout: { effect: "none" } })).resolves.toMatchObject({
-      project: { subtitleLayout: { effect: "none" } },
+    await expect(service.merge("video_merge", { subtitleLayout: { effect: "none", darkening: 60 } })).resolves.toMatchObject({
+      project: { subtitleLayout: { effect: "none", darkening: 60 } },
     });
-    expect((await projects.findById("video_merge")).lore_context.subtitle_effect).toBe("none");
+    expect((await projects.findById("video_merge")).lore_context).toMatchObject({ subtitle_effect: "none", subtitle_darkening: 60 });
     expect(ass.get("scene1.ass")).not.toContain("\\p1");
 
     const previewAss = new Map<string, string>();
     const previewService = new LocalVideoMergeService(projects, projectsRoot, sampling([], previewAss));
-    await previewService.previewStillMotion("video_merge", { sceneNumber: 1, motion: "still", subtitleLayout: { effect: "lightning" } });
+    await previewService.previewStillMotion("video_merge", { sceneNumber: 1, motion: "still", subtitleLayout: { effect: "lightning", darkening: 0 } });
     expect(previewAss.get("scene1.ass")).toContain("Dialogue: 1,0:00:00.08,0:00:00.18,Quote");
-    expect((await projects.findById("video_merge")).lore_context.subtitle_effect).toBe("none");
+    expect(previewAss.get("scene1.ass")).toContain("\\1a&HFF&\\t(0,170,\\1a&HFF&)");
+    expect((await projects.findById("video_merge")).lore_context).toMatchObject({ subtitle_effect: "none", subtitle_darkening: 60 });
 
     const beforeCalls = calls.length;
     await expect(service.merge("video_merge", { subtitleLayout: { effect: "sparkles" } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.merge("video_merge", { subtitleLayout: { darkening: 80.5 } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(service.merge("video_merge", { subtitleLayout: { darkening: null } })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
     expect(calls).toHaveLength(beforeCalls);
-    expect((await projects.findById("video_merge")).lore_context.subtitle_effect).toBe("none");
+    expect((await projects.findById("video_merge")).lore_context).toMatchObject({ subtitle_effect: "none", subtitle_darkening: 60 });
   });
 
   it("previews a news reel's selected picture with that picture's caption and fixed bands", async () => {

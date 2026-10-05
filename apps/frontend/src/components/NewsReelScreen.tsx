@@ -9,7 +9,8 @@ import { cardSectionRoomy as cardSection, outlineButton, primaryButton } from ".
 import { CountedField, newsReelFieldValue } from "./ui/CountedField.js";
 import type { NewsReelDraft } from "./NewsReelCreateScreen.js";
 import { PicturePicker, type PicturePickerFolder } from "./ui/PicturePicker.js";
-import { PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_PICTURES, type Asset, type PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
+import { PhotoCardSecondsSelect } from "./ui/PhotoCardSecondsSelect.js";
+import { PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_PICTURES, PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS, type Asset, type PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { MANUAL_SOURCE_PROJECT_ID } from "./AssetLibraryScreen.js";
 
@@ -373,7 +374,8 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
   /** 🟠 접힌 칸이 **비었는지 채워졌는지**를 접힌 채로 말해 줍니다 — 안 그러면 사람이 열어 봐야 압니다. */
   const articleFilled = trimmedArticle !== "" || title.trim() !== "";
   /* 🔴 셋이 다 있어야 다음 화면이 설 수 있습니다: **본문**(대조할 것), **언론사**(띠), **그림**(자막 칸 수). */
-  const nextReady = trimmedArticle.length > 0 && outlet.trim().length > 0 && assetIds.length > 0;
+  const nextReady = trimmedArticle.length > 0 && outlet.trim().length > 0 && assetIds.length > 0
+    && assetIds.length * seconds <= PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS;
   /* 🔴 주소는 바뀌었는데 아래 글은 안 바뀐 상태. **둘이 다른 기사**라는 것을 화면이 말해야 합니다. */
   const articleStale = articleFilled && url.trim().length > 0 && url.trim() !== fetchedUrl;
 
@@ -741,14 +743,13 @@ export function NewsReelScreen({ onBack, onNext }: Props) {
 
         <label className="mt-4 block text-sm text-slate-300">
           한 장당 길이
-          <select
-            data-testid="news-reel-seconds"
+          <PhotoCardSecondsSelect
+            testId="news-reel-seconds"
             className={`${field} mt-1`}
+            pictureCount={assetIds.length}
             value={seconds}
-            onChange={(event) => setSeconds(Number(event.target.value) as PhotoCardDurationSeconds)}
-          >
-            {PHOTO_CARD_DURATIONS.map((value) => <option key={value} value={value}>{value}초</option>)}
-          </select>
+            onChange={setSeconds}
+          />
         </label>
 
         {/* 🔴 여기서 굽지 않습니다 — 다음 화면에서 **그림마다 자막**을 쓰고 만듭니다. 돈은 어느 쪽에서도 안 나갑니다. */}

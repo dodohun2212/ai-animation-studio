@@ -1231,4 +1231,71 @@ describe("ShortProjectSettingsScreen", () => {
     expect(field).toHaveValue("직접 적은 이름");
     expect(field).not.toBeDisabled();
   });
+  /** CLI Round 1188/1190: 사진 카드의 「한 장당 길이」는 사진 수 × 길이 ≤ 180초로만 고르고, 모델 요금·범위 안내는 없습니다. */
+  describe("picture card length", () => {
+    const cardSettings = { ...settings, sceneCount: 4, clipDurationSeconds: 45, durationSeconds: 180 };
+    function routes(extra: Record<string, unknown> = {}) {
+      return stubFetchByRoute({
+        "GET /projects/sample_project/settings": { settings: cardSettings, sceneCountChangeable: false, aspectRatioChangeable: false, pictureCard: true },
+        "GET /projects/sample_project/settings/cast": { cast: [] },
+        "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+        "GET /projects/sample_project/settings/continuity": { link: null },
+        ...extra,
+      });
+    }
+
+    it("reopens a saved 45-second hold and offers only what four pictures can take", async () => {
+      vi.stubGlobal("fetch", routes());
+      render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+      const select = await screen.findByTestId("settings-clip-duration") as HTMLSelectElement;
+      expect(select.value).toBe("45");
+      expect([...select.options].map((option) => Number(option.value))).toEqual([5, 10, 15, 20, 30, 45]);
+      expect(screen.getByTestId("settings-picture-card-total").textContent).toContain("사진 4장 × 45초 = 총 180초 / 180초");
+      // 사진은 생성비가 없습니다 — 모델 요금·범위 줄이 거짓말을 하지 않게 나오지 않습니다.
+      expect(screen.queryByTestId("settings-clip-duration-cost")).toBeNull();
+      expect(screen.queryByTestId("settings-clip-duration-out-of-range")).toBeNull();
+      expect(screen.queryByTestId("settings-total-video-cost")).toBeNull();
+    });
+
+    it("saves a changed hold", async () => {
+      const project = makeProject({});
+      const fetchMock = routes({ "PATCH /projects/sample_project/settings": { project, settings: { ...cardSettings, clipDurationSeconds: 30 } } });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+      fireEvent.change(await screen.findByTestId("settings-clip-duration"), { target: { value: "30" } });
+      fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
+      await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")).toBe(true));
+      const patchCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH")!;
+      expect(JSON.parse(String((patchCall[1] as RequestInit).body))).toMatchObject({ settings: { clipDurationSeconds: 30 } });
+    });
+
+    it("refuses to save a stored hold that runs past the Reel limit, and says why", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({
+        "GET /projects/sample_project/settings": { settings: { ...cardSettings, sceneCount: 5 }, sceneCountChangeable: false, aspectRatioChangeable: false, pictureCard: true },
+        "GET /projects/sample_project/settings/cast": { cast: [] },
+        "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+        "GET /projects/sample_project/settings/continuity": { link: null },
+      }));
+      render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+      const total = await screen.findByTestId("settings-picture-card-total");
+      expect(total.textContent).toContain("총 225초");
+      expect(total.textContent).toContain("저장할 수 없습니다");
+      expect((screen.getByTestId("settings-save") as HTMLButtonElement).disabled).toBe(true);
+      // 목록 밖 값은 조용히 다른 값으로 보이지 않고 그대로 골라져 있습니다.
+      expect((screen.getByTestId("settings-clip-duration") as HTMLSelectElement).value).toBe("45");
+    });
+
+    it("leaves an ordinary project's model lengths and price alone", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({
+        "GET /projects/sample_project/settings": { settings, sceneCountChangeable: true, aspectRatioChangeable: true },
+        "GET /projects/sample_project/settings/cast": { cast: [] },
+        "GET /projects/sample_project/settings/asset-references": { atmosphereAssetIds: [], sceneReferenceAssets: [] },
+        "GET /projects/sample_project/settings/continuity": { link: null },
+      }));
+      render(<ShortProjectSettingsScreen projectId="sample_project" onBack={() => {}} />);
+      expect(await screen.findByTestId("settings-clip-duration-cost")).toBeTruthy();
+      expect(screen.queryByTestId("settings-picture-card-total")).toBeNull();
+      expect(screen.queryByTestId("settings-picture-card-cap")).toBeNull();
+    });
+  });
 });

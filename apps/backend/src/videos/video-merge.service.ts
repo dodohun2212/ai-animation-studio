@@ -9,7 +9,7 @@ import { FINAL_VIDEO_LOCK_KEY, ProjectLockTimeoutError, withProjectLock } from "
 import * as path from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, isStillMotion, MERGE_FRAME_FOR_ASPECT, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type GetPhotoCardSubtitleColorsResponse, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber, type SceneSubtitleLayout, type StillMotion } from "@ai-animation-studio/shared";
+import { AUDIO_MODES, DEFAULT_BGM_FADE_SECONDS, DEFAULT_BGM_VOLUME, defaultBgmVolume, FINAL_VIDEO_RELATIVE_PATH, isAudioMode, usesBgm, type AudioMode, isPhotoCardSubtitleLayout, isSceneSubtitleLayout, isStillMotion, MERGE_FRAME_FOR_ASPECT, PHOTO_CARD_DARKENING, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER, SCENE_SUBTITLE_SCALE, sceneNumbersFor, WorkflowState, type GetPhotoCardSubtitleColorsResponse, type MergeVideosResponse, type PhotoCardSubtitleLayout, type SceneNumber, type SceneSubtitleLayout, type StillMotion } from "@ai-animation-studio/shared";
 
 import { cardImagePath } from "../projects/card-image-path.js";
 import { newsReelCardFor, photoCardFor, pictureCardFor, storedSceneSubtitleLayout, storedStillMotions, storedSubtitleLayout, toApiProject } from "../projects/project.mapper.js";
@@ -115,14 +115,17 @@ function resolveSubtitleLayout(project: StoredProject, request: unknown): PhotoC
   if (!isObject(request) || request.subtitleLayout === undefined) return stored;
   if (!photoCardFor(project)) throw videoMergeInvalidRequest("subtitleLayout applies to photo cards only.");
   const asked = request.subtitleLayout;
-  if (!isObject(asked) || Object.keys(asked).some((key) => !["scale", "center", "effect"].includes(key))) throw videoMergeInvalidRequest();
+  if (!isObject(asked) || Object.keys(asked).some((key) => !["scale", "center", "effect", "darkening"].includes(key))) throw videoMergeInvalidRequest();
   const merged = {
     scale: asked.scale === undefined ? stored.scale : asked.scale,
     center: asked.center === undefined ? stored.center : asked.center,
     ...((asked.effect ?? stored.effect) === undefined ? {} : { effect: asked.effect ?? stored.effect }),
+    ...(asked.darkening === undefined && stored.darkening === undefined
+      ? {}
+      : { darkening: asked.darkening === undefined ? stored.darkening : asked.darkening }),
   };
   if (!isPhotoCardSubtitleLayout(merged)) {
-    throw videoMergeInvalidRequest(`subtitleLayout.scale must be ${PHOTO_CARD_SUBTITLE_SCALE.min}-${PHOTO_CARD_SUBTITLE_SCALE.max} and subtitleLayout.center ${PHOTO_CARD_SUBTITLE_CENTER.min}-${PHOTO_CARD_SUBTITLE_CENTER.max}.`);
+    throw videoMergeInvalidRequest(`subtitleLayout.scale must be ${PHOTO_CARD_SUBTITLE_SCALE.min}-${PHOTO_CARD_SUBTITLE_SCALE.max}, subtitleLayout.center ${PHOTO_CARD_SUBTITLE_CENTER.min}-${PHOTO_CARD_SUBTITLE_CENTER.max}, and subtitleLayout.darkening ${PHOTO_CARD_DARKENING.min}-${PHOTO_CARD_DARKENING.max} in ${PHOTO_CARD_DARKENING.step} steps.`);
   }
   return merged;
 }
@@ -648,6 +651,9 @@ export class LocalVideoMergeService {
           subtitle_center: subtitleLayout.center,
           ...(subtitleLayout.effect !== undefined || rendering.lore_context.subtitle_effect !== undefined
             ? { subtitle_effect: subtitleLayout.effect ?? "lightning" }
+            : {}),
+          ...(subtitleLayout.darkening !== undefined || rendering.lore_context.subtitle_darkening !== undefined
+            ? { subtitle_darkening: subtitleLayout.darkening ?? PHOTO_CARD_DARKENING.default }
             : {}),
         }
         : { ...rendering.lore_context, scene_subtitle_scale: sceneSubtitleLayout.scale, scene_subtitle_center: sceneSubtitleLayout.center };

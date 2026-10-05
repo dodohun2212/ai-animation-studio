@@ -3,9 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
   DEFAULT_PHOTO_CARD_EFFECT,
+  isPhotoCardDurationAllowed,
   isPhotoCardSubtitleLayout,
   isPhotoCardEffect,
+  photoCardDurationChoices,
+  PHOTO_CARD_DARKENING,
+  PHOTO_CARD_DURATIONS,
   PHOTO_CARD_EFFECTS,
+  PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS,
   PHOTO_CARD_SUBTITLE_CENTER,
   PHOTO_CARD_SUBTITLE_SCALE,
   photoCardSubtitleGeometry,
@@ -72,6 +77,7 @@ describe("photo card subtitle bounds", () => {
     expect(DEFAULT_PHOTO_CARD_EFFECT).toBe("lightning");
     expect(isPhotoCardSubtitleLayout({ scale: PHOTO_CARD_SUBTITLE_SCALE.min, center: PHOTO_CARD_SUBTITLE_CENTER.min })).toBe(true);
     expect(isPhotoCardSubtitleLayout({ scale: PHOTO_CARD_SUBTITLE_SCALE.max, center: PHOTO_CARD_SUBTITLE_CENTER.max })).toBe(true);
+    expect(isPhotoCardSubtitleLayout({ scale: 0.027, center: 0.4, darkening: PHOTO_CARD_DARKENING.default })).toBe(true);
   });
 
   it("refuses anything outside them, and anything that is not a number at all", () => {
@@ -82,6 +88,9 @@ describe("photo card subtitle bounds", () => {
     expect(isPhotoCardSubtitleLayout(null)).toBe(false);
     expect(isPhotoCardSubtitleLayout({ scale: 0.027 })).toBe(false);
     expect(isPhotoCardSubtitleLayout({ scale: 0.027, center: 0.4, effect: "sparkles" })).toBe(false);
+    expect(isPhotoCardSubtitleLayout({ scale: 0.027, center: 0.4, darkening: -0.5 })).toBe(false);
+    expect(isPhotoCardSubtitleLayout({ scale: 0.027, center: 0.4, darkening: 80.5 })).toBe(false);
+    expect(isPhotoCardSubtitleLayout({ scale: 0.027, center: 0.4, darkening: 43.2 })).toBe(false);
   });
 
   it("publishes the supported photo card effects", () => {
@@ -89,5 +98,18 @@ describe("photo card subtitle bounds", () => {
     expect(isPhotoCardEffect("lightning")).toBe(true);
     expect(isPhotoCardEffect("none")).toBe(true);
     expect(isPhotoCardEffect("sparkles")).toBe(false);
+  });
+
+  it("offers varied per-picture holds without letting all pictures exceed three minutes", () => {
+    expect(PHOTO_CARD_DURATIONS).toEqual([5, 10, 15, 20, 30, 45, 60, 90, 120, 180]);
+    expect(photoCardDurationChoices(1)).toEqual(PHOTO_CARD_DURATIONS);
+    expect(photoCardDurationChoices(2)).toEqual([5, 10, 15, 20, 30, 45, 60, 90]);
+    expect(photoCardDurationChoices(12)).toEqual([5, 10, 15]);
+    expect(photoCardDurationChoices(0)).toEqual([]);
+    expect(isPhotoCardDurationAllowed(180, 1)).toBe(true);
+    expect(isPhotoCardDurationAllowed(15, 12)).toBe(true);
+    expect(isPhotoCardDurationAllowed(20, 12)).toBe(false);
+    expect(isPhotoCardDurationAllowed(120, 2)).toBe(false);
+    expect(PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS).toBe(180);
   });
 });

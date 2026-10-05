@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { SHORT_PROJECT_LEAD_CAST_ROLE, isShortProjectCastLead,
   CLIP_DURATION_CHOICES,
+  PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS,
+  photoCardDurationChoices,
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
   videoModelTakesDuration,
@@ -51,6 +53,12 @@ type State = {
    */
   sceneCountChangeable: boolean;
   aspectRatioChangeable: boolean;
+  /**
+   * A photo card or news reel (CLI Round 1190). Its "clip length" is how long each still picture is held, not a
+   * paid generation: the lengths come from `photoCardDurationChoices(사진 수)` under the 180-second Reel cap,
+   * and the model's price and range lines say nothing true about it.
+   */
+  pictureCard: boolean;
 };
 
 const EMPTY_SETTINGS: ShortProjectSettings = {
@@ -880,7 +888,7 @@ function AssetReferenceEditor({ projectId }: { projectId: string }) {
 }
 
 export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = false, onResume }: Props) {
-  const [state, setState] = useState<State>({ settings: null, loading: true, error: null, sceneCountChangeable: true, aspectRatioChangeable: true });
+  const [state, setState] = useState<State>({ settings: null, loading: true, error: null, sceneCountChangeable: true, aspectRatioChangeable: true, pictureCard: false });
   const saving = useRef(false);
   const [characterOptions, setCharacterOptions] = useState<Asset[] | null>(null);
   const [characterPickerOpen, setCharacterPickerOpen] = useState(false);
@@ -920,7 +928,13 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
    */
   const [videoModel, setVideoModel] = useState<VideoModelOption | null>(null);
   /* item 5(D1): the lengths offered — CLIP_DURATION_CHOICES that this model takes, or all of them before the model is known. */
-  const shownClipDurations: readonly number[] = videoModel ? CLIP_DURATION_CHOICES.filter((seconds) => videoModelTakesDuration(videoModel, seconds)) : CLIP_DURATION_CHOICES;
+  const shownClipDurations: readonly number[] = state.pictureCard
+    // 사진 카드·뉴스 릴: 사진 수 × 한 장당 길이가 릴스 한도 180초 안인 것만. 모델과는 상관이 없습니다.
+    ? photoCardDurationChoices(state.settings?.sceneCount ?? 1)
+    : videoModel ? CLIP_DURATION_CHOICES.filter((seconds) => videoModelTakesDuration(videoModel, seconds)) : CLIP_DURATION_CHOICES;
+  /** Only a picture card has a whole-Reel cap; an ordinary project's length is the model's question, asked below. */
+  const pictureCardTooLong = state.pictureCard && state.settings !== null
+    && state.settings.sceneCount * state.settings.clipDurationSeconds > PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS;
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const justSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -975,12 +989,12 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
 
   useEffect(() => {
     let cancelled = false;
-    getProjectSettings(projectId).then(({ settings, sceneCountChangeable, aspectRatioChangeable }) => {
+    getProjectSettings(projectId).then(({ settings, sceneCountChangeable, aspectRatioChangeable, pictureCard }) => {
       if (cancelled) return;
-      setState({ settings, loading: false, error: null, sceneCountChangeable, aspectRatioChangeable });
+      setState({ settings, loading: false, error: null, sceneCountChangeable, aspectRatioChangeable, pictureCard: pictureCard === true });
       setSavedSnapshot(JSON.stringify(settings));
     }).catch((error: unknown) => {
-      if (!cancelled) setState({ settings: null, loading: false, error: toDisplayError(error), sceneCountChangeable: true, aspectRatioChangeable: true });
+      if (!cancelled) setState({ settings: null, loading: false, error: toDisplayError(error), sceneCountChangeable: true, aspectRatioChangeable: true, pictureCard: false });
     });
     return () => { cancelled = true; };
   }, [projectId]);
@@ -1028,7 +1042,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!state.settings || saving.current) return;
+    if (!state.settings || saving.current || pictureCardTooLong) return;
     // durationSeconds is derived server-side (sceneCount * clipDurationSeconds) and is rejected as an
     // unsupported field if sent, so it is left out of the save request body here.
     const { durationSeconds: _formDurationSeconds, ...settingsInput } = state.settings;
@@ -1211,8 +1225,9 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               name — 「클립 길이(초) … 기준 · 장면당 5초 $0.40 …」 — for a screen reader and for getByLabelText alike. */}
           <div>
           <label className="block text-sm text-slate-300">
-            클립 길이(초)
+            {state.pictureCard ? "한 장당 길이(초)" : "클립 길이(초)"}
             <select
+              data-testid="settings-clip-duration"
               className={fieldClassName}
               value={state.settings.clipDurationSeconds}
               onChange={(event) => {
@@ -1244,7 +1259,12 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
 
                 🔴 `videoSceneEstimatedCostUsd` 에 옵션 객체를 넘깁니다 — id 를 넘기면 모르는 이름일 때 기본
                 모델 요율로 조용히 떨어져 최대 13.6배 낮은 값을 보여 줍니다(Cowork Round 771). */}
-            {videoModel && (
+            {state.pictureCard && (
+              <span data-testid="settings-picture-card-cap" className="mt-1 block text-xs text-slate-500">
+                사진은 돈이 들지 않습니다. 릴스는 모두 합쳐 {PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS}초까지라, 사진 수에 따라 넘는 길이는 목록에서 빠집니다.
+              </span>
+            )}
+            {videoModel && !state.pictureCard && (
               <span data-testid="settings-clip-duration-cost" className="mt-1 block text-xs tabular-nums text-slate-400">
                 {videoModel.label} 기준 · 장면당{" "}
                 {CLIP_DURATION_CHOICES.filter((duration) => videoModelTakesDuration(videoModel, duration))
@@ -1254,7 +1274,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
             {/* item 5(D1) 최소 대조: 모델을 바꾼 직후 지금 길이가 새 모델의 범위 밖일 수 있다 — 저장은 되지만
                 (설정은 1~30 이면 다 받는다) 영상을 시작하면 서버가 작업을 쓰기 전에 거부한다
                 (VIDEO_CLIP_DURATION_OUT_OF_RANGE). 그 사실을 저장 전에, 여기서 먼저 말한다. */}
-            {videoModel && !videoModelTakesDuration(videoModel, state.settings.clipDurationSeconds) && (
+            {videoModel && !state.pictureCard && !videoModelTakesDuration(videoModel, state.settings.clipDurationSeconds) && (
               <p data-testid="settings-clip-duration-out-of-range" className="mt-1 text-xs text-amber-300">
                 {videoModel.label}은(는) {videoModel.minDurationSeconds}~{videoModel.maxDurationSeconds}초만 받습니다 —
                 지금 {state.settings.clipDurationSeconds}초로는 영상 시작 시 거부됩니다.
@@ -1370,6 +1390,12 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               </span>
             </label>
           </div>
+          {state.pictureCard ? (
+            <p data-testid="settings-picture-card-total" className={`text-sm tabular-nums md:col-span-2 ${pictureCardTooLong ? "text-rose-400" : "text-slate-400"}`}>
+              사진 {state.settings.sceneCount}장 × {state.settings.clipDurationSeconds}초 = 총 {state.settings.sceneCount * state.settings.clipDurationSeconds}초 / {PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS}초
+              {pictureCardTooLong && " — 릴스 한도를 넘어서 저장할 수 없습니다. 한 장당 길이를 줄여 주세요."}
+            </p>
+          ) : (
           <p className="text-sm text-slate-400 md:col-span-2">
             예상 총 영상 길이: {state.settings.sceneCount * state.settings.clipDurationSeconds}초 ({state.settings.sceneCount}장면 × {state.settings.clipDurationSeconds}초)
             {/* 길이 옆에 값. 이 줄이 이미 장면 수 × 길이를 곱하고 있었는데, 사람이 알아야 하는 세 번째 곱이
@@ -1382,6 +1408,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
               </span>
             )}
           </p>
+          )}
           {state.error && (
             <p className="text-sm text-rose-400 md:col-span-2" role="alert" data-error-code={state.error.code}>
               {state.error.message}
@@ -1399,7 +1426,7 @@ export function ShortProjectSettingsScreen({ projectId, onBack, justCreated = fa
           {/* Said here rather than in the page footer: this is the box the rule is about, and this is where
               someone is looking when they decide whether they are done. */}
           <p className="text-xs text-slate-500 md:col-span-2">이 상자의 내용은 <span className="text-slate-400">설정 저장</span>을 눌러야 저장됩니다.</p>
-          <button type="submit" disabled={state.loading} className={`${primaryButton} md:col-span-2`}>
+          <button type="submit" data-testid="settings-save" disabled={state.loading || pictureCardTooLong} className={`${primaryButton} md:col-span-2`}>
             {state.loading ? "저장 중…" : "설정 저장"}
           </button>
         </form>

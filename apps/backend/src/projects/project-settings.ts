@@ -1,7 +1,7 @@
-import { CLIP_DURATION_LIMITS, DEFAULT_SCENE_COUNT, isClipDurationSeconds, MAX_SCENE_COUNT, MIN_SCENE_COUNT, SETTINGS_PRESET_IDS, type SettingsPreset, type SettingsPresetId, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
+import { CLIP_DURATION_LIMITS, DEFAULT_SCENE_COUNT, isClipDurationSeconds, isPhotoCardDurationAllowed, MAX_SCENE_COUNT, MIN_SCENE_COUNT, SETTINGS_PRESET_IDS, type SettingsPreset, type SettingsPresetId, type ShortProjectSettings, type ShortProjectStyleNotes } from "@ai-animation-studio/shared";
 
 import { invalidRequest } from "./project-api.error.js";
-import { photoCardFor } from "./project.mapper.js";
+import { photoCardFor, pictureCardFor } from "./project.mapper.js";
 import type { StoredProject } from "./project-storage.schema.js";
 
 const DEFAULT_CLIP_DURATION_SECONDS = 5;
@@ -91,7 +91,9 @@ function styleNotesFrom(value: unknown): ShortProjectStyleNotes {
 export function toShortProjectSettings(stored: StoredProject): ShortProjectSettings {
   const storyTitle = stringFrom(stored.story.title);
   const sceneCount = isValidSceneCount(stored.lore_context.scene_count, minimumSceneCountFor(stored)) ? stored.lore_context.scene_count : DEFAULT_SCENE_COUNT;
-  const clipDurationSeconds = isValidClipDuration(stored.lore_context.clip_duration_seconds) ? stored.lore_context.clip_duration_seconds : DEFAULT_CLIP_DURATION_SECONDS;
+  const clipDurationSeconds = pictureCardFor(stored)
+    ? isPhotoCardDurationAllowed(stored.lore_context.clip_duration_seconds, sceneCount) ? stored.lore_context.clip_duration_seconds : DEFAULT_CLIP_DURATION_SECONDS
+    : isValidClipDuration(stored.lore_context.clip_duration_seconds) ? stored.lore_context.clip_duration_seconds : DEFAULT_CLIP_DURATION_SECONDS;
   return {
     projectName: stringFrom(stored.lore_context.project_name, storyTitle || "단편 프로젝트"),
     topic: stored.topic,
@@ -125,7 +127,7 @@ export function toShortProjectSettings(stored: StoredProject): ShortProjectSetti
  * scenes. Without the floor moving here too, reading the truth and writing it back would be refused, and the
  * one number a person never chose would be the thing they could not save.
  */
-export function parseShortProjectSettings(value: unknown, minimumSceneCount: number = MIN_SCENE_COUNT): ShortProjectSettings {
+export function parseShortProjectSettings(value: unknown, minimumSceneCount: number = MIN_SCENE_COUNT, pictureCard = minimumSceneCount === 1): ShortProjectSettings {
   const settings = asObject(value, "settings");
   rejectUnknownFields(settings, SETTINGS_KEYS, "settings");
   for (const key of SETTINGS_KEYS) {
@@ -145,8 +147,17 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
   if (!isValidSceneCount(settings.sceneCount, minimumSceneCount)) {
     throw invalidRequest(`settings.sceneCount must be an integer between ${minimumSceneCount} and ${MAX_SCENE_COUNT}.`, { field: "settings.sceneCount" });
   }
-  if (!isValidClipDuration(settings.clipDurationSeconds)) {
-    throw invalidRequest(`settings.clipDurationSeconds must be a whole number of seconds from ${CLIP_DURATION_LIMITS.min} to ${CLIP_DURATION_LIMITS.max}.`, { field: "settings.clipDurationSeconds" });
+  let clipDurationSeconds: number;
+  if (pictureCard) {
+    if (!isPhotoCardDurationAllowed(settings.clipDurationSeconds, settings.sceneCount)) {
+      throw invalidRequest("settings.clipDurationSeconds must keep the photo card at or below 180 seconds.", { field: "settings.clipDurationSeconds" });
+    }
+    clipDurationSeconds = settings.clipDurationSeconds;
+  } else {
+    if (!isValidClipDuration(settings.clipDurationSeconds)) {
+      throw invalidRequest(`settings.clipDurationSeconds must be a whole number of seconds from ${CLIP_DURATION_LIMITS.min} to ${CLIP_DURATION_LIMITS.max}.`, { field: "settings.clipDurationSeconds" });
+    }
+    clipDurationSeconds = settings.clipDurationSeconds;
   }
   if (typeof settings.narrationEnabled !== "boolean") {
     throw invalidRequest("settings.narrationEnabled must be a boolean.", { field: "settings.narrationEnabled" });
@@ -173,9 +184,9 @@ export function parseShortProjectSettings(value: unknown, minimumSceneCount: num
     lore: optionalString(settings.lore, "settings.lore"),
     fullStory: optionalString(settings.fullStory, "settings.fullStory"),
     // Derived, not accepted from the client — see the ShortProjectSettings.durationSeconds doc comment.
-    durationSeconds: settings.sceneCount * settings.clipDurationSeconds,
+    durationSeconds: settings.sceneCount * clipDurationSeconds,
     sceneCount: settings.sceneCount,
-    clipDurationSeconds: settings.clipDurationSeconds,
+    clipDurationSeconds,
     additionalNotes: optionalString(settings.additionalNotes, "settings.additionalNotes"),
     styleNotes: normalizedStyleNotes,
     narrationEnabled: settings.narrationEnabled,

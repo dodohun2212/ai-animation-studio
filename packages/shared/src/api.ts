@@ -1614,6 +1614,8 @@ export type ShortProjectSettingsInput =
  */
 export interface GetProjectSettingsResponse {
   settings: ShortProjectSettings;
+  /** Present only when these scenes are still pictures rather than generated video clips. */
+  pictureCard?: true;
   /** False once a Story has been written: its scenes are what the rest of the pipeline counts. */
   sceneCountChangeable: boolean;
   /** False once images have been generated at the current orientation. */

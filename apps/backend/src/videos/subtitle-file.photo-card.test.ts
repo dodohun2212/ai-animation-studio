@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_DARKENING, PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER } from "@ai-animation-studio/shared";
 
 import { ASS_WEIGHT, fontFileForFamily, usWeightClass } from "./font-file-tables.js";
 import { FONT_FAMILY, QUOTE_FONT_FAMILY, sceneSubtitleAss } from "./subtitle-file.js";
@@ -96,6 +96,21 @@ describe("photo card subtitles", () => {
     expect(ass).toContain("\\t(0.5,\\1a&HFF&\\3a&HFF&)");
     expect(ass).toMatch(/m \d+ -5\d l/); // the bolt originates just above the picture's top edge
     expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:05.00,Quote");
+  });
+
+  it("uses a stored darkening strength while old cards keep the original 0x90 fade", () => {
+    const old = card("권토중래");
+    const stronger = sceneSubtitleAss("권토중래", 5, WIDTH, HEIGHT, "photo-card", {
+      card: { scale: 0.027, center: 0.4, darkening: 70 },
+    });
+    const disabled = sceneSubtitleAss("권토중래", 5, WIDTH, HEIGHT, "photo-card", {
+      card: { scale: 0.027, center: 0.4, darkening: 0 },
+    });
+
+    expect(old).toContain("\\1a&H90&");
+    expect(stronger).toContain("\\1a&H4D&");
+    expect(disabled).toContain("\\1a&HFF&\\t(0,170,\\1a&HFF&)");
+    expect(PHOTO_CARD_DARKENING.default).toBe(43.5);
   });
 
   it("omits only the lightning when disabled and keeps subtitle reveal, while old layout objects default to lightning", () => {

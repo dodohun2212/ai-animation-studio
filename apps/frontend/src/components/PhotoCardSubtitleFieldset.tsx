@@ -5,6 +5,7 @@ import {
   DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT,
   isPhotoCardEffect,
   MERGE_FRAME_FOR_ASPECT,
+  PHOTO_CARD_DARKENING,
   PHOTO_CARD_EFFECTS,
   PHOTO_CARD_HEADING_RATIO,
   PHOTO_CARD_SUBTITLE_CENTER,
@@ -48,8 +49,11 @@ interface Props {
 /** A card saved before effects existed has no `effect`, and the server reads that as the lightning — so does this. */
 const effectOf = (layout: PhotoCardSubtitleLayout): PhotoCardEffect => layout.effect ?? DEFAULT_PHOTO_CARD_EFFECT;
 
+/** Missing on older cards means the dim they were burned with — the shared default, not zero. */
+const darkeningOf = (layout: PhotoCardSubtitleLayout): number => layout.darkening ?? PHOTO_CARD_DARKENING.default;
+
 const sameLayout = (a: PhotoCardSubtitleLayout, b: PhotoCardSubtitleLayout): boolean =>
-  a.scale === b.scale && a.center === b.center && effectOf(a) === effectOf(b);
+  a.scale === b.scale && a.center === b.center && effectOf(a) === effectOf(b) && darkeningOf(a) === darkeningOf(b);
 
 /** 첫 사진에 들어가는 효과의 이름. 목록은 공유 PHOTO_CARD_EFFECTS 가 정하고, 여기는 화면에 쓰는 말만 둡니다. */
 const EFFECT_LABEL: Record<PhotoCardEffect, string> = { lightning: "번개", none: "없음" };
@@ -118,7 +122,8 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
   const g = photoCardSubtitleGeometry(frameWidth, frameHeight, layout, bodyLines.length, heading !== undefined);
   // `bodyY` is the block's centre; the lines are laid out from it so the block stays centred as lines are added.
   const firstBodyY = g.bodyY - (g.lineGap * Math.max(0, bodyLines.length - 1)) / 2;
-  const atDefault = layout.scale === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.scale && layout.center === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.center;
+  const atDefault = layout.scale === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.scale && layout.center === DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT.center
+    && darkeningOf(layout) === PHOTO_CARD_DARKENING.default;
   /*
    * The edge, approximated rather than reproduced.
    *
@@ -398,6 +403,31 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
             </p>
           </div>
 
+          {/* 번개 뒤에 사진이 얼마나 어두워지는지. 번개가 없으면 어두워짐도 없어서(서버가 그 cue 를 만들지 않습니다) 칸도 없습니다. */}
+          {effectOf(layout) === "lightning" && (
+            <div>
+              <label className={label} htmlFor="photo-card-subtitle-darkening">
+                <span>번개 뒤 어두워짐</span>
+                <span className="tabular-nums text-slate-400" data-testid="photo-card-subtitle-darkening-value">
+                  {darkeningOf(layout)}%
+                </span>
+              </label>
+              <input
+                id="photo-card-subtitle-darkening"
+                data-testid="photo-card-subtitle-darkening"
+                type="range"
+                className={field}
+                min={PHOTO_CARD_DARKENING.min}
+                max={PHOTO_CARD_DARKENING.max}
+                step={PHOTO_CARD_DARKENING.step}
+                value={darkeningOf(layout)}
+                disabled={disabled}
+                onChange={(event) => onChange({ ...layout, darkening: Number(event.target.value) })}
+              />
+              <p className="text-xs text-slate-500">0%면 어두워지지 않고, 클수록 번개 직후 사진이 더 깜깜해졌다가 약 3초에 걸쳐 돌아옵니다.</p>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2">
             {/*
               🔴 저장된 값으로 돌아오는 길. 「기본값으로」는 **공장 기본값**이라, 이미 한 번 만들어 둔 카드에서는
@@ -422,7 +452,7 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
               data-testid="photo-card-subtitle-reset"
               className="rounded-full border border-white/10 px-3.5 py-1.5 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-50"
               disabled={disabled || atDefault}
-              // 크기·위치만 공장 기본값으로. 고른 효과는 따로 고른 것이라 그대로 둡니다.
+              // 크기·위치·어두워짐은 공장 기본값으로. 고른 효과는 따로 고른 것이라 그대로 둡니다.
               onClick={() => onChange({ ...DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, ...(layout.effect ? { effect: layout.effect } : {}) })}
             >
               기본값으로

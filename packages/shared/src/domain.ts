@@ -391,12 +391,23 @@ export const videoModelTakesAspect = (option: VideoModelOption, aspect: AspectRa
   videoModelTakesRatio(option, RUNWAY_RATIO_FOR_ASPECT[aspect]);
 
 /**
- * How long a photo card holds its picture. Not a model's range — nothing is generated; the merge holds one still —
- * so it did not move with B1. It is the same two numbers it always was, under its own name, so that widening the
- * video lengths could not widen this by accident.
+ * How long a photo card holds each picture. All pictures in one card use the same hold, and their sum stays
+ * within the product's 180-second Reel limit. This is not a generated clip's model duration.
  */
-export const PHOTO_CARD_DURATIONS = [5, 10] as const;
+export const PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS = 180;
+export const PHOTO_CARD_DURATIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180] as const;
 export type PhotoCardDurationSeconds = (typeof PHOTO_CARD_DURATIONS)[number];
+
+/** Available equal per-picture holds for this card size, respecting the total Reel duration cap. */
+export function photoCardDurationChoices(pictureCount: number): PhotoCardDurationSeconds[] {
+  if (!Number.isInteger(pictureCount) || pictureCount < 1) return [];
+  return PHOTO_CARD_DURATIONS.filter((seconds) => seconds * pictureCount <= PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS);
+}
+
+/** Server-side mirror of the screen's duration choices. */
+export function isPhotoCardDurationAllowed(value: unknown, pictureCount: number): value is PhotoCardDurationSeconds {
+  return typeof value === "number" && photoCardDurationChoices(pictureCount).includes(value as PhotoCardDurationSeconds);
+}
 
 /**
  * What a scene length may be, short project or Long Episode: a whole number of seconds in this range, whatever the model — the
@@ -406,7 +417,7 @@ export type PhotoCardDurationSeconds = (typeof PHOTO_CARD_DURATIONS)[number];
  *
  * It replaced `RUNWAY_CLIP_DURATIONS` ([5, 10]) — the one model's own range, frozen into a global when there was
  * one model — short projects in B1-a, Long Episodes in B1-b; the last screens moved and the constant went with
- * them (CLI Round 861). Photo cards keep 5 and 10, as `PHOTO_CARD_DURATIONS`.
+ * them (CLI Round 861). Photo cards use their own whole-Reel duration cap and `PHOTO_CARD_DURATIONS` above.
  */
 export const CLIP_DURATION_LIMITS = { min: 1, max: 30 } as const;
 export const isClipDurationSeconds = (value: unknown): value is number =>
@@ -899,12 +910,17 @@ export interface PhotoCardSubtitleLayout {
   center: number;
   /** First-picture entrance effect. Missing on older cards means the original default: lightning. */
   effect?: PhotoCardEffect;
+  /** Opacity of the black after-strike dim layer, as a percentage. Missing on older cards keeps 44%. */
+  darkening?: number;
 }
 
 export const PHOTO_CARD_EFFECTS = ["lightning", "none"] as const;
 export type PhotoCardEffect = (typeof PHOTO_CARD_EFFECTS)[number];
 /** Missing effect values are interpreted as lightning, preserving old stored cards and current clients. */
 export const DEFAULT_PHOTO_CARD_EFFECT: PhotoCardEffect = "lightning";
+
+/** Existing photo cards dim to 0x90 ASS transparency, equivalent to about 43.5% black opacity. */
+export const PHOTO_CARD_DARKENING = { default: 43.5, min: 0, max: 80, step: 0.5 } as const;
 
 export function isPhotoCardEffect(value: unknown): value is PhotoCardEffect {
   return typeof value === "string" && (PHOTO_CARD_EFFECTS as readonly string[]).includes(value);
@@ -934,7 +950,12 @@ export function isPhotoCardSubtitleLayout(value: unknown): value is PhotoCardSub
   const { scale, center } = value as { scale?: unknown; center?: unknown };
   return typeof scale === "number" && Number.isFinite(scale) && scale >= PHOTO_CARD_SUBTITLE_SCALE.min && scale <= PHOTO_CARD_SUBTITLE_SCALE.max
     && typeof center === "number" && Number.isFinite(center) && center >= PHOTO_CARD_SUBTITLE_CENTER.min && center <= PHOTO_CARD_SUBTITLE_CENTER.max
-    && ((value as { effect?: unknown }).effect === undefined || isPhotoCardEffect((value as { effect?: unknown }).effect));
+    && ((value as { effect?: unknown }).effect === undefined || isPhotoCardEffect((value as { effect?: unknown }).effect))
+    && ((value as { darkening?: unknown }).darkening === undefined
+      || (typeof (value as { darkening?: unknown }).darkening === "number"
+        && Number.isInteger((value as { darkening: number }).darkening * (1 / PHOTO_CARD_DARKENING.step))
+        && (value as { darkening: number }).darkening >= PHOTO_CARD_DARKENING.min
+        && (value as { darkening: number }).darkening <= PHOTO_CARD_DARKENING.max));
 }
 
 /**

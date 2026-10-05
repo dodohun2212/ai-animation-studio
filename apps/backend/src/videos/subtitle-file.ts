@@ -1,5 +1,5 @@
 import { assColour, type CardSubtitleColors } from "./card-palette.js";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO, PHOTO_CARD_SUBTITLE_SHADOW, SCENE_SUBTITLE_OUTLINE, SCENE_SUBTITLE_SHADOW, photoCardSubtitleGeometry, sceneSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_DARKENING, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO, PHOTO_CARD_SUBTITLE_SHADOW, SCENE_SUBTITLE_OUTLINE, SCENE_SUBTITLE_SHADOW, photoCardSubtitleGeometry, sceneSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 /**
  * The families the subtitles name, exported so the guard that checks `fonts/` reads them from here rather than
@@ -35,7 +35,7 @@ const PHOTO_CARD_LIGHTNING = {
   strokes: [[0.08, 0.18, 0], [0.24, 0.30, 0x30], [0.34, 0.38, 0x60]] as const,
   afterglowEnd: 0.70,
   flashAlpha: [0xa8, 0xd0, 0xe4] as const,
-  dimStart: 0.38, dimPeak: 0.55, dimEnd: 3.0, dimAlpha: 0x90,
+  dimStart: 0.38, dimPeak: 0.55, dimEnd: 3.0,
   bloomEnd: 0.90,
 } as const;
 
@@ -214,7 +214,7 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   const strikeText = heading ?? body[0];
   const strikeStyle = heading !== undefined ? "Quote" : "Body";
   const strike = reveal && strikeText && (card.effect ?? "lightning") === "lightning" && durationSeconds > PHOTO_CARD_LIGHTNING.afterglowEnd
-    ? photoCardLightningCues(strikeStyle, strikeText, centerX, strikeY, strikeSize, width, height, durationSeconds)
+    ? photoCardLightningCues(strikeStyle, strikeText, centerX, strikeY, strikeSize, width, height, durationSeconds, card.darkening)
     : [];
   return [
     "[Script Info]",
@@ -309,8 +309,9 @@ function lightningShape(seed: string, x: number, y: number, size: number, width:
 }
 
 /** The first picture's strike, flash and dim recovery. Later pictures already show the settled card. */
-function photoCardLightningCues(style: "Quote" | "Body", content: string, x: number, y: number, size: number, width: number, height: number, durationSeconds: number): string[] {
+function photoCardLightningCues(style: "Quote" | "Body", content: string, x: number, y: number, size: number, width: number, height: number, durationSeconds: number, darkening: number = PHOTO_CARD_DARKENING.default): string[] {
   const light = PHOTO_CARD_LIGHTNING;
+  const dimAlpha = Math.round((100 - darkening) * 255 / 100);
   const event = (layer: number, start: number, end: number, overrides: string, drawing: string) =>
     `Dialogue: ${layer},${timestamp(start)},${timestamp(end)},${style},,0,0,0,,{${overrides}}${drawing}`;
   const draw = "\\an7\\pos(0,0)\\p1\\bord0\\shad0";
@@ -329,7 +330,7 @@ function photoCardLightningCues(style: "Quote" | "Body", content: string, x: num
     const peakMs = Math.round((peak - light.dimStart) * 1000);
     const endMs = Math.round((dimEnd - light.dimStart) * 1000);
     out.push(event(0, light.dimStart, dimEnd,
-      `${draw}\\1c&H000000&\\1a&HFF&\\t(0,${peakMs},\\1a&H${light.dimAlpha.toString(16).toUpperCase()}&)${endMs > peakMs ? `\\t(${peakMs},${endMs},0.6,\\1a&HFF&)` : ""}`,
+      `${draw}\\1c&H000000&\\1a&HFF&\\t(0,${peakMs},\\1a&H${dimAlpha.toString(16).toUpperCase()}&)${endMs > peakMs ? `\\t(${peakMs},${endMs},0.6,\\1a&HFF&)` : ""}`,
       frame));
   }
 

@@ -1,7 +1,7 @@
 import { HttpException, Injectable, Logger, type LoggerService } from "@nestjs/common";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isAspectRatio, PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_PICTURES, PHOTO_CARD_QUOTE_MAX_LENGTH, WorkflowState, type CreatePhotoCardRequest, type CreatePhotoCardResponse } from "@ai-animation-studio/shared";
+import { isAspectRatio, isPhotoCardDurationAllowed, PHOTO_CARD_MAX_PICTURES, PHOTO_CARD_QUOTE_MAX_LENGTH, WorkflowState, type CreatePhotoCardRequest, type CreatePhotoCardResponse } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "./atomic-file.js";
 import { isSafeProjectId } from "./project-id.js";
@@ -148,7 +148,7 @@ export class PhotoCardService {
       : [];
     if (assetIds.length === 0 || assetIds.length > PHOTO_CARD_MAX_PICTURES || assetIds.some((id) => !id)) throw photoCardInvalidRequest();
     if (!isSafeProjectId(projectId) || !quote || quote.length > PHOTO_CARD_QUOTE_MAX_LENGTH) throw photoCardInvalidRequest();
-    if (!(PHOTO_CARD_DURATIONS as readonly number[]).includes(data.clipDurationSeconds as number)) throw photoCardInvalidRequest();
+    if (!isPhotoCardDurationAllowed(data.clipDurationSeconds, assetIds.length)) throw photoCardInvalidRequest();
     if (!isAspectRatio(data.aspectRatio)) throw photoCardInvalidRequest();
     return { projectId, assetIds, quote, clipDurationSeconds: data.clipDurationSeconds as CreatePhotoCardRequest["clipDurationSeconds"], aspectRatio: data.aspectRatio };
   }

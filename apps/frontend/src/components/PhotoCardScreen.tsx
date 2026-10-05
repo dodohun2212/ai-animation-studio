@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Asset, AspectRatio, PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
-import { PHOTO_CARD_MAX_PICTURES, PHOTO_CARD_DURATIONS, PHOTO_CARD_QUOTE_MAX_LENGTH } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_MAX_PICTURES, PHOTO_CARD_DURATIONS, PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS, PHOTO_CARD_QUOTE_MAX_LENGTH } from "@ai-animation-studio/shared";
 
 import { listAssets, toAssetDisplayError } from "../api/assetsApi.js";
 import { createPhotoCard, toPhotoCardDisplayError } from "../api/photoCardsApi.js";
@@ -8,6 +8,7 @@ import { listProjects, toDisplayError } from "../api/projectsApi.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSectionRoomy as cardSection, outlineButton } from "./ui/surfaces.js";
 import { PicturePicker, type PicturePickerFolder } from "./ui/PicturePicker.js";
+import { PhotoCardSecondsSelect } from "./ui/PhotoCardSecondsSelect.js";
 
 interface Props {
   onBack: () => void;
@@ -126,7 +127,8 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
     });
   }
 
-  const ready = assetIds.length > 0 && trimmedQuote.length > 0 && nameUsable && trimmedQuote.length <= PHOTO_CARD_QUOTE_MAX_LENGTH;
+  const ready = assetIds.length > 0 && trimmedQuote.length > 0 && nameUsable && trimmedQuote.length <= PHOTO_CARD_QUOTE_MAX_LENGTH
+    && assetIds.length * seconds <= PHOTO_CARD_MAX_TOTAL_DURATION_SECONDS;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -215,15 +217,14 @@ export function PhotoCardScreen({ onBack, onCreated, onOpenCard }: Props) {
               됐는데, 이름이 그대로면 사람은 이걸 전체 길이로 읽습니다. 전체는 위의 한 줄이 말합니다. */}
           <label className="block text-sm text-slate-300">
             한 장당 길이
-            <select
-              data-testid="photo-card-seconds"
+            <PhotoCardSecondsSelect
+              testId="photo-card-seconds"
               className={field}
+              pictureCount={assetIds.length}
               value={seconds}
               disabled={pending}
-              onChange={(event) => setSeconds(Number(event.target.value) as PhotoCardDurationSeconds)}
-            >
-              {PHOTO_CARD_DURATIONS.map((value) => <option key={value} value={value}>{value}초</option>)}
-            </select>
+              onChange={setSeconds}
+            />
           </label>
 
           <label className="block text-sm text-slate-300">

@@ -2,7 +2,7 @@ import { HttpException, Injectable, Logger, type LoggerService } from "@nestjs/c
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
-  PHOTO_CARD_DURATIONS,
+  isPhotoCardDurationAllowed,
   PHOTO_CARD_MAX_PICTURES,
   NEWS_SUMMARY_MAX_CHARS,
   WorkflowState,
@@ -125,7 +125,7 @@ export class NewsReelService {
       : [];
     if (assetIds.length === 0 || assetIds.length > PHOTO_CARD_MAX_PICTURES || assetIds.some((id) => !id)) throw newsReelInvalidRequest();
     if (!isSafeProjectId(projectId)) throw newsReelInvalidRequest();
-    if (!(PHOTO_CARD_DURATIONS as readonly number[]).includes(data.clipDurationSeconds as number)) throw newsReelInvalidRequest();
+    if (!isPhotoCardDurationAllowed(data.clipDurationSeconds, assetIds.length)) throw newsReelInvalidRequest();
     if (!isAspectRatio(data.aspectRatio)) throw newsReelInvalidRequest();
 
     const card = validCard(data.card);
