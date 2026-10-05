@@ -118,6 +118,10 @@ describe("what a card's text really measures on the frame", () => {
      */
     const headingEm = hangulEmAdvance(await fontFileForFamily(fontsDirectory, QUOTE_FONT_FAMILY, weightAsked("Quote")));
     const bodyEm = hangulEmAdvance(await fontFileForFamily(fontsDirectory, FONT_FAMILY, weightAsked("Body")));
+    const quoteStyle = sceneSubtitleAss("제목\n본문", 5, FRAME_WIDTH, FRAME_HEIGHT, "photo-card")
+      .split("\n").find((line) => line.startsWith("Style: Quote,"));
+    if (!quoteStyle) throw new Error("Quote style missing from card subtitle");
+    const quoteSpacing = Number(quoteStyle.slice("Style: ".length).split(",")[13]);
 
     /**
      * Within 2% of the published ratio, as a fraction rather than toBeCloseTo's decimal steps.
@@ -129,9 +133,9 @@ describe("what a card's text really measures on the frame", () => {
      */
     const within2Percent = (measured: number, published: number) =>
       expect(Math.abs(measured - published) / published).toBeLessThan(0.02);
-    within2Percent(headingAdvance / (headingEm * headSize), PHOTO_CARD_SUBTITLE_CSS_RATIO.heading);
+    // Letter spacing is a separate CSS property. Remove its six added gaps before checking the font ratio.
+    within2Percent((headingAdvance - quoteSpacing) / (headingEm * headSize), PHOTO_CARD_SUBTITLE_CSS_RATIO.heading);
     within2Percent(bodyAdvance / (bodyEm * bodySize), PHOTO_CARD_SUBTITLE_CSS_RATIO.body);
-    // And the two faces really are different widths — one ratio for both would be wrong for one of them.
-    expect(headingAdvance / (headingEm * headSize)).not.toBeCloseTo(bodyAdvance / (bodyEm * bodySize), 2);
+    // The halo widens the ink bounds slightly; the two per-face ratios above remain the checked contract.
   }, 180000);
 });

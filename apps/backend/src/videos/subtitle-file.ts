@@ -1,5 +1,5 @@
 import { assColour, type CardSubtitleColors } from "./card-palette.js";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_SHADOW, SCENE_SUBTITLE_OUTLINE, SCENE_SUBTITLE_SHADOW, photoCardSubtitleGeometry, sceneSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO, PHOTO_CARD_SUBTITLE_SHADOW, SCENE_SUBTITLE_OUTLINE, SCENE_SUBTITLE_SHADOW, photoCardSubtitleGeometry, sceneSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 /**
  * The families the subtitles name, exported so the guard that checks `fonts/` reads them from here rather than
@@ -154,15 +154,25 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   // Every number comes from the shared geometry, which the preview screen draws from too — a second copy of
   // this arithmetic is a preview that can disagree with the video without anything saying so.
   const { bodySize, headSize, lineGap, headingY, bodyY, centerX, margin } = photoCardSubtitleGeometry(width, height, card, body.length, heading !== undefined);
-  // White on a black outline and a half-black shadow, unless the picture chose otherwise (card-palette.ts).
+  // The sampled palette still determines the face and its surrounding dark ink.
   const outline = colors ? assColour(colors.outline) : "&H00000000";
-  const shadow = colors ? assColour(colors.outline, 0x80) : "&H80000000";
+  const shadow = assColour(colors?.outline ?? { r: 0, g: 0, b: 0 }, PHOTO_CARD_SUBTITLE_DROP_ALPHA);
   // Both styles ask for bold today; the parameter stays because the ASS field is per style, and the pair that
   // reads these rows checks the field rather than a family name (subtitle-file.photo-card.test.ts).
   const style = (name: string, font: string, size: number, bold: 0 | -1, primary: string) =>
-    `Style: ${name},${font},${size},${primary},&H000000FF,${outline},${shadow},${bold},0,0,0,100,100,0,0,1,${PHOTO_CARD_SUBTITLE_OUTLINE},${PHOTO_CARD_SUBTITLE_SHADOW},5,${margin},${margin},0,1`;
-  const cue = (styleName: string, y: number, content: string, startSeconds = 0) =>
-    `Dialogue: 0,${timestamp(startSeconds)},${timestamp(durationSeconds)},${styleName},,0,0,0,,{\\an5\\pos(${centerX},${y})}${escapeDialogueText(content)}`;
+    `Style: ${name},${font},${size},${primary},&H000000FF,${outline},${shadow},${bold},0,0,0,100,100,${name === "Quote" ? Math.round(size * PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO) : 0},0,1,${PHOTO_CARD_SUBTITLE_OUTLINE},${PHOTO_CARD_SUBTITLE_SHADOW},5,${margin},${margin},0,1`;
+  const cues = (styleName: "Quote" | "Body", size: number, y: number, content: string, startSeconds = 0) => {
+    const timing = `${timestamp(startSeconds)},${timestamp(durationSeconds)},${styleName},,0,0,0,,`;
+    const pos = `\\an5\\pos(${centerX},${y})`;
+    const escaped = escapeDialogueText(content);
+    const border = Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO);
+    const blur = Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO);
+    const dropY = Math.round(size * PHOTO_CARD_SUBTITLE_DROP_Y_RATIO);
+    return [
+      `Dialogue: 0,${timing}{${pos}\\1a&HFF&\\3a&H${PHOTO_CARD_SUBTITLE_GLOW_ALPHA.toString(16).toUpperCase().padStart(2, "0")}&\\bord${border}\\blur${blur}\\shad0}${escaped}`,
+      `Dialogue: 1,${timing}{${pos}\\xshad0\\yshad${dropY}\\blur1}${escaped}`,
+    ];
+  };
 
   /**
    * Where each body line sits, and when it arrives.
@@ -215,10 +225,10 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ...strike,
-    ...(heading !== undefined ? [cue("Quote", headingY, heading)] : []),
+    ...(heading !== undefined ? cues("Quote", headSize, headingY, heading) : []),
     // One positioned cue per line rather than one `\N` cue, which is what lets them arrive in turn. A single
     // line reveals at 0 and renders exactly where the one static cue put it — there is nothing to sequence.
-    ...body.map((line, index) => cue("Body", lineY(index), line, revealAt(index))),
+    ...body.flatMap((line, index) => cues("Body", bodySize, lineY(index), line, revealAt(index))),
     "",
   ].join("\n");
 }

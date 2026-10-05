@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER } from "@ai-animation-studio/shared";
+import { PHOTO_CARD_SUBTITLE_CENTER, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO, PHOTO_CARD_SUBTITLE_SCALE, SCENE_SUBTITLE_CENTER } from "@ai-animation-studio/shared";
 
 import { ASS_WEIGHT, fontFileForFamily, usWeightClass } from "./font-file-tables.js";
 import { FONT_FAMILY, QUOTE_FONT_FAMILY, sceneSubtitleAss } from "./subtitle-file.js";
@@ -85,6 +85,20 @@ describe("photo card subtitles", () => {
     expect(effects[2]).toContain("\\blur1");
     expect(effects[2]).toContain("0:00:00.28");
     expect(ass).toContain("Dialogue: 0,0:00:00.00,0:00:05.00,Quote");
+  });
+
+  it("keeps a soft halo behind a thin outlined title and its downward shadow", () => {
+    const ass = card("권토중래\n다시 일어선다");
+    const quote = styleRow(ass, "Quote");
+    const size = Number(quote[2]);
+    expect(Number(quote[13])).toBe(Math.round(size * PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO));
+    expect(Number(styleRow(ass, "Body")[13])).toBe(0);
+    expect(Number(quote[16])).toBe(PHOTO_CARD_SUBTITLE_OUTLINE);
+    const halo = ass.split("\n").find((line) => line.startsWith("Dialogue: 0,") && line.includes(",Quote,,") && line.includes("\\1a&HFF&"));
+    const face = ass.split("\n").find((line) => line.startsWith("Dialogue: 1,") && line.includes(",Quote,,"));
+    expect(halo).toContain(`\\bord${Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO)}`);
+    expect(halo).toContain(`\\blur${Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO)}`);
+    expect(face).toContain(`\\xshad0\\yshad${Math.round(size * PHOTO_CARD_SUBTITLE_DROP_Y_RATIO)}`);
   });
 
   it("does not strike later pictures or plain scene subtitles", () => {

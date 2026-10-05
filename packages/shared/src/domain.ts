@@ -1016,19 +1016,28 @@ export function photoCardSubtitleGeometry(
 }
 
 /**
- * The card text's stroke and drop shadow, in output pixels at the rendered frame size.
+ * The card text's sharp stroke and base shadow, in output pixels at the rendered frame size.
  *
  * Here for the same reason as the geometry, with one honest limit: a preview cannot draw this. libass strokes
- * the glyph outline; CSS can only stack shadows around it, and at preview scale a 4px stroke drawn that way
+ * the glyph outline; CSS can only stack shadows around it, and the old 4px stroke drawn that way
  * reads as a black box around every letter rather than as a thin edge. So a preview scales these to its own
  * height and approximates the look — what it must not do is invent the numbers, because then a change here
  * would leave the preview quietly describing the old design (Cowork Round 442 kept the approximation and
  * flagged it, which is the right call; this is the half that can be shared).
  *
- * 4, not 3: the card sits over a photograph, and a thinner edge disappeared into the bright parts of it.
+ * The thin edge stays crisp while the larger blurred outline below it carries contrast over a photograph.
+ * The ratios and alpha bytes below describe that halo, the downward shadow and the quote's letter spacing;
+ * the settings preview must use the same values when drawing its settled frame.
  */
-export const PHOTO_CARD_SUBTITLE_OUTLINE = 4;
+export const PHOTO_CARD_SUBTITLE_OUTLINE = 2;
 export const PHOTO_CARD_SUBTITLE_SHADOW = 2;
+export const PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO = 0.16;
+export const PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO = 0.14;
+export const PHOTO_CARD_SUBTITLE_DROP_Y_RATIO = 0.07;
+export const PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO = 0.06;
+/** ASS alpha bytes: 0 is opaque, 255 is transparent. CSS uses (255 - alpha) / 255. */
+export const PHOTO_CARD_SUBTITLE_GLOW_ALPHA = 0x60;
+export const PHOTO_CARD_SUBTITLE_DROP_ALPHA = 0x50;
 
 /**
  * How to draw the card's text in CSS at the size it will actually be in the video.
