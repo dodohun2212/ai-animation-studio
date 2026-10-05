@@ -2399,6 +2399,8 @@ export interface VideoReview {
   sceneNumber: SceneNumber;
   status: SceneReviewStatus;
   updatedAt: string;
+  /** Exact final prompt text sent to the provider for this clip, including model-specific suffixes; omitted for old records or clips made without a provider request. */
+  submittedPrompt?: string;
   /** Actual cost recorded for this scene's video across every attempt, including past regenerations; absent when nothing has been recorded (e.g. the local fake execution mode). */
   costUsd?: number;
   /**
