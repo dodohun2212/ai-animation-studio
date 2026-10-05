@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
-import { API_ROUTES, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_CSS_RATIO } from "@ai-animation-studio/shared";
+import { API_ROUTES, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_SUBTITLE_CSS_RATIO, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO } from "@ai-animation-studio/shared";
 
 import { jsonResponse } from "../api/testUtils.js";
 import { PhotoCardSubtitleFieldset } from "./PhotoCardSubtitleFieldset.js";
@@ -317,9 +317,11 @@ describe("PhotoCardSubtitleFieldset", () => {
     const [heading, ...body] = drawnColors();
     expect(heading).toBe("rgb(255, 193, 77)");
     for (const line of body) expect(line).toBe("rgb(255, 233, 176)");
-    // 그림자는 테두리 색의 절반 — 미리보기가 따로 정한 검정이 아니라 렌더러의 그 관계입니다.
+    // 그림자·후광은 테두리 색에서 — 미리보기가 따로 정한 검정이 아니라 렌더러의 그 관계입니다. 투명도는 렌더와 같은
+    // 공유 알파 바이트에서 `(255 - alpha) / 255` 로(CLI Round 1175·1177).
     expect(mentionsColor(shadowOf(0), COLORS.outline)).toBe(true);
-    expect(shadowOf(0)).toContain("rgba(26, 18, 6, 0.5)");
+    expect(shadowOf(0)).toContain(`rgba(26, 18, 6, ${(255 - PHOTO_CARD_SUBTITLE_DROP_ALPHA) / 255})`);
+    expect(shadowOf(0)).toContain(`rgba(26, 18, 6, ${(255 - PHOTO_CARD_SUBTITLE_GLOW_ALPHA) / 255})`);
   });
 
   /**
@@ -464,5 +466,26 @@ describe("PhotoCardSubtitleFieldset", () => {
     const body = nodes.find((node) => node.style.fontFamily.includes("Sans"));
     expect(quote!.style.fontWeight).toBe("700");
     expect(body!.style.fontWeight).toBe("700");
+  });
+
+  /**
+   * CLI Round 1175 · 캡틴D 「글자를 배경과 어울리게 … 더 웅장하게」 — 정착 프레임의 후광·아래 그림자·제목 자간.
+   * 값은 렌더와 같은 공유 비율에서, 그 줄의 ASS 크기(본문 52 · 제목 73)로 계산됩니다.
+   */
+  it("draws the settled halo, the downward shadow and the quote's spacing from the renderer's own ratios", () => {
+    renderFieldset(TWO_PART, { scale: 0.027, center: 0.4 });
+    const nodes = Array.from(screen.getByTestId("photo-card-subtitle-preview").querySelectorAll("div[style*='top']")) as unknown as HTMLElement[];
+    const quote = nodes.find((node) => node.style.fontFamily.includes("Serif"))!;
+    const body = nodes.find((node) => node.style.fontFamily.includes("Sans"))!;
+    const shadowText = (node: HTMLElement) => `${node.style.textShadow ?? ""} ${node.getAttribute("style") ?? ""}`;
+
+    expect(quote.style.letterSpacing).toBe(`${Math.round(73 * PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO)}px`);
+    expect(body.style.letterSpacing).toBe("");
+
+    for (const [node, size] of [[quote, 73], [body, 52]] as const) {
+      const glowOuter = Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO) + Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO);
+      expect(shadowText(node)).toContain(`${glowOuter}px`);
+      expect(shadowText(node)).toMatch(new RegExp(`0(px)? ${Math.round(size * PHOTO_CARD_SUBTITLE_DROP_Y_RATIO)}px 1px`));
+    }
   });
 });

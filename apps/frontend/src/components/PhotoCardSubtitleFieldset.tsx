@@ -6,9 +6,14 @@ import {
   PHOTO_CARD_HEADING_RATIO,
   PHOTO_CARD_SUBTITLE_CENTER,
   PHOTO_CARD_SUBTITLE_CSS_RATIO,
+  PHOTO_CARD_SUBTITLE_DROP_ALPHA,
+  PHOTO_CARD_SUBTITLE_DROP_Y_RATIO,
+  PHOTO_CARD_SUBTITLE_GLOW_ALPHA,
+  PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO,
+  PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO,
   PHOTO_CARD_SUBTITLE_OUTLINE,
+  PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO,
   PHOTO_CARD_SUBTITLE_SCALE,
-  PHOTO_CARD_SUBTITLE_SHADOW,
   photoCardSubtitleGeometry,
   splitPhotoCardSubtitle,
 } from "@ai-animation-studio/shared";
@@ -148,12 +153,32 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
   }, [projectId, layout.center]);
   const drawn = colors ?? FALLBACK_COLORS;
 
-  const stroke = PHOTO_CARD_SUBTITLE_OUTLINE;
-  const drop = PHOTO_CARD_SUBTITLE_SHADOW;
   const edge = drawn.outline;
-  // The shadow is the outline at half strength — the renderer's own relationship between the two, not a
-  // separate black the preview invented (it used to be a flat rgba(0,0,0,0.85) under any outline colour).
-  const shadow = `0 0 ${stroke}px ${edge}, ${drop}px ${drop}px ${stroke * 2}px ${withAlpha(edge, 0.5)}, -${stroke}px 0 ${stroke}px ${edge}, ${stroke}px 0 ${stroke}px ${edge}, 0 -${stroke}px ${stroke}px ${edge}, 0 ${stroke}px ${stroke}px ${edge}`;
+
+  /**
+   * 정착 프레임의 글자 테두리·후광·아래 그림자 — 렌더가 쓰는 공유 상수를 그대로 읽습니다(CLI Round 1175, 캡틴D
+   * 「글자를 배경과 어울리게 … 더 웅장하게」).
+   *
+   * libass 는 세 겹을 따로 그립니다: 얇고 또렷한 윤곽(`PHOTO_CARD_SUBTITLE_OUTLINE`), 그 뒤로 번지는 두꺼운 후광
+   * (두께·번짐이 글자 크기 비율), 아래로 떨어지는 부드러운 그림자. CSS 는 그림자를 쌓는 것밖에 못 해서 **근사**입니다 —
+   * 후광은 두께만큼 퍼진 그림자 + 두께와 번짐을 더한 그림자 두 겹, 윤곽은 상하좌우 네 겹. 크기마다 값이 달라
+   * `line()` 안에서 그 줄의 `size`(프레임 좌표의 ASS 크기)로 계산합니다. 색은 지금처럼 그림에서 뽑은 테두리색.
+   * ASS 알파 바이트는 0 이 불투명이라 CSS 불투명도는 `(255 - alpha) / 255` 입니다.
+   */
+  function shadowFor(size: number): string {
+    const stroke = PHOTO_CARD_SUBTITLE_OUTLINE;
+    const glowBorder = Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO);
+    const glowBlur = Math.round(size * PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO);
+    const glow = withAlpha(edge, (255 - PHOTO_CARD_SUBTITLE_GLOW_ALPHA) / 255);
+    const dropY = Math.round(size * PHOTO_CARD_SUBTITLE_DROP_Y_RATIO);
+    const drop = withAlpha(edge, (255 - PHOTO_CARD_SUBTITLE_DROP_ALPHA) / 255);
+    return [
+      `-${stroke}px 0 ${stroke}px ${edge}`, `${stroke}px 0 ${stroke}px ${edge}`,
+      `0 -${stroke}px ${stroke}px ${edge}`, `0 ${stroke}px ${stroke}px ${edge}`,
+      `0 ${dropY}px 1px ${drop}`,
+      `0 0 ${glowBorder}px ${glow}`, `0 0 ${glowBorder + glowBlur}px ${glow}`,
+    ].join(", ");
+  }
 
   const margin = g.margin;
 
@@ -246,7 +271,9 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
           fontFamily: serif ? '"Noto Serif KR", "Nanum Myeongjo", serif' : '"Noto Sans KR", system-ui, sans-serif',
           // 첫 줄(사자성어)은 `heading`, 본문은 `body` — 병합이 ASS 에 넣는 그 두 색입니다.
           color: serif ? drawn.heading : drawn.body,
-          textShadow: shadow,
+          textShadow: shadowFor(size),
+          // 제목(사자성어)만 자간을 넓힙니다 — 렌더의 Quote 스타일 Spacing 과 같은 값(프레임 픽셀). 본문은 0.
+          letterSpacing: serif ? `${Math.round(size * PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO)}px` : undefined,
         }}
       >
         {text}
