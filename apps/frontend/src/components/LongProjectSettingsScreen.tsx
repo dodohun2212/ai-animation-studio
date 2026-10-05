@@ -9,6 +9,7 @@ import { StorySecretsCard } from "./StorySecretsCard.js";
 import { LONG_STORY_HINTS, filledCountLabel } from "./ui/longStoryHints.js";
 import { StoryWorldCard } from "./StoryWorldCard.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
+import { cardSectionRoomy, primaryButton } from "./ui/surfaces.js";
 
 interface Props {
   projectId: string;
@@ -151,8 +152,11 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           cards below. Almost none of it is edited twice: a title is set once, an episode count is set once.
           Grouping does not hide anything; it stops the rarely-touched half from being in the way of the part
           someone came to change. */}
+      {/* CLI Round 1258: the panel is the shared `cardSectionRoomy` recipe rather than a hand-written cool
+          gradient. Every direct child already spanned both columns, so the outer grid only ever stacked them —
+          `space-y-4` stacks them the same, 1rem apart, and the inner two-column grid of fields is unchanged. */}
       {state.settings && (
-        <form className="grid gap-4 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6 md:grid-cols-2" onSubmit={submit} noValidate>
+        <form className={cardSectionRoomy} onSubmit={submit} noValidate>
           <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
           <Field label="제목" value={state.settings.title} onChange={(value) => setField("title", value)} />
           <Field label="한 줄 줄거리" value={state.settings.logline} onChange={(value) => setField("logline", value)} hint={LONG_STORY_HINTS.logline} />
@@ -357,13 +361,18 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
               설정이 저장되었습니다.
             </p>
           )}
-          <button
-            type="submit"
-            disabled={state.loading}
-            className="rounded bg-bone px-4 py-2 text-sm font-semibold text-ground disabled:opacity-50 md:col-span-2"
-          >
-            {state.loading ? "저장 중…" : "설정 저장"}
-          </button>
+          {/* One right-aligned primary action, the recipe the other settings screens use — not a bar the width of
+              the form, which read as a section divider rather than a button. */}
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              data-testid="long-settings-save"
+              disabled={state.loading}
+              className={primaryButton}
+            >
+              {state.loading ? "저장 중…" : "설정 저장"}
+            </button>
+          </div>
         </form>
       )}
       {/* 주인공 · 전체 그림체 · 세계관 설명 · 비밀·복선 all moved here from 등장인물·설정집. Each describes the

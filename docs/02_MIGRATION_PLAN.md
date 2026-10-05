@@ -4657,3 +4657,8 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 - 별도 요청: 전송 후 검토에서 실제 최종 provider prompt를 보여 주기 위해 `VideoReview.submittedPrompt?: string`을 저장 계약으로 추가하고 제출 시점에 백엔드에서 기록한다. 과거 및 local fake 기록은 생략한다.
 - 계약 `5c508f21`, 백엔드 `693a4a28`: Runway 제출 claim 때 어댑터와 동일한 shared composer로 최종 문자열을 `submitted_prompt`에 스냅샷한다. 재생성 때 이전 문자열을 지우고, provider body와 검토 응답이 같은지 테스트한다. authored prompt와 staleness는 변경하지 않으며 local fake에는 응답 값을 만들지 않는다. backend typecheck와 관련 테스트 43개 통과. 프론트 검토 카드 표시·guard·회귀 테스트가 남았다.
 - Cowork가 검토 화면을 연결했다(1257, `c8801d38`): `submittedPrompt`가 있으면 실제 전송 프롬프트를 원문 그대로 보여 주고, 없으면 「장면에 적힌 동작 프롬프트」라 표시해 확인 전 수정·자동 추가 문장이 빠질 수 있음을 알린다. malformed optional field guard 테스트 포함. 전체 검증 통과: backend 2019 pass/1 skip, frontend 1973 pass, shared 130 pass, desktop 38 pass; 전체 typecheck/build. 실화면은 기존 기록(제출 스냅샷 없음)에서 authored 라벨을 확인했으며 새 유료 Runway 전송은 하지 않았다. 유료 Provider 호출은 없었다.
+
+## 2026-10-06 — 장기 설정 화면 recipe 정리
+
+- `LongProjectSettingsScreen` 수동 저장 폼을 `cardSectionRoomy`로 통일하고 「설정 저장」을 전체 폭 막대에서 오른쪽 정렬 `primaryButton`으로 바꿨다. 필드 배치·PATCH·disabled 상태 및 저장 결과는 유지한다. Cowork가 recipe·정렬을 실화면에서 확인하고 회귀 테스트를 추가했다(1259). 전체 타입검사, frontend 1974 tests, 전체 build 통과; source SHA-256 전후 동일. 설정 저장·유료 호출은 없었다.
+- 같은 화면의 머리글 「돌아가기」는 미저장 내용을 조용히 버리는 점이 남은 검토 후보(1236-2); 현재는 경고만 표시할지 판단 중이다.

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, makeLongProject, makeLongProjectSettings } from "../api/testUtils.js";
 import { LongProjectSettingsScreen } from "./LongProjectSettingsScreen.js";
+import { primaryButton } from "./ui/surfaces.js";
 
 /**
  * Finds the request by the route it went to, not by the order it went in.
@@ -315,5 +316,23 @@ describe("LongProjectSettingsScreen", () => {
     const [, init] = callTo(fetchMock, "/long-projects/long_test/settings", "PATCH");
     const body = JSON.parse(String(init.body)) as { settings: { aspectRatio: string } };
     expect(body.settings.aspectRatio).toBe("1:1");
+  });
+
+  // CLI Round 1258: the save action is the shared primary recipe, alone at the right — not a full-width bar.
+  it("offers 설정 저장 as one right-aligned primary button, still submitting the form", async () => {
+    const settings = makeLongProjectSettings({ title: "우주 방랑자" });
+    const fetchMock = stubScreenFetch({ settings });
+    render(<LongProjectSettingsScreen projectId="long_test" onBack={() => {}} />);
+
+    await screen.findByDisplayValue("우주 방랑자");
+    const save = screen.getByTestId("long-settings-save");
+    expect(save).toBe(screen.getByRole("button", { name: "설정 저장" }));
+    expect(save.className).toBe(primaryButton);
+    expect(save.className).not.toContain("col-span");
+    expect(save.parentElement?.className).toContain("justify-end");
+    expect(save.closest("form")).not.toBeNull();
+
+    fireEvent.click(save);
+    expect(callTo(fetchMock, "/long-projects/long_test/settings", "PATCH")[1].method).toBe("PATCH");
   });
 });
