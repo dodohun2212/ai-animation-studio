@@ -509,7 +509,11 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
         이 단계는 비용이 들지 않습니다 — 유료 요청 없이, 이 컴퓨터에 설치된 영상 병합 프로그램만 실행합니다.
         {pictureCard
           ? " 고른 그림 한 장을 정해 둔 길이만큼 하나의 영상으로 만듭니다."
-          : `${approvedCount !== null ? ` 확정된 ${approvedCount}개` : ""} 장면 영상을 순서대로 이어 붙입니다.`}
+          /* CLI Round 1246: while confirmations are missing this used to promise to join 「확정된 0개」 clips, one line
+             above the count saying none were confirmed. It says what will happen once they are. */
+          : blocked
+            ? " 장면 영상을 모두 확정하면 순서대로 이어 붙입니다."
+            : `${approvedCount !== null ? ` 확정된 ${approvedCount}개` : ""} 장면 영상을 순서대로 이어 붙입니다.`}
         {contentSentence ? ` ${contentSentence}` : ""}
       </p>
 
@@ -747,6 +751,13 @@ export function VideoMergeScreen({ projectId, onBack, onOpenInstagramPost }: Pro
           >
             {mergeButtonLabel(audioMode, clipVolumeForLabel)}
           </button>
+          {/* CLI Round 1246: the reason this button is off sat at the top of the page, two screens of subtitle,
+              framing and audio settings away. Repeated here, beside the control it explains. */}
+          {blocked && approvedCount !== null && sceneCount !== null && (
+            <p data-testid="merge-blocked-reason" className="text-xs text-amber-300">
+              확정하지 않은 장면 {sceneCount - approvedCount}개가 남아 있어 아직 병합할 수 없습니다.
+            </p>
+          )}
           {/* 다시 만들기를 열었다가 그만두는 길 — 없으면 화면을 떠나야만 지금 영상 미리보기가 돌아옵니다
               (2026-09-29 개발 서버에서 `미지의공간2` 로 열어 보고 확인). */}
           {remaking && !confirmOpen && (

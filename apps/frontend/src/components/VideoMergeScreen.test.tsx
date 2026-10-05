@@ -356,6 +356,26 @@ describe("VideoMergeScreen", () => {
     expect((await screen.findByTestId("merge-blocked")).textContent).toContain("2개 있습니다");
   });
 
+  // CLI Round 1246: while blocked, the notice does not promise to join "확정된 N개", and the reason sits by the button.
+  it("words the notice for the blocked case and repeats the reason under the disabled merge button", async () => {
+    const reviews = [1, 2, 3, 4, 5, 6].map((sceneNumber) => ({
+      sceneNumber, status: sceneNumber <= 4 ? "approved" : "pending", updatedAt: "2026-08-23T00:00:00.000Z",
+    }));
+    const mergeFetch = vi.fn(async (input: RequestInfo | URL) => String(input) === REVIEW_URL
+      ? jsonResponse(200, { project: makeProject({ scenes: sixScenes() }), reviews })
+      : jsonResponse(404, { code: "NOT_FOUND", message: "raw" }));
+    renderScreen(mergeFetch, { scenes: sixScenes(), currentVideoJobId: "job_1" });
+
+    const reason = await screen.findByTestId("merge-blocked-reason");
+    expect(reason.textContent).toContain("2개");
+    const notice = screen.getByTestId("merge-scope-notice").textContent!;
+    expect(notice).toContain("모두 확정하면 순서대로 이어 붙입니다");
+    expect(notice).not.toContain("확정된 4개");
+    const button = screen.getByTestId("open-merge-confirm-button");
+    expect(button).toBeDisabled();
+    expect(button.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   /** No job at all: nothing to ask, so nothing is claimed — and the review route is not called. */
   it("asks for no review when the project has no video job", async () => {
     const mergeFetch = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(404, { code: "NOT_FOUND", message: "raw" }));
