@@ -506,6 +506,11 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                     <span className="text-sm font-semibold text-slate-100">{number}번 장면</span>
                     <StatusChip tone={tone}>{SCENE_STATUS_LABEL[status]}</StatusChip>
                   </div>
+                  {/* CLI Round 1221: once the review cards are on screen they show this same source image beside
+                      each clip, so the progress grid drew every scene's picture twice — four full 9:16 stills
+                      (~930px) of "완료" between the status line and the review the person came to do. The grid
+                      keeps its number and status chip; the picture stays wherever the review list is not shown. */}
+                  {reviewState.status !== "ready" && (
                   <img
                     src={sceneImageContentUrl(projectId, number)}
                     alt=""
@@ -514,6 +519,7 @@ export function VideoWorkflowScreen({ projectId, jobId, onBack, onOpenMerge }: P
                       status === "pending" ? "opacity-40" : ""
                     }`}
                   />
+                  )}
                 </li>
               );
             })}

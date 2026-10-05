@@ -688,6 +688,18 @@ describe("VideoWorkflowScreen", () => {
    * poll. This test renders a still-`running` job with no review response ever answering, and must go red if
    * the progress grid falls back to the portrait class instead of reading `progress.aspectRatio`.
    */
+  // CLI Round 1221
+  it("drops the progress grid's pictures once the review cards show the same source images", async () => {
+    const succeeded = makeProgress({ status: "succeeded", completedSceneNumbers: [1, 2, 3, 4, 5, 6] });
+    renderScreen(vi.fn().mockResolvedValueOnce(jsonResponse(200, succeeded)).mockResolvedValueOnce(jsonResponse(200, reviewResponse(sixReviews()))));
+
+    await screen.findByTestId("video-review-1");
+    const scene = screen.getByTestId("scene-progress-1");
+    expect(scene).toHaveAttribute("data-status", "completed");
+    expect(scene.querySelector("img")).toBeNull();
+    expect(screen.getByTestId("video-review-source-image-1")).toHaveAttribute("src", "/projects/sample_project/images/1/content");
+  });
+
   it("renders the running scene-progress grid in the project's own shape, before any review response exists", async () => {
     const running = makeProgress({ status: "running", completedSceneNumbers: [1], currentSceneNumber: 2, aspectRatio: "16:9" });
     renderScreen(vi.fn().mockResolvedValue(jsonResponse(200, running)));
