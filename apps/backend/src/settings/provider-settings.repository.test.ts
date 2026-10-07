@@ -20,6 +20,7 @@ describe("ProviderSettingsRepository", () => {
     const repository = new ProviderSettingsRepository(root);
     await repository.save("openai", "sk-test-abcdefghijklmnopqrstuvwxyz");
     await repository.save("runway", "key_abcdefghijklmnopqrstuvwxyz");
+    await repository.save("youtube", "youtube-key-abcdefghijklmnopqrstuvwxyz");
     const content = await fs.readFile(env, "utf8");
     expect(content).toContain("# local settings\nMONTHLY_BUDGET=7\n");
     expect(content.match(/OPENAI_API_KEY=/g)).toHaveLength(1);
@@ -27,6 +28,8 @@ describe("ProviderSettingsRepository", () => {
     expect(content).not.toContain("RUNWAY_API_SECRET=");
     expect(await repository.read("openai")).toBe("sk-test-abcdefghijklmnopqrstuvwxyz");
     expect(await repository.read("runway")).toBe("key_abcdefghijklmnopqrstuvwxyz");
+    expect(content).toContain("YOUTUBE_DATA_API_KEY=youtube-key-abcdefghijklmnopqrstuvwxyz");
+    expect(await repository.read("youtube")).toBe("youtube-key-abcdefghijklmnopqrstuvwxyz");
   });
 
   it("creates a missing dotenv through the atomic writer", async () => {

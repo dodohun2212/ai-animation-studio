@@ -39,7 +39,7 @@ describe("ProviderSettingsScreen", () => {
   });
 
   it("shows loading, then both provider cards on success", async () => {
-    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })];
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel })));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
@@ -65,7 +65,7 @@ describe("ProviderSettingsScreen", () => {
       // "no card" rather than with what it is actually about (the same silent path as CLI Round 819).
       makeProviderStatus({ provider: "openai" }),
       makeProviderStatus({ provider: "runway" }),
-      makeProviderStatus({ provider: "gemini" }),
+      makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" }),
     ];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel })));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -77,6 +77,21 @@ describe("ProviderSettingsScreen", () => {
   });
 
   /**
+   * CLI Round 1269: 밈 후보를 모으는 YouTube Data API 키. 키 칸은 키들끼리 — Gemini 바로 아래, 예산 카드 위 —
+   * 이고, 할당량이 무엇에 쓰이는지는 카드가 계약(`PROVIDER_KEY_NOTES.youtube`)에서 읽습니다.
+   */
+  it("draws a YouTube key card beside the other keys, with what the quota is spent on", async () => {
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel })));
+    render(<ProviderSettingsScreen onBack={() => {}} />);
+
+    const note = await screen.findByTestId("youtube-key-note");
+    expect(note.textContent).toContain("밈 목록을 다시 모을 때");
+    expect(screen.getByLabelText("YouTube API 키")).toBeTruthy();
+    expect(screen.queryByText(/YouTube —/)).toBeNull();
+  });
+
+  /**
    * 🔴 Gemini 는 키는 있는데 **월 예산이 없습니다**(무료 등급, 한도는 하루 건수). 예산 카드가 키 목록을 보고
    * 그리면 Gemini 에 「$10.00 남음」이 붙는데, 그건 **아무것도 거절하지 않는 한도**를 실제로 유료 작업을 멈추는
    * 숫자 옆에 두는 것입니다. 계약이 두 목록을 갈라 놨고, 이 줄이 화면이 그걸 따르는지 봅니다.
@@ -85,7 +100,7 @@ describe("ProviderSettingsScreen", () => {
     const providers = [
       makeProviderStatus({ provider: "openai" }),
       makeProviderStatus({ provider: "runway" }),
-      makeProviderStatus({ provider: "gemini" }),
+      makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" }),
     ];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel })));
     render(<ProviderSettingsScreen onBack={() => {}} />);
@@ -124,7 +139,7 @@ describe("ProviderSettingsScreen", () => {
   });
 
   it("recovers after retrying a failed initial load", async () => {
-    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })];
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(500, { code: "SETTINGS_STORAGE_ERROR", message: "실패" }))
@@ -140,7 +155,7 @@ describe("ProviderSettingsScreen", () => {
   });
 
   it("keeps a previously successful status when a later refresh fails, and shows the error alongside it", async () => {
-    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })];
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { providers, monthlyBudgets, videoModel }))
@@ -163,7 +178,7 @@ describe("ProviderSettingsScreen", () => {
     const initial = [
       makeProviderStatus({ provider: "openai", configured: true, connected: true, maskedValue: "sk-********7890" }),
       makeProviderStatus({ provider: "runway", configured: true, connected: true, maskedValue: "rw-********7890" }),
-      makeProviderStatus({ provider: "gemini" }),
+      makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" }),
     ];
     const disconnectedOpenAi = makeProviderStatus({
       provider: "openai",
@@ -192,7 +207,7 @@ describe("ProviderSettingsScreen", () => {
     const initial = [
       makeProviderStatus({ provider: "openai", configured: true, connected: true, maskedValue: "sk-********7890" }),
       makeProviderStatus({ provider: "runway", configured: true, connected: true, maskedValue: "rw-********7890" }),
-      makeProviderStatus({ provider: "gemini" }),
+      makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" }),
     ];
     const disconnectedOpenAi = { ...initial[0], connected: false };
     const disconnectedRunway = { ...initial[1], connected: false };
@@ -231,7 +246,7 @@ describe("ProviderSettingsScreen", () => {
     const providers = [
       makeProviderStatus({ provider: "openai", configured: true, connected: true, maskedValue: "sk-********7890" }),
       makeProviderStatus({ provider: "runway" }),
-      makeProviderStatus({ provider: "gemini" }),
+      makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" }),
     ];
     let resolveRefresh: (response: Response) => void = () => {};
     const fetchMock = vi.fn()
@@ -253,7 +268,7 @@ describe("ProviderSettingsScreen", () => {
     const providers = [
       makeProviderStatus({ provider: "openai", configured: true, connected: true, maskedValue: "sk-********7890" }),
       makeProviderStatus({ provider: "runway" }),
-      makeProviderStatus({ provider: "gemini" }),
+      makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" }),
     ];
     const disconnected = { ...providers[0], connected: false };
     let resolveMutation: (response: Response) => void = () => {};
@@ -273,7 +288,7 @@ describe("ProviderSettingsScreen", () => {
   });
 
   it("calls onBack when the back button is clicked", async () => {
-    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })];
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel })));
     const onBack = vi.fn();
     render(<ProviderSettingsScreen onBack={onBack} />);
@@ -289,7 +304,7 @@ describe("ProviderSettingsScreen", () => {
    * as "this app has no such feature", not as "this could not be read". Say which it is.
    */
   it("says the Instagram store could not be read instead of dropping its card", async () => {
-    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })];
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
       String(url).includes("/instagram/")
         ? jsonResponse(500, { code: "INSTAGRAM_STORAGE_ERROR", message: "raw backend detail" })
@@ -306,7 +321,7 @@ describe("ProviderSettingsScreen", () => {
   });
 
   it("shows the Instagram card, and no failure notice, when the store reads back", async () => {
-    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })];
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => Promise.resolve(
       String(url).includes("/instagram/")
         ? jsonResponse(200, { appConfigured: true, tokenStored: false, callbackLoginAvailable: false })
@@ -327,7 +342,7 @@ describe("ProviderSettingsScreen", () => {
    * downstream multiplies this rate.
    */
   it("shows the video model with its price, and says plainly that there is only one to pick", async () => {
-    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })];
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
     vi.stubGlobal("fetch", routingInstagramAside(vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets, videoModel }))));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 
@@ -347,7 +362,7 @@ describe("ProviderSettingsScreen", () => {
    * of the button that spends the month's budget.
    */
   it("refuses a settings response that carries no video model", async () => {
-    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" })];
+    const providers = [makeProviderStatus({ provider: "openai" }), makeProviderStatus({ provider: "runway" }), makeProviderStatus({ provider: "gemini" }), makeProviderStatus({ provider: "youtube" })];
     vi.stubGlobal("fetch", routingInstagramAside(vi.fn().mockResolvedValue(jsonResponse(200, { providers, monthlyBudgets }))));
     render(<ProviderSettingsScreen onBack={() => {}} />);
 

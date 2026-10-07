@@ -38,6 +38,12 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 `POST /news/card-text`는 기존 한 번의 글 생성 호출에서 카드 글과 함께 `summary?: string`을 돌려준다. 요약이 오면 카드 글과 함께 원문 기사 대조 결과 `check`에 포함된다. `POST /news/reels`의 `card.summary?: string`은 400자 이내의 비어 있지 않은 요약을 프로젝트에 저장한다. 과거 카드와 직접 작성한 카드에는 이 필드가 없을 수 있다. 화면은 요약이 없을 때 기존 제목·장면 자막 초안을 사용할 수 있다.
 
+## 밈·챌린지 후보 피드
+
+`GET /trends/memes`는 저장된 마지막 YouTube 후보 목록만 읽고 외부 API를 호출하지 않는다. `POST /trends/memes/refresh`만 YouTube Data API의 최근 한국 대상 짧은 영상 메타데이터를 수집한다. 제목·설명·태그에 공통 해시태그나 문구가 영상 3편 이상, 서로 다른 채널 2곳 이상에 나온 것을 **후보**로 묶는다. 같은 응답에 대표 영상들이 있어 화면에서 바로 펼쳐 볼 수 있다. 이 단계는 영상 속 행동을 분석하거나 프로젝트를 만들지 않는다.
+
+공통 DTO와 검증 함수는 `packages/shared/src/trend.ts`, route helper는 `API_ROUTES`에 있다. 각 영상의 `viewCount`는 API에 없으면 `null`; `viewCountObservedAt`은 그 값을 읽은 시각이다. 과거 같은 영상의 숫자가 있을 때만 `previousViewCount`와 `previousViewCountObservedAt`을 함께 보낸다. 수집 실패는 저장된 목록을 지우지 않는다(단, 수집 후 30일이 된 메타데이터는 정책에 맞춰 삭제한다). `MEME_TREND_KEY_MISSING`은 YouTube 키 설정, `MEME_TREND_QUOTA_EXCEEDED`는 할당량 종료, `MEME_TREND_SOURCE_FAILED`는 출처 실패, `MEME_TREND_STORE_UNREADABLE`은 저장 파일 문제를 구분한다. 키는 `ProviderCredentialKind`의 `youtube`로만 저장하며 응답에 실리지 않는다.
+
 ## 대표 Route (예시, 전체 목록 아님)
 
 마이그레이션 초기에 작성된 예시 목록이다. 지금은 단기·장기 프로젝트, Story,

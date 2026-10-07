@@ -84,6 +84,11 @@ export function ProviderSettingsScreen({ onBack }: Props) {
               나오는데, 키 칸까지 예산 아래로 내려가면 「예산이 없으니 이 제공자도 없다」로 읽힙니다. 키를 넣는
               자리는 키들끼리 모여 있어야 합니다. 결제 조건 문구는 카드가 계약에서 읽습니다(PROVIDER_KEY_NOTES). */}
           <ProviderCredentialCard label="Gemini" status={state.statuses.gemini} onStatusChange={update} acquireMutation={() => acquireMutation("gemini")} releaseMutation={() => releaseMutation("gemini")}/>
+          {/* CLI Round 1269: 밈 트렌드를 모으는 YouTube Data API 키. 무료 할당량이라 예산 카드에는 없고, 키 칸끼리
+              모여 있습니다(Gemini 와 같은 이유). 할당량 안내는 카드가 계약에서 읽습니다. */}
+          {state.statuses.youtube && (
+            <ProviderCredentialCard label="YouTube" status={state.statuses.youtube} onStatusChange={update} acquireMutation={() => acquireMutation("youtube")} releaseMutation={() => releaseMutation("youtube")}/>
+          )}
           {state.budgets && <MonthlyBudgetCard budgets={state.budgets} onBudgetChange={updateBudget} />}
           {/* Beside the budget on purpose: the model is what decides the per-second rate the budget is spent
               at, so the two numbers a person compares are next to each other rather than a screen apart. */}

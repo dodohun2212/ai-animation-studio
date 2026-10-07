@@ -10,11 +10,13 @@ const ENV_NAMES: Record<ProviderCredentialKind, readonly string[]> = {
   openai: ["OPENAI_API_KEY"],
   runway: ["RUNWAYML_API_SECRET", "RUNWAY_API_SECRET"],
   gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+  youtube: ["YOUTUBE_DATA_API_KEY"],
 };
 const OFFICIAL_ENV_NAME: Record<ProviderCredentialKind, string> = {
   openai: "OPENAI_API_KEY",
   runway: "RUNWAYML_API_SECRET",
   gemini: "GEMINI_API_KEY",
+  youtube: "YOUTUBE_DATA_API_KEY",
 };
 
 type WriteEnvFile = (file: string, content: string) => Promise<void>;

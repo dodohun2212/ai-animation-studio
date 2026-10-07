@@ -2195,7 +2195,7 @@ export interface RunLegacyReferenceMigrationResponse {
  * written by the same login and stop being true together (app id, app secret, token, token expiry), so it has
  * its own store rather than a single masked string — see InstagramConnectionStatus.
  */
-export const PROVIDER_CREDENTIAL_KINDS = ["openai", "runway", "gemini"] as const;
+export const PROVIDER_CREDENTIAL_KINDS = ["openai", "runway", "gemini", "youtube"] as const;
 export type ProviderCredentialKind = (typeof PROVIDER_CREDENTIAL_KINDS)[number];
 
 /**
@@ -2204,8 +2204,8 @@ export type ProviderCredentialKind = (typeof PROVIDER_CREDENTIAL_KINDS)[number];
  * 🔴 **Not the same list as the one above, and keeping them apart is the point.** They were one list while the
  * two providers happened to coincide — a key and a dollar budget arrived together — so the single union quietly
  * meant both "we store a key for this" and "this has a monthly limit in money". Gemini has the first and not
- * the second: it is used on a free tier, and what bounds it is a **count per day** in its own ledger
- * (`news_call_usage.json`), which is a different unit over a different window.
+ * the second: its news use is bounded by a **count per day** in its own ledger (`news_call_usage.json`).
+ * YouTube also has a key but uses Google's API request quotas, not this app's monthly dollar ledger.
  *
  * Left merged, adding Gemini would have drawn it a monthly budget card reading "$10.00 남음" — a limit that
  * refuses nothing, about money nobody is spending, next to the one number that actually stops paid work. The
@@ -2237,6 +2237,7 @@ export const PROVIDER_KEY_NOTES: Record<ProviderCredentialKind, string | null> =
   openai: null,
   runway: null,
   gemini: "결제가 연결되지 않은 구글 클라우드 프로젝트에서 만든 키를 넣어 주세요. 그래야 무료 한도를 넘었을 때 청구가 아니라 거절이 됩니다. 결제가 걸린 프로젝트의 키는 처음부터 유료로 동작하고, 이 앱은 그 차이를 확인할 방법이 없습니다.",
+  youtube: "YouTube Data API v3를 활성화한 구글 클라우드 프로젝트의 API 키를 넣어 주세요. 밈 목록을 다시 모을 때 검색 할당량을 사용합니다. 실제 남은 할당량은 구글 클라우드 콘솔에서 확인해 주세요.",
 };
 
 export interface ProviderCredentialStatus {
@@ -3703,6 +3704,8 @@ export const ASSET_UPLOAD_FILE_FIELD = "image";
 
 export const API_ROUTES = {
   health: "/health",
+  memeTrends: "/trends/memes",
+  memeTrendsRefresh: "/trends/memes/refresh",
   projects: "/projects",
   longProjects: "/long-projects",
   longProjectStoryBible: (projectId: string) =>

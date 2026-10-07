@@ -35,7 +35,7 @@ function providerSettingsWith(model: VideoModel) {
   // (CLI Round 819). The two lists are NOT the same list any more: Gemini has a key and no dollar budget, so it
   // belongs in the first and must stay out of the second.
   return {
-    providers: (["openai", "runway", "gemini"] as const).map((provider) => ({ provider, configured: true, connected: true, maskedValue: "key********abcd" })),
+    providers: (["openai", "runway", "gemini", "youtube"] as const).map((provider) => ({ provider, configured: true, connected: true, maskedValue: "key********abcd" })),
     monthlyBudgets: (["openai", "runway"] as const).map((provider) => ({ provider, monthlyLimitUsd: 20, isDefault: false, spentUsd: 0, remainingUsd: 20 })),
     videoModel: { selected: model, isDefault: false, options: VIDEO_MODEL_OPTIONS },
   };

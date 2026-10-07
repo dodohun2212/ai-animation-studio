@@ -189,6 +189,8 @@ describe("App", () => {
             { provider: "runway", configured: false, connected: false, maskedValue: null },
             // Gemini has a key and no dollar budget, so it belongs here and deliberately not in monthlyBudgets.
             { provider: "gemini", configured: false, connected: false, maskedValue: null },
+            // The meme feed's YouTube key (CLI Round 1269) — the response guard demands every credential kind.
+            { provider: "youtube", configured: false, connected: false, maskedValue: null },
           ],
           monthlyBudgets: [
             { provider: "openai", monthlyLimitUsd: 10, isDefault: true, spentUsd: 0, remainingUsd: 10 },
@@ -331,6 +333,25 @@ describe("App", () => {
       .toEqual(["/settings/instagram/targets", "/videos/library"]);
     // Nothing on this screen publishes or authenticates — it must not reach a provider route either.
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/settings/providers"))).toBe(false);
+  });
+
+  /** CLI Round 1269: 「밈 트렌드」는 저장된 목록만 읽습니다 — 메뉴를 누르는 것으로 YouTube 를 부르지 않습니다. */
+  it("reaches 밈 트렌드 from the nav and asks only the stored-list route", async () => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/trends/memes") return jsonResponse(200, { source: "youtube", regionCode: "KR", collectedAt: null, trends: [] });
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "밈 트렌드" }));
+    await screen.findByTestId("meme-trends-never");
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(["/trends/memes"]);
+    expect(window.location.hash).toBe("#/memeTrends");
   });
 
   it("reaches the remaining independent nav screens without opening a provider route", async () => {

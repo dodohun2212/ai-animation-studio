@@ -14,6 +14,7 @@ import { PhotoCardScreen } from "./components/PhotoCardScreen.js";
 import { PhotoCardListScreen } from "./components/PhotoCardListScreen.js";
 import { NewsReelScreen } from "./components/NewsReelScreen.js";
 import { NewsReelListScreen } from "./components/NewsReelListScreen.js";
+import { MemeTrendsScreen } from "./components/MemeTrendsScreen.js";
 import { NewsReelCreateScreen, type NewsReelDraft } from "./components/NewsReelCreateScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
@@ -83,6 +84,8 @@ type Screen =
    * 같이 씁니다 — 갈라야 하는 건 계약이지 격자가 아닙니다.
    */
   | { name: "newsReelCreate" }
+  /** YouTube 밈·챌린지 후보(CLI Round 1268·1269). `trendId` 는 고른 후보 — 주소에 실어 새로고침해도 남깁니다. */
+  | { name: "memeTrends"; trendId?: string }
   | { name: "instagramPost"; initialProjectId?: string; initialEpisodeNumber?: number }
   | { name: "archive" }
   | { name: "workflowGuide" }
@@ -114,10 +117,11 @@ type Screen =
  * `justCreated` is deliberately absent. It marks the one moment just after creation and changes the finish
  * button's wording; restoring it from a URL would show a first-run affordance on a project made last week.
  */
-type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber" | "from";
-const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber", "from"]);
+type ScreenParam = "projectId" | "episodeNumber" | "jobId" | "initialQuery" | "initialProjectId" | "initialEpisodeNumber" | "from" | "trendId";
+const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initialQuery", "initialProjectId", "initialEpisodeNumber", "from", "trendId"]);
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
   list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: [], newsReel: [], newsReelWrite: [], newsReelCreate: [],
+  memeTrends: ["trendId"],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -193,7 +197,7 @@ const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "imageGeneration", "narrationReview", "sceneEdit", "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
-type NavIconName = "home" | "long" | "library" | "quote" | "news" | "film" | "music" | "share" | "archive" | "workflow" | "settings";
+type NavIconName = "home" | "long" | "library" | "quote" | "news" | "trend" | "film" | "music" | "share" | "archive" | "workflow" | "settings";
 
 function NavIcon({ name }: { name: NavIconName }) {
   const shared = {
@@ -220,6 +224,14 @@ function NavIcon({ name }: { name: NavIconName }) {
           <path d="M4 5h12a1 1 0 0 1 1 1v12a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2z" />
           <path d="M17 9h2a1 1 0 0 1 1 1v8" />
           <path d="M7 9h6M7 12.5h6M7 16h4" />
+        </svg>
+      );
+    // 오르는 선 — 「인기」를 말하되 숫자나 불꽃 같은 과장 없이. 뉴스(접힌 종이)와 모양으로 갈립니다.
+    case "trend":
+      return (
+        <svg {...shared}>
+          <path d="M3 17l6-6 4 4 8-8" />
+          <path d="M15 7h6v6" />
         </svg>
       );
     case "long":
@@ -295,7 +307,7 @@ function NavIcon({ name }: { name: NavIconName }) {
   }
 }
 
-type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "newsReel" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
+type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "newsReel" | "memeTrends" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
 
 /**
  * 어느 화면에서 **왼쪽 어느 항목이 켜지는가.**
@@ -311,6 +323,7 @@ export function navSectionFor(name: Screen["name"]): NavSection | null {
   // 만들기 화면에서도 사이드바의 「명언 카드」가 켜져 있어야 합니다 — 거기서 온 곳이 거기입니다.
   if (name === "photoCard") return "photoCard";
   if (name === "newsReel" || name === "newsReelWrite" || name === "newsReelCreate") return "newsReel";
+  if (name === "memeTrends") return "memeTrends";
   // 🔴 만들기 화면은 **어디서 왔느냐**로 갈립니다 — 뉴스 릴에서 왔으면 왼쪽도 뉴스 릴에 남습니다.
   // 여기서 「명언 카드」로 옮겨 버리면 사람이 하던 일에서 **쫓겨난 것처럼** 보입니다.
   if (name === "photoCardCreate") return "photoCard";
@@ -360,6 +373,9 @@ const NAV_GROUPS: { title: string; index: string; items: NavItem[] }[] = [
       { key: "long", icon: "long", label: "장기 프로젝트", target: { name: "longList" } },
       { key: "photoCard", icon: "quote", label: "명언 카드", target: { name: "photoCard" } },
       { key: "newsReel", icon: "news", label: "뉴스 릴", target: { name: "newsReel" } },
+      // 🟠 만들기 묶음의 끝 — 아직 「이 밈으로 만들기」가 없어서 **고르는 곳**까지만입니다. 그 버튼은 초안 연결
+      // 계약이 생기는 다음 단계에 붙습니다(막아 둔 버튼을 먼저 그려 두면 그건 약속이 아니라 거짓말입니다).
+      { key: "memeTrends", icon: "trend", label: "밈 트렌드", target: { name: "memeTrends" } },
     ],
   },
   {
@@ -1059,6 +1075,13 @@ export function App() {
                 onBack={() => setScreen({ name: "list" })}
                 onCreateNew={() => setScreen({ name: "newsReelWrite" })}
                 onOpenReel={(projectId) => setScreen({ name: "detail", projectId })}
+              />
+            )}
+            {screen.name === "memeTrends" && (
+              <MemeTrendsScreen
+                trendId={screen.trendId}
+                onSelect={(trendId) => setScreen(trendId ? { name: "memeTrends", trendId } : { name: "memeTrends" })}
+                onOpenSettings={() => setScreen({ name: "providerSettings" })}
               />
             )}
             {screen.name === "newsReelWrite" && (

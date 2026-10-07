@@ -25,9 +25,9 @@ describe("ProviderSettingsController", () => {
 
   it("serves all four settings operations without returning a secret", async () => {
     const settings = await controller.getSettings();
-    expect(settings.providers).toHaveLength(3);
-    // 🔴 Three keys, two budgets, and the gap is the point: Gemini runs on a free tier and is bounded by a
-    // count per day in its own ledger, so a dollar limit for it would refuse nothing about money nobody spends.
+    expect(settings.providers).toHaveLength(4);
+    // Credentials and monthly dollar budgets are different sets. Gemini and YouTube have keys but no
+    // dollar budget card; YouTube uses its own API quota and never enters a paid generation path.
     expect(settings.monthlyBudgets).toHaveLength(2);
     expect(settings.monthlyBudgets.map((budget) => budget.provider)).not.toContain("gemini");
     const saved = await controller.save("openai", { value: secret });

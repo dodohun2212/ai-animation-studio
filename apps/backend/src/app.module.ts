@@ -15,6 +15,7 @@ import { NarrationModule } from "./narration/narration.module.js";
 import { AudioModule } from "./audio/audio.module.js";
 import { InstagramModule } from "./instagram/instagram.module.js";
 import { NewsModule } from "./news/news.module.js";
+import { MemeTrendsModule } from "./trends/meme-trends.module.js";
 
-@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule, ImagesModule, VideosModule, LongProjectsModule, NarrationModule, AudioModule, InstagramModule, NewsModule], controllers: [HealthController], providers: [{ provide: APP_FILTER, useClass: UnexpectedErrorFilter }] })
+@Module({ imports: [ProjectsModule, ProviderSettingsModule, AssetsModule, ProjectAssetMappingsModule, StoryModule, ImagesModule, VideosModule, LongProjectsModule, NarrationModule, AudioModule, InstagramModule, NewsModule, MemeTrendsModule], controllers: [HealthController], providers: [{ provide: APP_FILTER, useClass: UnexpectedErrorFilter }] })
 export class AppModule {}
