@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PhotoCardSubtitleLayout } from "@ai-animation-studio/shared";
 import { API_ROUTES, DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, PHOTO_CARD_DARKENING, PHOTO_CARD_SUBTITLE_CSS_RATIO, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO } from "@ai-animation-studio/shared";
@@ -494,7 +494,10 @@ describe("PhotoCardSubtitleFieldset", () => {
       renderFieldset(TWO_PART, { scale: 0.03, center: 0.4 });
       const select = screen.getByTestId("photo-card-subtitle-effect") as HTMLSelectElement;
       expect(select.value).toBe("lightning");
-      expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([["lightning", "번개"], ["none", "없음"]]);
+      // CLI Round 1265: 배경 효과 3개가 번개와 없음 사이에 들어왔습니다(공유 계약의 순서 그대로).
+      expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([
+        ["lightning", "번개"], ["cosmic", "우주"], ["celestial_rays", "빛줄기"], ["ocean_wave", "파도"], ["none", "없음"],
+      ]);
     });
 
     it("reports the chosen effect explicitly, keeping size and position", () => {
@@ -538,6 +541,23 @@ describe("PhotoCardSubtitleFieldset", () => {
     it("says what the choice does", () => {
       renderFieldset(TWO_PART, { scale: 0.03, center: 0.4, effect: "none" });
       expect(screen.getByTestId("photo-card-subtitle-effect-note").textContent).toContain("효과 없이");
+    });
+
+    /** CLI Round 1265: 새 배경 효과 3개. 글자는 처음부터 보이고, 어두워짐 칸은 번개 전용(서버가 새 효과에서 darkening 을 쓰지 않음). */
+    it.each([
+      ["cosmic", "성운"],
+      ["celestial_rays", "빛줄기"],
+      ["ocean_wave", "물결"],
+    ] as const)("reports %s explicitly, says what it does, and offers no darkening for it", (effect, word) => {
+      const onChange = renderFieldset(TWO_PART, { scale: 0.03, center: 0.4 });
+      fireEvent.change(screen.getByTestId("photo-card-subtitle-effect"), { target: { value: effect } });
+      expect(onChange).toHaveBeenCalledWith({ scale: 0.03, center: 0.4, effect });
+      cleanup();
+      renderFieldset(TWO_PART, { scale: 0.03, center: 0.4, effect });
+      const note = screen.getByTestId("photo-card-subtitle-effect-note").textContent ?? "";
+      expect(note).toContain(word);
+      expect(note).toContain("글자는 처음부터 함께 보이고");
+      expect(screen.queryByTestId("photo-card-subtitle-darkening")).toBeNull();
     });
 
     it("cannot be changed while the merge is busy", () => {

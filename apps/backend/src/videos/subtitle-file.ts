@@ -1,5 +1,5 @@
 import { assColour, type CardSubtitleColors } from "./card-palette.js";
-import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_DARKENING, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO, PHOTO_CARD_SUBTITLE_SHADOW, SCENE_SUBTITLE_OUTLINE, SCENE_SUBTITLE_SHADOW, photoCardSubtitleGeometry, sceneSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_SUBTITLE_LAYOUT, DEFAULT_SCENE_SUBTITLE_LAYOUT, PHOTO_CARD_DARKENING, PHOTO_CARD_SUBTITLE_DROP_ALPHA, PHOTO_CARD_SUBTITLE_DROP_Y_RATIO, PHOTO_CARD_SUBTITLE_GLOW_ALPHA, PHOTO_CARD_SUBTITLE_GLOW_BLUR_RATIO, PHOTO_CARD_SUBTITLE_GLOW_BORDER_RATIO, PHOTO_CARD_SUBTITLE_OUTLINE, PHOTO_CARD_SUBTITLE_QUOTE_SPACING_RATIO, PHOTO_CARD_SUBTITLE_SHADOW, SCENE_SUBTITLE_OUTLINE, SCENE_SUBTITLE_SHADOW, photoCardSubtitleGeometry, sceneSubtitleGeometry, splitPhotoCardSubtitle, type PhotoCardEffect, type PhotoCardSubtitleLayout, type SceneSubtitleLayout } from "@ai-animation-studio/shared";
 
 /**
  * The families the subtitles name, exported so the guard that checks `fonts/` reads them from here rather than
@@ -38,6 +38,9 @@ const PHOTO_CARD_LIGHTNING = {
   dimStart: 0.38, dimPeak: 0.55, dimEnd: 3.0,
   bloomEnd: 0.90,
 } as const;
+
+/** Full-frame background treatments run while the quote is already visible. */
+const PHOTO_CARD_ATMOSPHERE = { maxSeconds: 3.6 } as const;
 
 /** ASS timestamp: H:MM:SS.CC (centiseconds), per the format's fixed field widths. Exported so the news reel
  * card builds its cues with the same clock rather than a second copy of this arithmetic. */
@@ -213,7 +216,11 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
   const strikeSize = heading !== undefined ? headSize : bodySize;
   const strikeText = heading ?? body[0];
   const strikeStyle = heading !== undefined ? "Quote" : "Body";
-  const strike = reveal && strikeText && (card.effect ?? "lightning") === "lightning" && durationSeconds > PHOTO_CARD_LIGHTNING.afterglowEnd
+  const effect = card.effect ?? "lightning";
+  const atmosphere = reveal && effect !== "lightning" && effect !== "none" && durationSeconds > 0
+    ? photoCardAtmosphereCues(effect, width, height, Math.min(durationSeconds, PHOTO_CARD_ATMOSPHERE.maxSeconds))
+    : [];
+  const strike = reveal && strikeText && effect === "lightning" && durationSeconds > PHOTO_CARD_LIGHTNING.afterglowEnd
     ? photoCardLightningCues(strikeStyle, strikeText, centerX, strikeY, strikeSize, width, height, durationSeconds, card.darkening)
     : [];
   return [
@@ -232,6 +239,7 @@ function photoCardSubtitleAss(text: string, durationSeconds: number, width: numb
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ...strike,
+    ...atmosphere,
     ...(heading !== undefined ? cues("Quote", headSize, headingY, heading) : []),
     // One positioned cue per line rather than one `\N` cue, which is what lets them arrive in turn. A single
     // line reveals at 0 and renders exactly where the one static cue put it — there is nothing to sequence.
@@ -308,6 +316,88 @@ function lightningShape(seed: string, x: number, y: number, size: number, width:
   return { main, branches };
 }
 
+function ellipseRibbon(cx: number, cy: number, rx: number, ry: number, thickness: number): string {
+  const points: Point[] = Array.from({ length: 73 }, (_, index) => {
+    const angle = (index / 72) * Math.PI * 2;
+    return [cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry];
+  });
+  return ribbon(points, thickness, thickness);
+}
+
+function polygon(points: Point[]): string {
+  return `m ${Math.round(points[0]![0])} ${Math.round(points[0]![1])} l ${points.slice(1).map(([x, y]) => `${Math.round(x)} ${Math.round(y)}`).join(" ")}`;
+}
+
+function ellipse(cx: number, cy: number, rx: number, ry: number, steps = 64): string {
+  const points = Array.from({ length: steps }, (_, index) => {
+    const angle = (index / steps) * Math.PI * 2;
+    return [cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry] as Point;
+  });
+  return polygon([...points, points[0]!]);
+}
+
+/**
+ * Scale-first treatments: the image gets broad moving forms and depth while the quote remains on screen.
+ */
+function photoCardAtmosphereCues(effect: Exclude<PhotoCardEffect, "lightning" | "none">, width: number, height: number, end: number): string[] {
+  const durationMs = Math.round(end * 1000);
+  const event = (start: number, stop: number, overrides: string, drawing: string) =>
+    `Dialogue: 0,${timestamp(start)},${timestamp(stop)},Body,,0,0,0,,{\\an7\\pos(0,0)\\p1\\bord0\\shad0${overrides}}${drawing}`;
+  const frame = (shape: string, color: string, alpha: number, blur: number, transform: string) =>
+    event(0, end, `\\1c${color}\\1a&H${alpha.toString(16).padStart(2, "0").toUpperCase()}&\\blur${blur}${transform}`, shape);
+  const cx = width / 2;
+  const cy = height / 2;
+  const fade = `\\t(0,${durationMs},\\1a&HFF&)`;
+
+  if (effect === "cosmic") {
+    const planet = ellipse(width * 0.67, height * 0.50, width * 0.48, height * 0.31);
+    const ring = ellipseRibbon(cx, cy, width * 0.67, height * 0.25, height * 0.026);
+    const orbit = ellipseRibbon(cx, cy, width * 0.52, height * 0.41, height * 0.008);
+    const stars = Array.from({ length: 15 }, (_, index) => {
+      const x = ((index * 67 + 31) % 97) / 97 * width;
+      const y = ((index * 43 + 19) % 89) / 89 * height;
+      const size = Math.max(2, Math.round(height * (index % 4 === 0 ? 0.009 : 0.004)));
+      return polygon([[x - size, y], [x, y - size * 2], [x + size, y], [x, y + size * 2]]);
+    }).join(" ");
+    return [
+      frame(planet, "&H00734AD8", 0x34, Math.round(height * 0.008), `\\org(${width * 0.67},${height * 0.50})\\frz-4\\t(0,${durationMs},\\frz4)${fade}`),
+      frame(ring, "&H00D8F2FF", 0x38, Math.round(height * 0.014), `\\org(${cx},${cy})\\frz-18\\t(0,${durationMs},\\frz18)${fade}`),
+      frame(orbit, "&H00E8C58A", 0x50, Math.round(height * 0.007), `\\org(${cx},${cy})\\frz24\\t(0,${durationMs},\\frz-12)${fade}`),
+      frame(stars, "&H00FFFFFF", 0x20, Math.max(1, Math.round(height * 0.002)), `\\org(${cx},${cy})\\frz-3\\t(0,${durationMs},\\frz3)${fade}`),
+    ];
+  }
+
+  if (effect === "celestial_rays") {
+    const source: Point = [width * 0.52, height * 0.18];
+    const rays = [-0.58, -0.28, 0.08, 0.39, 0.64].map((offset, index) => {
+      const spread = width * (0.12 + (index % 2) * 0.045);
+      const x = source[0] + offset * width;
+      return polygon([[x - spread * 0.10, source[1]], [x + spread * 0.10, source[1]], [x + spread, height * 1.12], [x - spread, height * 1.12]]);
+    });
+    return rays.map((shape, index) => frame(shape, "&H0073BFFF", 0x60 + (index % 2) * 0x10, Math.round(height * 0.026),
+      `\\org(${cx},${cy})\\frz${(index - 2) * 1.5}\\t(0,${durationMs},\\frz${(2 - index) * 1.5})${fade}`));
+  }
+
+  if (effect === "ocean_wave") {
+    const wave = (baseY: number, phase: number, amplitude: number): Point[] =>
+      Array.from({ length: 65 }, (_, index) => {
+        const x = (index / 64) * width;
+        const y = baseY + Math.sin((index / 64) * Math.PI * 2 + phase) * amplitude;
+        return [x, y];
+      });
+    const high = ribbon(wave(height * 0.57, 0.35, height * 0.14), height * 0.17, height * 0.05);
+    const mid = ribbon(wave(height * 0.70, 2.25, height * 0.11), height * 0.075, height * 0.025);
+    const foam = ribbon(wave(height * 0.59, 0.35, height * 0.14), height * 0.008, height * 0.002);
+    return [
+      frame(high, "&H00A86C25", 0x40, Math.round(height * 0.026), `\\org(${cx},${cy})\\frz-2\\t(0,${durationMs},\\frz2)${fade}`),
+      frame(mid, "&H00E89B45", 0x50, Math.round(height * 0.014), `\\org(${cx},${cy})\\frz2\\t(0,${durationMs},\\frz-2)${fade}`),
+      frame(foam, "&H00FFF4DA", 0x64, Math.round(height * 0.006), `\\org(${cx},${cy})\\frz-2\\t(0,${durationMs},\\frz2)${fade}`),
+    ];
+  }
+
+  return [];
+}
+
 /** The first picture's strike, flash and dim recovery. Later pictures already show the settled card. */
 function photoCardLightningCues(style: "Quote" | "Body", content: string, x: number, y: number, size: number, width: number, height: number, durationSeconds: number, darkening: number = PHOTO_CARD_DARKENING.default): string[] {
   const light = PHOTO_CARD_LIGHTNING;
@@ -316,12 +406,23 @@ function photoCardLightningCues(style: "Quote" | "Body", content: string, x: num
     `Dialogue: ${layer},${timestamp(start)},${timestamp(end)},${style},,0,0,0,,{${overrides}}${drawing}`;
   const draw = "\\an7\\pos(0,0)\\p1\\bord0\\shad0";
   const frame = `m 0 0 l ${width} 0 l ${width} ${height} l 0 ${height}`;
-  const { main, branches } = lightningShape(content, x, y, size, width, height);
-  const coreWidth = Math.max(2, size * 0.09);
-  const mainCore = ribbon(main, coreWidth * 0.7, coreWidth * 1.2);
-  const branchCore = branches.map((branch) => ribbon(branch, coreWidth * 0.85, 0.5)).join(" ");
+  const bolts = [
+    { seed: content, x, y, size },
+    { seed: `${content}:left`, x: width * 0.20, y: height * 0.86, size: size * 0.9 },
+    { seed: `${content}:right`, x: width * 0.80, y: height * 0.80, size: size * 0.78 },
+  ].map((strike, index) => {
+    const { main, branches } = lightningShape(strike.seed, strike.x, strike.y, strike.size, width, height);
+    const coreWidth = Math.max(2, strike.size * (index === 0 ? 0.09 : 0.06));
+    return {
+      main: ribbon(main, coreWidth * 0.7, coreWidth * 1.2),
+      branches: branches.map((branch) => ribbon(branch, coreWidth * 0.85, 0.5)).join(" "),
+      bloom: ribbon(main, strike.size * (index === 0 ? 1.6 : 0.45), strike.size * (index === 0 ? 1.6 : 0.45)),
+      side: index > 0,
+    };
+  });
+  const allMainCores = bolts.map(({ main }) => main).join(" ");
+  const allBranchCores = bolts.map(({ branches }) => branches).join(" ");
   const out: string[] = [];
-  const channelBloom = ribbon(main, size * 1.6, size * 1.6);
 
   // A lower layer darkens the whole still, then eases back to its original brightness.
   const dimEnd = Math.min(light.dimEnd, durationSeconds);
@@ -337,23 +438,26 @@ function photoCardLightningCues(style: "Quote" | "Body", content: string, x: num
   // Faint stepped leader growing down from the top edge.
   out.push(event(4, light.leaderStart, light.leaderEnd,
     `${draw}\\blur1\\1c&HFFFFFF&\\1a&HB0&\\clip(0,0,${width},0)\\t(\\clip(0,0,${width},${Math.round(y)}))`,
-    `${mainCore} ${branchCore}`));
+    `${allMainCores} ${allBranchCores}`));
 
   light.strokes.forEach(([start, end, alpha], index) => {
     const strokeAlpha = (value: number) => `&H${Math.min(255, value + alpha).toString(16).padStart(2, "0").toUpperCase()}&`;
-    const shape = index === 0 ? `${mainCore} ${branchCore}` : mainCore;
     const flashFade = index === 0 ? "\\t(40,100,\\1a&HD8&)" : "";
     out.push(event(1, start, end, `${draw}\\1c&HE8F6FF&\\1a&H${light.flashAlpha[index]!.toString(16).toUpperCase()}&${flashFade}`, frame));
     const bloomAlpha = [0x90, 0xb0, 0xc8][index]!;
-    out.push(event(2, start, end, `${draw}\\blur${Math.round(size * 1.4)}\\1c&HD8EEFF&\\1a&H${bloomAlpha.toString(16).toUpperCase()}&`, channelBloom));
-    out.push(event(4, start, end, `${draw}\\blur${Math.round(size * 0.6)}\\1c&HB8E6FF&\\1a${strokeAlpha(0x50)}`, shape));
-    out.push(event(5, start, end, `${draw}\\blur${Math.round(size * 0.12)}\\1c&HE8F6FF&\\1a${strokeAlpha(0x20)}`, shape));
-    out.push(event(6, start, end, `${draw}\\blur1\\1c&HFFFFFF&\\1a${strokeAlpha(0)}`, shape));
+    bolts.forEach(({ main, branches, bloom, side }) => {
+      const shape = index === 0 ? `${main} ${branches}` : main;
+      const sideAlpha = side ? 0x38 : 0;
+      out.push(event(2, start, end, `${draw}\\blur${Math.round(size * (side ? 0.5 : 1.4))}\\1c&HD8EEFF&\\1a&H${Math.min(255, bloomAlpha + sideAlpha).toString(16).toUpperCase()}&`, bloom));
+      out.push(event(4, start, end, `${draw}\\blur${Math.round(size * (side ? 0.3 : 0.6))}\\1c&HB8E6FF&\\1a${strokeAlpha(0x50 + sideAlpha)}`, shape));
+      out.push(event(5, start, end, `${draw}\\blur${Math.round(size * 0.12)}\\1c&HE8F6FF&\\1a${strokeAlpha(0x20 + sideAlpha)}`, shape));
+      out.push(event(6, start, end, `${draw}\\blur1\\1c&HFFFFFF&\\1a${strokeAlpha(sideAlpha)}`, shape));
+    });
   });
 
   const lastStrokeEnd = light.strokes.at(-1)![1];
   out.push(event(5, lastStrokeEnd, light.afterglowEnd,
-    `${draw}\\blur${Math.round(size * 0.1)}\\1c&HD0EEFF&\\1a&H60&\\t(\\1a&HFF&)`, mainCore));
+    `${draw}\\blur${Math.round(size * 0.1)}\\1c&HD0EEFF&\\1a&H60&\\t(\\1a&HFF&)`, allMainCores));
   // A white hit briefly blooms over the glyphs, then reveals their original sampled colours again.
   out.push(event(3, light.strokes[0]![0], light.bloomEnd,
     `\\an5\\pos(${x},${y})\\1c&HFFFFFF&\\3c&HB8E6FF&\\bord${Math.round(size * 0.06)}\\blur${Math.round(size * 0.25)}\\shad0\\1a&H00&\\3a&H40&\\t(0.5,\\1a&HFF&\\3a&HFF&)`,

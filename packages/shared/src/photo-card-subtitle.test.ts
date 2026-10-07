@@ -95,8 +95,11 @@ describe("photo card subtitle bounds", () => {
   });
 
   it("publishes the supported photo card effects", () => {
-    expect(PHOTO_CARD_EFFECTS).toEqual(["lightning", "none"]);
+    expect(PHOTO_CARD_EFFECTS).toEqual(["lightning", "cosmic", "celestial_rays", "ocean_wave", "none"]);
     expect(isPhotoCardEffect("lightning")).toBe(true);
+    expect(isPhotoCardEffect("cosmic")).toBe(true);
+    expect(isPhotoCardEffect("celestial_rays")).toBe(true);
+    expect(isPhotoCardEffect("ocean_wave")).toBe(true);
     expect(isPhotoCardEffect("none")).toBe(true);
     expect(isPhotoCardEffect("sparkles")).toBe(false);
   });

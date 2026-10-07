@@ -928,13 +928,13 @@ export interface PhotoCardSubtitleLayout {
   scale: number;
   /** Vertical centre of the whole text block as a fraction of frame height. */
   center: number;
-  /** First-picture entrance effect. Missing on older cards means the original default: lightning. */
+  /** First-picture background treatment. Missing on older cards means the original default: lightning. */
   effect?: PhotoCardEffect;
   /** Opacity of the black after-strike dim layer, as a percentage. Missing on older cards keeps 44%. */
   darkening?: number;
 }
 
-export const PHOTO_CARD_EFFECTS = ["lightning", "none"] as const;
+export const PHOTO_CARD_EFFECTS = ["lightning", "cosmic", "celestial_rays", "ocean_wave", "none"] as const;
 export type PhotoCardEffect = (typeof PHOTO_CARD_EFFECTS)[number];
 /** Missing effect values are interpreted as lightning, preserving old stored cards and current clients. */
 export const DEFAULT_PHOTO_CARD_EFFECT: PhotoCardEffect = "lightning";

@@ -82,6 +82,29 @@ describe("StillMotionFieldset", () => {
     expect(screen.getByTestId("merge-still-motion-preview-stale-layout").textContent).toContain("자막");
   });
 
+  /** CLI Round 1265: 효과도 미리보기에 구워집니다 — 효과만 바꿔도 보고 있는 영상은 옛 효과라고 말하고, 요청에는 고른 효과를 그대로 싣습니다. */
+  it("sends the unsaved effect with the preview and calls the preview stale once only the effect changes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(videoResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const view = render(<StillMotionFieldset projectId="card" motions={["still"]} onChange={() => {}} subtitleLayout={{ scale: 0.03, center: 0.6, effect: "ocean_wave" }} />);
+    fireEvent.click(screen.getByTestId("merge-still-motion-preview-1"));
+    await screen.findByTestId("merge-still-motion-player");
+    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    expect(JSON.parse(String(init.body)).subtitleLayout).toEqual({ scale: 0.03, center: 0.6, effect: "ocean_wave" });
+    expect(screen.queryByTestId("merge-still-motion-preview-stale-layout")).toBeNull();
+    view.rerender(<StillMotionFieldset projectId="card" motions={["still"]} onChange={() => {}} subtitleLayout={{ scale: 0.03, center: 0.6, effect: "cosmic" }} />);
+    expect(screen.getByTestId("merge-still-motion-preview-stale-layout").textContent).toContain("효과");
+  });
+
+  it("does not call a preview stale when a missing effect becomes the lightning it already meant", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(videoResponse()));
+    const view = render(<StillMotionFieldset projectId="card" motions={["still"]} onChange={() => {}} subtitleLayout={{ scale: 0.03, center: 0.6 }} />);
+    fireEvent.click(screen.getByTestId("merge-still-motion-preview-1"));
+    await screen.findByTestId("merge-still-motion-player");
+    view.rerender(<StillMotionFieldset projectId="card" motions={["still"]} onChange={() => {}} subtitleLayout={{ scale: 0.03, center: 0.6, effect: "lightning" }} />);
+    expect(screen.queryByTestId("merge-still-motion-preview-stale-layout")).toBeNull();
+  });
+
   it("says the preview failed in its own words", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "FFMPEG_UNAVAILABLE", message: "raw C:/x" }), { status: 503, headers: { "content-type": "application/json" } })));
     render(<StillMotionFieldset projectId="card" motions={["still"]} onChange={() => {}} />);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { STILL_MOTIONS, type PhotoCardSubtitleLayout, type SceneNumber, type StillMotion } from "@ai-animation-studio/shared";
+import { DEFAULT_PHOTO_CARD_EFFECT, PHOTO_CARD_DARKENING, STILL_MOTIONS, type PhotoCardSubtitleLayout, type SceneNumber, type StillMotion } from "@ai-animation-studio/shared";
 
 import { previewStillMotion, toVideoMergeDisplayError } from "../api/videoMergeApi.js";
 import { sceneImageContentUrl } from "../api/videoWorkflowApi.js";
@@ -53,8 +53,11 @@ export function StillMotionFieldset({ projectId, motions, onChange, subtitleLayo
     mounted.current = true;
     return () => { mounted.current = false; releaseUrl(); };
   }, []);
-  /* 미리보기에 실은 자막 크기·위치 — 그 뒤 슬라이더를 움직이면 미리보기가 낡았다고 말하려고 기억합니다. */
-  const layoutKey = subtitleLayout ? `${subtitleLayout.scale}|${subtitleLayout.center}` : "";
+  /* 미리보기에 실은 자막 크기·위치·효과·어두워짐 — 그 뒤 하나라도 바꾸면 미리보기가 낡았다고 말하려고 기억합니다.
+     (효과는 미리보기에 함께 구워지므로, 효과만 바꿔도 보고 있는 영상은 옛 효과입니다.) 빈 값은 서버가 읽는 기본값으로 맞춥니다. */
+  const layoutKey = subtitleLayout
+    ? `${subtitleLayout.scale}|${subtitleLayout.center}|${subtitleLayout.effect ?? DEFAULT_PHOTO_CARD_EFFECT}|${subtitleLayout.darkening ?? PHOTO_CARD_DARKENING.default}`
+    : "";
 
   const rendering = preview.status === "rendering";
 
@@ -138,7 +141,7 @@ export function StillMotionFieldset({ projectId, motions, onChange, subtitleLayo
             사진 {preview.index + 1} · {STILL_MOTION_LABELS[preview.motion]} — 소리 없는 미리보기입니다.
             {motions[preview.index] !== preview.motion && <span className="text-amber-300"> 그 뒤로 움직임을 바꾸셨습니다 — 다시 눌러 보세요.</span>}
             {motions[preview.index] === preview.motion && preview.layoutKey !== layoutKey && (
-              <span data-testid="merge-still-motion-preview-stale-layout" className="text-amber-300"> 그 뒤로 자막 크기·위치를 바꾸셨습니다 — 다시 눌러 보세요.</span>
+              <span data-testid="merge-still-motion-preview-stale-layout" className="text-amber-300"> 그 뒤로 자막 크기·위치나 효과를 바꾸셨습니다 — 다시 눌러 보세요.</span>
             )}
           </p>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- a silent local preview, nothing to caption */}

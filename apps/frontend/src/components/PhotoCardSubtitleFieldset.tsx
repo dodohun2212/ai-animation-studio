@@ -56,7 +56,24 @@ const sameLayout = (a: PhotoCardSubtitleLayout, b: PhotoCardSubtitleLayout): boo
   a.scale === b.scale && a.center === b.center && effectOf(a) === effectOf(b) && darkeningOf(a) === darkeningOf(b);
 
 /** 첫 사진에 들어가는 효과의 이름. 목록은 공유 PHOTO_CARD_EFFECTS 가 정하고, 여기는 화면에 쓰는 말만 둡니다. */
-const EFFECT_LABEL: Record<PhotoCardEffect, string> = { lightning: "번개", none: "없음" };
+const EFFECT_LABEL: Record<PhotoCardEffect, string> = {
+  lightning: "번개",
+  cosmic: "우주",
+  celestial_rays: "빛줄기",
+  ocean_wave: "파도",
+  none: "없음",
+};
+/**
+ * 효과마다 한 줄. 새 배경 효과 3개는 첫 사진에서 글자와 **같이** 시작합니다 — 배경이 끝나길 기다렸다가 글자가
+ * 나오는 게 아니라는 걸(캡틴D 가 정한 위계: 배경은 크기와 움직임으로 눈을 끌고, 글자는 처음부터 읽힘) 여기서 말합니다.
+ */
+const EFFECT_NOTE: Record<PhotoCardEffect, string> = {
+  lightning: "첫 사진에서 번개가 위에서 내리친 뒤, 화면이 잠깐 어두워졌다가 천천히 돌아옵니다. 움직임은 아래 움직임 미리보기에서 볼 수 있습니다.",
+  cosmic: "첫 사진 위로 거대한 성운과 행성 같은 형체가 천천히 흘러갑니다. 글자는 처음부터 함께 보이고, 움직임은 아래 움직임 미리보기에서 볼 수 있습니다.",
+  celestial_rays: "첫 사진 위로 커다란 빛줄기와 구름 띠가 천천히 쓸고 지나갑니다. 글자는 처음부터 함께 보이고, 움직임은 아래 움직임 미리보기에서 볼 수 있습니다.",
+  ocean_wave: "첫 사진 위로 큰 물결과 잔물결이 굽이치며 지나갑니다. 글자는 처음부터 함께 보이고, 움직임은 아래 움직임 미리보기에서 볼 수 있습니다.",
+  none: "효과 없이 글자만 차례로 나타납니다.",
+};
 
 /** §3.2 입력 필드 — select 도 같은 입력 표면입니다. */
 const selectField =
@@ -397,13 +414,11 @@ export function PhotoCardSubtitleFieldset({ projectId, quote, aspectRatio, layou
               ))}
             </select>
             <p className="mt-1.5 text-xs text-slate-500" data-testid="photo-card-subtitle-effect-note">
-              {effectOf(layout) === "lightning"
-                ? "첫 사진에서 번개가 위에서 내리친 뒤, 화면이 잠깐 어두워졌다가 천천히 돌아옵니다. 움직임은 아래 움직임 미리보기에서 볼 수 있습니다."
-                : "효과 없이 글자만 차례로 나타납니다."}
+              {EFFECT_NOTE[effectOf(layout)]}
             </p>
           </div>
 
-          {/* 번개 뒤에 사진이 얼마나 어두워지는지. 번개가 없으면 어두워짐도 없어서(서버가 그 cue 를 만들지 않습니다) 칸도 없습니다. */}
+          {/* 번개 뒤에 사진이 얼마나 어두워지는지. 번개가 아니면(없음·우주·빛줄기·파도) 서버가 darkening 을 쓰지 않아서 칸도 없습니다. */}
           {effectOf(layout) === "lightning" && (
             <div>
               <label className={label} htmlFor="photo-card-subtitle-darkening">

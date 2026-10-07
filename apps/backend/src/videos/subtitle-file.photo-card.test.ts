@@ -87,8 +87,8 @@ describe("photo card subtitles", () => {
     expect(ass).toContain("\\1c&HD8EEFF&");
     expect(ass).toContain("\\1a&HA8&\\t(40,100,\\1a&HD8&)");
     const bloomLines = ass.split("\n").filter((line) => line.startsWith("Dialogue: 2,"));
-    expect(bloomLines).toHaveLength(3);
-    expect(bloomLines.map((line) => line.match(/\\1a&(H[0-9A-F]+&)/)?.[1])).toEqual(["H90&", "HB0&", "HC8&"]);
+    expect(bloomLines).toHaveLength(9); // three timed strikes across the whole picture
+    expect(bloomLines.filter((line) => line.includes("\\1a&H90&"))).toHaveLength(1);
     expect(bloomLines.every((line) => /\\blur\d+\\1c&HD8EEFF&/.test(line))).toBe(true);
     expect(ass).toContain("\\1c&HFFFFFF&");
     expect(ass).not.toContain("&HFFCC66&");
@@ -120,6 +120,16 @@ describe("photo card subtitles", () => {
     expect(none).toContain("Dialogue: 1,0:00:01.25,0:00:05.00,Body");
     const old = sceneSubtitleAss("한 줄", 5, WIDTH, HEIGHT, "photo-card", { card: { scale: 0.027, center: 0.4 } });
     expect(old).toContain("Dialogue: 1,0:00:00.08,0:00:00.18,Body");
+  });
+
+  it.each(["cosmic", "celestial_rays", "ocean_wave"] as const)("draws %s behind already visible text on only the first picture", (effect) => {
+    const layout = { card: { scale: 0.027, center: 0.4, effect, darkening: 80 } };
+    const first = sceneSubtitleAss("권토중래", 1, WIDTH, HEIGHT, "photo-card", layout);
+    const later = sceneSubtitleAss("권토중래", 1, WIDTH, HEIGHT, "photo-card", layout, undefined, false);
+    expect(first).toContain("Dialogue: 0,0:00:00.00,0:00:01.00,Body,,0,0,0,,{\\an7\\pos(0,0)\\p1");
+    expect(first).toContain("Dialogue: 1,0:00:00.00,0:00:01.00,Body");
+    expect(first).not.toContain("Dialogue: 0,0:00:00.38"); // lightning-only dimming
+    expect(later).not.toContain("\\p1");
   });
 
   it("clamps the picture dimming recovery cue to short card durations", () => {
