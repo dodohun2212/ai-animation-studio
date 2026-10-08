@@ -10,6 +10,7 @@ import {
 
 import { getMemeTrends, refreshMemeTrends, toMemeTrendDisplayError } from "../api/memeTrendsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
+import { MemeObservationPanel } from "./MemeObservationPanel.js";
 import { Spinner } from "./Spinner.js";
 import { outlineButton, smallOutlineButton } from "./ui/surfaces.js";
 
@@ -193,6 +194,8 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings }: Props) {
       )}
 
       {selected && feed?.collectedAt && <TrendDetail trend={selected} />}
+      {/* ② 관찰 카드 — 후보마다 따로 저장되므로 후보가 바뀌면 새로 엽니다(key). 열 때는 저장본만 읽습니다. */}
+      {selected && feed?.collectedAt && <MemeObservationPanel key={selected.id} trend={selected} onOpenSettings={onOpenSettings} />}
 
       <p className="mt-9 border-t border-line pt-3 text-[11px] text-bone-faint">
         조회수는 YouTube가 준 값을 그대로, 읽은 시각과 함께 적습니다. 점수를 매기거나 다른 출처의 숫자를 더하지 않습니다.

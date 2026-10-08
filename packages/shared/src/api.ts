@@ -3706,6 +3706,9 @@ export const API_ROUTES = {
   health: "/health",
   memeTrends: "/trends/memes",
   memeTrendsRefresh: "/trends/memes/refresh",
+  memeTrendWorkspace: (trendId: string) => `/trends/memes/${encodeURIComponent(trendId)}/workspace`,
+  memeTrendAnalysis: (trendId: string) => `/trends/memes/${encodeURIComponent(trendId)}/analysis`,
+  memeTrendCards: (trendId: string) => `/trends/memes/${encodeURIComponent(trendId)}/cards`,
   projects: "/projects",
   longProjects: "/long-projects",
   longProjectStoryBible: (projectId: string) =>

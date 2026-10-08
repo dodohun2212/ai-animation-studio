@@ -44,6 +44,13 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 공통 DTO와 검증 함수는 `packages/shared/src/trend.ts`, route helper는 `API_ROUTES`에 있다. 각 영상의 `viewCount`는 API에 없으면 `null`; `viewCountObservedAt`은 그 값을 읽은 시각이다. 과거 같은 영상의 숫자가 있을 때만 `previousViewCount`와 `previousViewCountObservedAt`을 함께 보낸다. 수집 실패는 저장된 목록을 지우지 않는다(단, 수집 후 30일이 된 메타데이터는 정책에 맞춰 삭제한다). `MEME_TREND_KEY_MISSING`은 YouTube 키 설정, `MEME_TREND_QUOTA_EXCEEDED`는 할당량 종료, `MEME_TREND_SOURCE_FAILED`는 출처 실패, `MEME_TREND_STORE_UNREADABLE`은 저장 파일 문제를 구분한다. 키는 `ProviderCredentialKind`의 `youtube`로만 저장하며 응답에 실리지 않는다.
 
+## 밈 관찰 작업 공간
+
+`GET /trends/memes/:trendId/workspace`는 현재 피드에 있는 후보의 저장된 `MemeTrendWorkspace`만 읽는다. `POST /trends/memes/:trendId/analysis`는 그 후보의 `videos[]`에 속한 `sourceVideoId` 한 편을 명시적으로 Gemini에 보낸다. 성공하고 JSON을 검증한 경우에만 마지막 `analysis`를 교체하며, 사람이 저장한 `cards`는 바꾸지 않는다. `PUT /trends/memes/:trendId/cards`는 `expectedCardsSavedAt`으로 동시 편집을 확인하고 카드만 저장한다. 카드 추가·수정·조회에는 Provider 호출이 없다.
+
+영상 분석은 별도 `meme_analysis_call_usage.json`에 요청 **전에** 1회를 기록한다. 하루 최대 3회이며 실제 전송 뒤 실패해도 1회를 쓴다. 실패 시 기존 분석과 카드는 남고 `MEME_ANALYSIS_FAILED`의 `details.dailyCalls`가 새 횟수를 알린다. 장부가 읽히지 않으면 전송하지 않는다. 키 누락, 현재 후보 밖 영상, 카드 형식·충돌, 작업 공간 저장 오류는 각각 `MEME_ANALYSIS_KEY_MISSING`, `MEME_ANALYSIS_VIDEO_NOT_IN_TREND`, `MEME_CARDS_INVALID`, `MEME_CARDS_CONFLICT`, `MEME_WORKSPACE_STORE_UNREADABLE`로 구분한다. 현재 피드에서 빠진 후보는 `MEME_TREND_UNKNOWN`이지만 사람이 적은 카드 파일을 지우지 않는다. 저장 파일에는 YouTube 조회수·제목 등의 메타데이터를 복사하지 않는다.
+
+
 ## 대표 Route (예시, 전체 목록 아님)
 
 마이그레이션 초기에 작성된 예시 목록이다. 지금은 단기·장기 프로젝트, Story,

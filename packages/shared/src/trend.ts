@@ -39,9 +39,68 @@ export interface MemeTrendFeedResponse {
   trends: MemeTrend[];
 }
 
+export const MEME_OBSERVATION_KINDS = ["line", "gesture", "timing"] as const;
+export type MemeObservationKind = (typeof MEME_OBSERVATION_KINDS)[number];
+export const MEME_OBSERVATION_LIMITS = { textMax: 200, cardsMax: 20, secondsMax: 600 } as const;
+
+interface MemeObservationBase {
+  kind: MemeObservationKind;
+  text: string;
+  startSeconds: number | null;
+  endSeconds: number | null;
+}
+
+export interface MemeAnalysisSuggestion extends MemeObservationBase { id: string }
+export interface MemeTrendAnalysis {
+  sourceVideoId: string;
+  provider: "gemini";
+  model: string;
+  analyzedAt: string;
+  suggestions: MemeAnalysisSuggestion[];
+}
+export interface MemeObservationCard extends MemeObservationBase {
+  id: string;
+  origin: "suggestion" | "manual";
+  suggestionId?: string;
+  sourceVideoId: string | null;
+}
+export interface MemeAnalysisDailyCalls { used: number; limit: number }
+export interface MemeTrendWorkspace {
+  trendId: string;
+  analysis: MemeTrendAnalysis | null;
+  cards: MemeObservationCard[];
+  cardsSavedAt: string | null;
+  dailyCalls: MemeAnalysisDailyCalls | null;
+}
+export interface AnalyzeMemeVideoRequest { sourceVideoId: string }
+export interface SaveMemeObservationCardsRequest {
+  cards: Array<Omit<MemeObservationCard, "id"> & { id?: string }>;
+  expectedCardsSavedAt: string | null;
+}
+
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 const iso = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
+const observationBase = (value: unknown): value is MemeObservationBase => record(value)
+  && MEME_OBSERVATION_KINDS.some((kind) => kind === value.kind)
+  && typeof value.text === "string" && value.text.trim().length > 0 && value.text.length <= MEME_OBSERVATION_LIMITS.textMax
+  && (value.startSeconds === null || (typeof value.startSeconds === "number" && Number.isFinite(value.startSeconds) && value.startSeconds >= 0 && value.startSeconds <= MEME_OBSERVATION_LIMITS.secondsMax && Math.round(value.startSeconds * 10) === value.startSeconds * 10))
+  && (value.endSeconds === null || (typeof value.endSeconds === "number" && Number.isFinite(value.endSeconds) && value.endSeconds >= 0 && value.endSeconds <= MEME_OBSERVATION_LIMITS.secondsMax && Math.round(value.endSeconds * 10) === value.endSeconds * 10))
+  && (value.startSeconds === null || value.endSeconds === null || value.endSeconds >= value.startSeconds);
+
+export function isMemeTrendWorkspace(value: unknown): value is MemeTrendWorkspace {
+  if (!record(value)) return false;
+  const analysis = value.analysis;
+  return typeof value.trendId === "string"
+    && (analysis === null || (record(analysis) && typeof analysis.sourceVideoId === "string" && analysis.provider === "gemini" && typeof analysis.model === "string" && iso(analysis.analyzedAt)
+      && Array.isArray(analysis.suggestions) && analysis.suggestions.length <= MEME_OBSERVATION_LIMITS.cardsMax
+      && analysis.suggestions.every((item: unknown) => record(item) && observationBase(item) && typeof item.id === "string")))
+    && Array.isArray(value.cards) && value.cards.length <= MEME_OBSERVATION_LIMITS.cardsMax
+    && value.cards.every((item: unknown) => record(item) && observationBase(item) && typeof item.id === "string" && (item.origin === "manual" || item.origin === "suggestion")
+      && (item.sourceVideoId === null || typeof item.sourceVideoId === "string") && (item.suggestionId === undefined || typeof item.suggestionId === "string"))
+    && (value.cardsSavedAt === null || iso(value.cardsSavedAt))
+    && (value.dailyCalls === null || (record(value.dailyCalls) && count(value.dailyCalls.used) && count(value.dailyCalls.limit)));
+}
 
 function isMemeTrendVideo(value: unknown): value is MemeTrendVideo {
   if (!record(value)) return false;

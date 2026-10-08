@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isMemeTrendFeedResponse } from "./trend.js";
+import { isMemeTrendFeedResponse, isMemeTrendWorkspace } from "./trend.js";
 
 const observedAt = "2026-10-08T00:00:00.000Z";
 const trend = {
@@ -21,5 +21,19 @@ describe("meme trend response guards", () => {
     expect(isMemeTrendFeedResponse(feed)).toBe(true);
     expect(isMemeTrendFeedResponse({ ...feed, trends: [{ ...trend, videos: [{ ...trend.videos[0], previousViewCount: 10 }] }] })).toBe(false);
     expect(isMemeTrendFeedResponse({ ...feed, trends: [{ ...trend, videos: [{ ...trend.videos[0], viewCount: "0" }] }] })).toBe(false);
+  });
+});
+
+describe("meme observation workspace guard", () => {
+  const workspace = {
+    trendId: "니코니코니", analysis: null, cardsSavedAt: observedAt,
+    cards: [{ id: "card-1", kind: "gesture", text: "손을 든다", startSeconds: 2.5, endSeconds: 4, origin: "manual", sourceVideoId: null }],
+    dailyCalls: { used: 1, limit: 3 },
+  };
+
+  it("accepts saved manual cards and rejects malformed times or call counts", () => {
+    expect(isMemeTrendWorkspace(workspace)).toBe(true);
+    expect(isMemeTrendWorkspace({ ...workspace, cards: [{ ...workspace.cards[0], endSeconds: 1 }] })).toBe(false);
+    expect(isMemeTrendWorkspace({ ...workspace, dailyCalls: { used: "1", limit: 3 } })).toBe(false);
   });
 });
