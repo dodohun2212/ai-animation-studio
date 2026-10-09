@@ -83,6 +83,10 @@ function evidenceOf(video: YoutubeVideoItem): Array<{ kind: MemeTrendEvidence["k
   return [...evidence.values()].slice(0, 8);
 }
 
+function isGenericTrend(trend: MemeTrend): boolean {
+  return GENERIC_NAMES.has(trend.id.toLocaleLowerCase("ko-KR").replace(/[\s_]+/gu, ""));
+}
+
 function shortVideo(item: YoutubeVideoItem): boolean {
   const match = /^PT(?:(\d+)M)?(?:(\d+)S)?$/u.exec(item.contentDetails?.duration ?? "");
   if (!match) return false;
@@ -207,7 +211,9 @@ export class MemeTrendsService {
         await fs.unlink(this.cachePath);
         return { source: "youtube", regionCode: "KR", collectedAt: null, trends: [] };
       }
-      return data;
+      // Old cached feeds can still contain broad tags until the next explicit refresh.
+      // Hide only known generic names; do not rewrite the person's saved feed on a read.
+      return { ...data, trends: data.trends.filter((trend) => !isGenericTrend(trend)) };
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ENOENT") {
         return { source: "youtube", regionCode: "KR", collectedAt: null, trends: [] };

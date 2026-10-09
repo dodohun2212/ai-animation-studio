@@ -107,6 +107,20 @@ describe("meme trend discovery", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("hides broad names from an older saved feed without refreshing or changing its file", async () => {
+    const { root, settings } = await setup();
+    const cachePath = path.join(root, "meme_trends_youtube.json");
+    const concrete = groupMemeCandidates(sample, observedAt)[0]!;
+    const broad = { ...concrete, id: "memes", name: "memes" };
+    const saved = JSON.stringify({ source: "youtube", regionCode: "KR", collectedAt: observedAt, trends: [broad, concrete] });
+    await fs.writeFile(cachePath, saved, "utf8");
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const service = new MemeTrendsService(root, settings, fetchImpl, () => new Date("2026-10-09T00:00:00Z"));
+    expect((await service.get()).trends.map((trend) => trend.name)).toEqual(["니코니코니"]);
+    expect(await fs.readFile(cachePath, "utf8")).toBe(saved);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("refreshes with mocked metadata, remembers previous observations, and preserves cache on failure", async () => {
     const { root, settings } = await setup();
     await settings.save("youtube", { value: "mock-youtube-data-api-key" });
