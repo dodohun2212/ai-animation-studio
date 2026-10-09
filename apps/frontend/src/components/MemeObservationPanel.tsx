@@ -29,6 +29,8 @@ interface Props {
   /** 키가 없을 때 갈 곳 — Gemini 키 칸은 API 설정에 있습니다. */
   onOpenSettings: () => void;
   onProjectCreated: (project: Project) => void;
+  /** 저장된 카드 수가 알려질 때마다 — 화면 위 단계 띠가 「지금 몇 단계인가」를 말하는 데 씁니다. 미저장 입력은 세지 않습니다. */
+  onSavedCardCount?: (count: number) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -142,7 +144,7 @@ function editedFromSuggestion(card: DraftCard, suggestion: MemeAnalysisSuggestio
  * 성공해도 카드는 바뀌지 않고, 「카드로 가져오기」를 누른 것만 복사됩니다. 그래서 분석이 실패하거나 키가 없어도
  * 사람이 적어 둔 것은 그대로이고, **직접 적는 길이 언제나 열려 있습니다.**
  */
-export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated }: Props) {
+export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, onSavedCardCount }: Props) {
   const [workspace, setWorkspace] = useState<MemeTrendWorkspace | null>(null);
   const [loadError, setLoadError] = useState<DisplayError | null>(null);
   const [drafts, setDrafts] = useState<DraftCard[]>([]);
@@ -184,6 +186,9 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated }
       .catch((caught: unknown) => { if (!cancelled) setLoadError(toMemeTrendDisplayError(caught)); });
     return () => { cancelled = true; };
   }, [trend.id]);
+
+  const savedCardCount = workspace?.cards.length ?? null;
+  useEffect(() => { if (savedCardCount !== null) onSavedCardCount?.(savedCardCount); }, [savedCardCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const suggestionsById = useMemo(
     () => new Map((workspace?.analysis?.suggestions ?? []).map((item) => [item.id, item])),

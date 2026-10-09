@@ -15,6 +15,7 @@ import { getMemeTrends, refreshMemeTrends, toMemeTrendDisplayError } from "../ap
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { MemeObservationPanel } from "./MemeObservationPanel.js";
 import { Spinner } from "./Spinner.js";
+import { StepRibbon, type RibbonStep } from "./ui/StepRibbon.js";
 import { outlineButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
@@ -69,6 +70,8 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
   const [loadError, setLoadError] = useState<DisplayError | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<DisplayError | null>(null);
+  /** 고른 후보의 저장된 카드 수 — 후보가 바뀌면 그 후보 것이 아니므로 trendId 와 함께 들고 있습니다. */
+  const [savedCards, setSavedCards] = useState<{ trendId: string; count: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +100,22 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
   const now = Date.now();
   const selected = trendId && feed ? feed.trends.find((trend) => trend.id === trendId) ?? null : null;
   const stale = feed?.collectedAt ? hoursSince(feed.collectedAt, now) >= MEME_TRENDS_STALE_HOURS : false;
+
+  const cardCount = selected && savedCards?.trendId === selected.id ? savedCards.count : 0;
+  const hasTrends = (feed?.trends.length ?? 0) > 0;
+  // 🔴 「어디까지 왔나」만 말합니다 — 앞 단계는 끝난 일, 지금 단계는 한 곳, 뒤는 아직. 영상 제작은 이 화면 밖(단기 프로젝트)입니다.
+  const stage = !selected ? 0 : cardCount === 0 ? 1 : 2;
+  const steps: RibbonStep[] = [
+    { key: "pick", label: "밈 고르기", onSelect: selected ? () => onSelect(undefined) : undefined },
+    { key: "observe", label: "관찰 카드" },
+    { key: "draft", label: "초안 만들기" },
+    { key: "make", label: "영상 제작" },
+  ];
+  const stageHint = [
+    hasTrends ? "목록에서 밈 후보를 하나 고르세요." : "먼저 「YouTube에서 다시 모으기」로 후보를 모으세요.",
+    "알아볼 만한 말·동작·타이밍을 카드로 적고 저장하세요.",
+    "「이 카드로 애니메이션 초안 만들기」를 누르세요. 영상 제작은 만들어진 단기 프로젝트에서 이어집니다.",
+  ][stage];
 
   return (
     <section>
@@ -133,6 +152,12 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
           YouTube 밈 후보입니다. Instagram·TikTok 유행은 포함하지 않고, 영상 속 말·동작은 아직 분석하지 않았습니다.
           서로 다른 채널 {MEME_TREND_MIN_CHANNELS}곳 이상, 영상 {MEME_TREND_MIN_VIDEOS}편 이상에서 같은 해시태그·문구가 보인 것만 묶었습니다.
         </p>
+      </div>
+
+      {/* 🟠 스크롤해도 따라옵니다 — 후보를 고르면 상세·관찰 카드가 아래로 길게 이어져, 띠가 화면 밖으로 나가면 「어디까지 왔나」를 잃습니다. */}
+      <div className="sticky top-0 z-10 -mx-1 mt-5 bg-ground px-1 py-2" data-testid="meme-flow">
+        <StepRibbon steps={steps} currentIndex={stage} />
+        <p className="mt-2 text-xs text-bone-dim" data-testid="meme-flow-hint">{stageHint}</p>
       </div>
 
       <div className="mt-5 border-b border-line" />
@@ -187,9 +212,17 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
         </div>
       )}
 
+      {selected && (
+        <div className="mt-4 flex items-center gap-3 text-xs text-bone-dim">
+          <span>고른 밈 후보만 보이고 있습니다.</span>
+          <button type="button" data-testid="meme-trends-show-all" className={smallOutlineButton} onClick={() => onSelect(undefined)}>다른 밈 고르기</button>
+        </div>
+      )}
+
       {feed && feed.trends.length > 0 && (
         <ul data-testid="meme-trends-list" className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {feed.trends.map((trend) => (
+          {/* 후보를 고르면 목록은 고른 한 장만 남깁니다 — 열두 장이 상세를 화면 아래로 밀어내지 않게. 다시 고르려면 「다른 밈 고르기」·1단계. */}
+          {(selected ? feed.trends.filter((trend) => trend.id === selected.id) : feed.trends).map((trend) => (
             <li key={trend.id}>
               <TrendCard trend={trend} selected={trend.id === selected?.id} onSelect={() => onSelect(trend.id === selected?.id ? undefined : trend.id)} />
             </li>
@@ -199,7 +232,7 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
 
       {selected && feed?.collectedAt && <TrendDetail trend={selected} />}
       {/* ② 관찰 카드 — 후보마다 따로 저장되므로 후보가 바뀌면 새로 엽니다(key). 열 때는 저장본만 읽습니다. */}
-      {selected && feed?.collectedAt && <MemeObservationPanel key={selected.id} trend={selected} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} />}
+      {selected && feed?.collectedAt && <MemeObservationPanel key={selected.id} trend={selected} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} onSavedCardCount={(count) => setSavedCards({ trendId: selected.id, count })} />}
 
       <p className="mt-9 border-t border-line pt-3 text-[11px] text-bone-faint">
         조회수는 YouTube가 준 값을 그대로, 읽은 시각과 함께 적습니다. 점수를 매기거나 다른 출처의 숫자를 더하지 않습니다.

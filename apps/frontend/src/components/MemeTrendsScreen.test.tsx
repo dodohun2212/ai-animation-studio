@@ -170,6 +170,64 @@ describe("MemeTrendsScreen", () => {
     if (state !== "measured") expect(growth.textContent).not.toMatch(/회\/일/);
   });
 
+  /** 단계 띠: 후보 고르기 전 → 후보를 고름(카드 없음) → 저장한 카드가 있음. 앞 단계는 끝남, 지금 단계는 한 곳. */
+  describe("flow ribbon", () => {
+    const states = () => ["pick", "observe", "draft", "make"].map((key) => screen.getByTestId(`step-ribbon-${key}`).getAttribute("data-step-state"));
+    const workspace = (cards: unknown[]) => ({ trendId: NIKO.id, analysis: null, cards, cardsSavedAt: cards.length ? OBSERVED : null, dailyCalls: { used: 0, limit: 3 } });
+
+    it("starts at picking a meme and says what to do next", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed() }));
+      renderScreen();
+      await screen.findByTestId("meme-trends-list");
+      expect(states()).toEqual(["current", "upcoming", "upcoming", "upcoming"]);
+      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("하나 고르세요");
+    });
+
+    it("moves to the observation step once a candidate is chosen with no saved cards", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed(), [`GET /trends/memes/${NIKO.id}/workspace`]: workspace([]) }));
+      renderScreen({ trendId: NIKO.id });
+      await screen.findByTestId("meme-trend-detail");
+      expect(states()).toEqual(["done", "current", "upcoming", "upcoming"]);
+      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("카드로 적고 저장");
+    });
+
+    it("moves to the draft step when saved cards exist, and leaves video making upcoming", async () => {
+      const card = { id: "c1", kind: "gesture", text: "손을 든다", startSeconds: 1, endSeconds: 2, origin: "manual", sourceVideoId: null };
+      vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed(), [`GET /trends/memes/${NIKO.id}/workspace`]: workspace([card]) }));
+      renderScreen({ trendId: NIKO.id });
+      await waitFor(() => expect(states()).toEqual(["done", "done", "current", "upcoming"]));
+      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("초안 만들기");
+    });
+
+    it("lets the first step clear the chosen candidate", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed(), [`GET /trends/memes/${NIKO.id}/workspace`]: workspace([]) }));
+      const { onSelect } = renderScreen({ trendId: NIKO.id });
+      await screen.findByTestId("meme-trend-detail");
+      fireEvent.click(screen.getByTestId("step-ribbon-pick"));
+      expect(onSelect).toHaveBeenLastCalledWith(undefined);
+    });
+  });
+
+  /** 후보를 고르면 목록은 고른 한 장만 남고, 「다른 밈 고르기」로 되돌린다. */
+  it("collapses the list to the chosen candidate and offers 다른 밈 고르기", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed() }));
+    const { onSelect } = renderScreen({ trendId: NIKO.id });
+    await screen.findByTestId("meme-trend-detail");
+    expect(screen.getByTestId(`meme-trend-open-${NIKO.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`meme-trend-open-${L_TAKE.id}`)).toBeNull();
+    fireEvent.click(screen.getByTestId("meme-trends-show-all"));
+    expect(onSelect).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("keeps the whole list when nothing is chosen, and keeps the flow ribbon sticky", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed() }));
+    renderScreen();
+    await screen.findByTestId("meme-trends-list");
+    expect(screen.getByTestId(`meme-trend-open-${L_TAKE.id}`)).toBeTruthy();
+    expect(screen.queryByTestId("meme-trends-show-all")).toBeNull();
+    expect(screen.getByTestId("meme-flow").className).toContain("sticky");
+  });
+
   it("says when a remembered candidate is no longer in the list instead of showing an empty detail", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed() }));
     const { onSelect } = renderScreen({ trendId: "gone" });

@@ -858,7 +858,7 @@ export function App() {
   return (
     <div className="flex min-h-screen bg-ground text-bone">
       <Sidebar screen={screen} onNavigate={setScreen} />
-      <main className="relative flex-1 overflow-y-auto px-11 pb-14 pt-8">
+      <main className="relative min-w-0 flex-1 overflow-clip px-11 pb-14 pt-8">
         <ShortProjectPipeline screen={screen} onNavigate={setScreen} shell={shortProjectShell} />
         {/*
           * 🔴 목록 화면의 장식 그림 두 장(heroRing · heroLandscape)을 뺐습니다(2026-09-19).
