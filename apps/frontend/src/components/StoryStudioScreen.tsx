@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { MAX_SCENE_COUNT, MIN_SCENE_COUNT, type Asset, type LongProject, type LongProjectSettingsInput } from "@ai-animation-studio/shared";
+import { type Asset, type LongProject, type LongProjectSettingsInput } from "@ai-animation-studio/shared";
 
 import { assetContentUrl, listAssets } from "../api/assetsApi.js";
 import { createLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
@@ -13,7 +13,8 @@ interface Props {
 
 /** 붙여넣을 수 있는 글자 수 — 단기 초안 칸의 한도(6,000자)와 같은 선입니다. 더 긴 글은 줄여서 붙입니다. */
 export const STORY_TEXT_LIMIT = 6000;
-export const STORY_EPISODE_LIMITS = { min: 1, max: 20 } as const;
+/** 분량 칸은 화면에서 뺐습니다(M0) — 회차 수·장면 수는 기본값으로 만들고, 바꾸려면 **장기 프로젝트 설정**에서 고칩니다(「회차 나누기(AI)」 화면은 회차 수를 보여 줄 뿐 조절하는 곳이 아닙니다 — CLI 1310). */
+export const STORY_DEFAULTS = { episodeCount: 3, sceneCount: 6 } as const;
 
 const inputClass = "mt-1 w-full rounded border border-line bg-slate-900/70 px-3 py-2 text-sm text-bone placeholder:text-bone-faint/60 focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
@@ -70,8 +71,6 @@ export function StoryStudioScreen({ onCreated }: Props) {
   const [source, setSource] = useState("");
   /** 본인이 쓴 글이거나 이용 허락을 받은 글이라는 확인 — 없으면 만들 수 없습니다(Reddit 조건 조사, CLI 1305). */
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
-  const [episodeCount, setEpisodeCount] = useState(3);
-  const [sceneCount, setSceneCount] = useState(6);
   const [characters, setCharacters] = useState<CharacterDraft[]>([]);
   const [library, setLibrary] = useState<Asset[] | null>(null);
   const [libraryFailed, setLibraryFailed] = useState(false);
@@ -109,7 +108,6 @@ export function StoryStudioScreen({ onCreated }: Props) {
     if (!text.trim()) { setError("이야기 본문을 붙여넣어 주세요."); return; }
     if (overLimit) { setError(`본문이 ${STORY_TEXT_LIMIT.toLocaleString("ko-KR")}자를 넘었습니다. 줄여서 붙여 주세요.`); return; }
     if (!rightsConfirmed) { setError("붙여넣은 글이 직접 쓴 글이거나 이용 허락을 받은 글인지 확인해 주세요."); return; }
-    if (!Number.isInteger(episodeCount) || episodeCount < STORY_EPISODE_LIMITS.min || episodeCount > STORY_EPISODE_LIMITS.max) { setError(`회차 수는 ${STORY_EPISODE_LIMITS.min}–${STORY_EPISODE_LIMITS.max} 사이의 정수입니다.`); return; }
 
     const assetsById = new Map((library ?? []).map((asset) => [asset.assetId, asset]));
     const settings: LongProjectSettingsInput = {
@@ -119,8 +117,8 @@ export function StoryStudioScreen({ onCreated }: Props) {
       genre: "",
       tone: "",
       theme: "",
-      episodeCount,
-      sceneCount,
+      episodeCount: STORY_DEFAULTS.episodeCount,
+      sceneCount: STORY_DEFAULTS.sceneCount,
       clipDurationSeconds: 5,
       aspectRatio: "9:16",
       audience: "",
@@ -152,7 +150,7 @@ export function StoryStudioScreen({ onCreated }: Props) {
       <ScreenHeader
         title="이야기 만들기"
         eyebrow="Forge"
-        description="소설이나 이야기를 붙여넣으면 장기 프로젝트(회차)로 풀어 갑니다. 원문을 그대로 쓰지 않고 새 이야기로 다시 씁니다."
+        description="소설이나 이야기를 붙여넣으면 장기 프로젝트(회차)로 풀어 갑니다. 만든 뒤 바로 「회차 나누기(AI)」로 이어집니다."
       />
 
       <form data-testid="story-studio-form" onSubmit={(event) => void submit(event)} className="space-y-6" noValidate>
@@ -184,31 +182,27 @@ export function StoryStudioScreen({ onCreated }: Props) {
           <label className="block text-xs text-bone-dim">출처 메모 (선택)
             <input data-testid="story-source" className={inputClass} value={source} onChange={(event) => setSource(event.target.value)} disabled={submitting} maxLength={300} placeholder="예: Reddit 글 주소, 작가 이름" />
           </label>
+          <p data-testid="story-m0-notice" className="border-l-2 border-amber-400/40 pl-3 text-xs leading-relaxed text-slate-400">
+            지금 단계의 실제 동작: 붙여넣은 글은 프로젝트 개요에 <strong className="font-medium text-bone-dim">그대로 저장</strong>되고, 회차를 나누는 AI가 그 글을 읽습니다.
+            메모에 재창작 지시를 넣지만 원문이 그대로 쓰이지 않게 구조적으로 막지는 못합니다. 소설을 먼저 AI가 읽어 인물·회차 구조로 정리한 뒤 그 구조만 쓰는 단계는 준비 중입니다.
+          </p>
           <label className="flex items-start gap-2 rounded border border-line p-3 text-xs text-bone">
             <input type="checkbox" data-testid="story-rights" className="mt-0.5" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} disabled={submitting} />
             <span>
               이 글은 <strong>제가 직접 쓴 글이거나 작성자의 이용 허락을 받은 글</strong>입니다.
-              <span className="mt-0.5 block text-bone-faint">남의 글을 직접 붙여넣어도 작성자의 권리는 사라지지 않습니다. 이 앱은 원문 문장을 그대로 쓰지 않고 새 이야기로 다시 쓰도록 지시하지만, 권리 확인을 대신하지는 않습니다.</span>
+              <span className="mt-0.5 block text-bone-faint">남의 글을 직접 붙여넣어도 작성자의 권리는 사라지지 않습니다. 이 앱은 메모에 재창작 지시를 넣지만 원문이 그대로 쓰이지 않는다고 보장하지는 않으며, 권리 확인을 대신하지 않습니다.</span>
             </span>
           </label>
-          <div className="flex flex-wrap gap-4">
-            <label className="text-xs text-bone-dim">회차 수 ({STORY_EPISODE_LIMITS.min}–{STORY_EPISODE_LIMITS.max})
-              <input data-testid="story-episodes" className={`${inputClass} w-24`} type="number" min={STORY_EPISODE_LIMITS.min} max={STORY_EPISODE_LIMITS.max} value={episodeCount} onChange={(event) => setEpisodeCount(Number(event.target.value))} disabled={submitting} />
-            </label>
-            <label className="text-xs text-bone-dim">회차당 장면 수 ({MIN_SCENE_COUNT}–{MAX_SCENE_COUNT})
-              <input data-testid="story-scenes" className={`${inputClass} w-24`} type="number" min={MIN_SCENE_COUNT} max={MAX_SCENE_COUNT} value={sceneCount} onChange={(event) => setSceneCount(Math.min(MAX_SCENE_COUNT, Math.max(MIN_SCENE_COUNT, Number(event.target.value) || MIN_SCENE_COUNT)))} disabled={submitting} />
-            </label>
-          </div>
         </div>
 
-        {/* ── 2. 등장인물 ── */}
+        {/* ── 2. 등장인물 — 선택. 소설을 AI가 읽고 인물을 뽑아 주는 기능(설계 docs/08 M1~M2)이 생기면 이 칸은 그 결과로 채워집니다. ── */}
         <div className="space-y-3 rounded-lg border border-line bg-ground-raised p-5">
           <div className="flex items-center gap-3">
             <h2 className="text-base font-semibold text-bone">2. 등장인물 (선택)</h2>
-            <button type="button" data-testid="story-add-character" className={`${smallOutlineButton} ml-auto`} onClick={addCharacter} disabled={submitting}>인물 추가</button>
+            <button type="button" data-testid="story-add-character" className={`${smallOutlineButton} ml-auto`} onClick={addCharacter} disabled={submitting}>인물 직접 적기</button>
           </div>
           <p className="text-xs text-bone-dim">
-            이야기에 나오는 인물을 적어 두면 대본 AI가 회차마다 같은 인물로 읽습니다. 이미지 보관함에 이미 있는 캐릭터와 짝지을 수 있습니다.
+            지금은 직접 적습니다 — 적어 두면 대본 AI가 회차마다 같은 인물로 읽고, 이미지 보관함의 캐릭터와 짝지을 수 있습니다. 소설에서 인물을 자동으로 뽑는 기능은 준비 중입니다.
           </p>
           {characters.length === 0 && <p data-testid="story-characters-empty" className="text-xs text-bone-faint">아직 적은 인물이 없습니다. 건너뛰어도 됩니다.</p>}
           {libraryFailed && <p role="status" className="text-xs text-amber-300">보관함 캐릭터 목록을 불러오지 못했습니다. 짝짓기 없이 적을 수 있습니다.</p>}
@@ -248,7 +242,7 @@ export function StoryStudioScreen({ onCreated }: Props) {
         <div className="space-y-3 rounded-lg border border-line bg-ground-raised p-5">
           <h2 className="text-base font-semibold text-bone">3. 만들기</h2>
           <p className="text-xs text-bone-dim">
-            장기 프로젝트가 만들어집니다. 그다음 회차 개요 → 회차별 대본 → 그림 → 영상은 장기 프로젝트의 기존 흐름이고, 유료 요청은 거기서 승인해야만 나갑니다. 이 단계는 AI를 부르지 않습니다.
+            장기 프로젝트가 만들어지고 바로 「회차 나누기(AI)」 화면으로 이어집니다. 회차 수·장면 수는 기본값(3회차·6장면)으로 시작하며, 바꾸려면 장기 프로젝트 설정에서 고칩니다. 그다음 대본 → 그림 → 영상은 장기 프로젝트의 기존 흐름이고, 유료 요청은 승인해야만 나갑니다. 이 단계는 AI를 부르지 않습니다.
           </p>
           {error && <p role="alert" data-testid="story-error" className="text-sm text-rose-400">{error}</p>}
           <button type="submit" data-testid="story-submit" className={primaryButton} disabled={submitting}>{submitting ? "만드는 중…" : "장기 프로젝트로 만들기"}</button>

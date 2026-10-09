@@ -354,6 +354,25 @@ describe("App", () => {
     expect(window.location.hash).toBe("#/memeTrends");
   });
 
+  /** 이야기 만들기: 메뉴만 눌러서는 AI 도 장기 프로젝트 생성도 부르지 않는다 — 보관함 캐릭터 목록 읽기뿐. 만들면 「회차 나누기(AI)」로 이어진다(설계 docs/08 M0). */
+  it("reaches 이야기 만들기 from the nav, reading only the character library", async () => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/assets?assetType=character") return jsonResponse(200, { assets: [] });
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "이야기 만들기" }));
+    await screen.findByTestId("story-studio-form");
+    expect(fetchMock.mock.calls.map(([url, init]) => `${(init as RequestInit | undefined)?.method ?? "GET"} ${String(url)}`)).toEqual(["GET /assets?assetType=character"]);
+    expect(window.location.hash).toBe("#/storyStudio");
+  });
+
   it("reaches the remaining independent nav screens without opening a provider route", async () => {
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
       const requestUrl = String(input);

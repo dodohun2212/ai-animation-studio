@@ -859,6 +859,12 @@ export function App() {
     setScreen({ name: "longDetail", projectId: project.id });
   }
 
+  /** 이야기 만들기는 만든 뒤 곧바로 「회차 나누기(AI)」(개요 미리보기)로 이어집니다 — 소설을 회차로 푸는 다음 일이 거기라서. */
+  function handleStoryCreated(project: LongProject): void {
+    setLongListRefreshToken((token) => token + 1);
+    setScreen({ name: "longOutline", projectId: project.id });
+  }
+
   /*
    * 🔴 배경에서 걷어낸 것 둘, 그리고 **되돌려 놓지 않은 것 하나.**
    *
@@ -1099,7 +1105,7 @@ export function App() {
                 onProjectCreated={handleCreated}
               />
             )}
-            {screen.name === "storyStudio" && <StoryStudioScreen onCreated={handleLongCreated} />}
+            {screen.name === "storyStudio" && <StoryStudioScreen onCreated={handleStoryCreated} />}
             {screen.name === "newsReelWrite" && (
               <NewsReelScreen
                 onBack={() => setScreen({ name: "newsReel" })}
