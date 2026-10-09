@@ -13,12 +13,12 @@ interface Props {
 
 const inputClass = "mt-1 w-full rounded border border-line bg-slate-900/70 px-3 py-2 text-sm text-bone focus:border-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
-function cardHint(card: MemeObservationCard): string {
+export function cardHint(card: MemeObservationCard): string {
   const label = { line: "말", gesture: "동작", timing: "타이밍" }[card.kind];
   return `${label}: ${card.text}`;
 }
 
-function defaultBeat(index: number, count: number, cards: MemeObservationCard[]): string {
+export function defaultBeat(index: number, count: number, cards: MemeObservationCard[]): string {
   if (index === 0) return "새 캐릭터가 새로운 상황에 등장해 짧고 분명한 목표를 세운다.";
   const middleCount = Math.max(1, count - 2);
   const source = cards.filter((_, cardIndex) => Math.floor(cardIndex * middleCount / cards.length) === Math.min(index - 1, middleCount - 1));

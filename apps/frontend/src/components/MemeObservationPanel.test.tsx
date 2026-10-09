@@ -206,6 +206,25 @@ describe("MemeObservationPanel", () => {
     expect(calls.some((call) => call.method === "PUT")).toBe(false);
   });
 
+  /** 방금 추가한 빈 카드의 「글자를 적어 주세요」는 할 일 안내라 오류색이 아니고, 쓰기 시작해 틀리면 그때 오류색이 된다. */
+  it("does not paint the empty new card red, but does once a real mistake is typed", async () => {
+    backend({ [GET]: [{ status: 200, body: workspace() }] });
+    renderPanel();
+    await screen.findByTestId("meme-analysis-calls");
+    expect(screen.getByTestId("meme-observations-howto").textContent).toContain("카드 저장");
+
+    fireEvent.click(screen.getByTestId("meme-cards-add"));
+    expect(screen.getByTestId("meme-card-problem-0").className).not.toContain("rose");
+    expect(screen.getByTestId("meme-card-text-0").getAttribute("aria-invalid")).toBe("false");
+    expect((screen.getByTestId("meme-card-text-0") as HTMLTextAreaElement).placeholder).toContain("예:");
+
+    fireEvent.change(screen.getByTestId("meme-card-text-0"), { target: { value: "점프" } });
+    fireEvent.change(screen.getByTestId("meme-card-start-0"), { target: { value: "5" } });
+    fireEvent.change(screen.getByTestId("meme-card-end-0"), { target: { value: "3" } });
+    expect(screen.getByTestId("meme-card-problem-0").className).toContain("rose");
+    expect(screen.getByTestId("meme-card-text-0").getAttribute("aria-invalid")).toBe("true");
+  });
+
   /** 🔴 동시 저장(409): 입력은 남고, 다시 읽은 뒤 저장하면 새 기준 시각으로 보냅니다. */
   it("keeps the typed cards on a save conflict and saves against the re-read time", async () => {
     const calls = backend({

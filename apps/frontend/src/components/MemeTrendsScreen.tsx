@@ -14,6 +14,7 @@ import {
 import { getMemeTrends, refreshMemeTrends, toMemeTrendDisplayError } from "../api/memeTrendsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { MemeObservationPanel } from "./MemeObservationPanel.js";
+import { MemeQuickMake } from "./MemeQuickMake.js";
 import { Spinner } from "./Spinner.js";
 import { StepRibbon, type RibbonStep } from "./ui/StepRibbon.js";
 import { outlineButton, smallOutlineButton } from "./ui/surfaces.js";
@@ -107,14 +108,14 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
   const stage = !selected ? 0 : cardCount === 0 ? 1 : 2;
   const steps: RibbonStep[] = [
     { key: "pick", label: "밈 고르기", onSelect: selected ? () => onSelect(undefined) : undefined },
-    { key: "observe", label: "관찰 카드" },
+    { key: "observe", label: "분석·카드" },
     { key: "draft", label: "초안 만들기" },
     { key: "make", label: "영상 제작" },
   ];
   const stageHint = [
     hasTrends ? "목록에서 밈 후보를 하나 고르세요." : "먼저 「YouTube에서 다시 모으기」로 후보를 모으세요.",
-    "알아볼 만한 말·동작·타이밍을 카드로 적고 저장하세요.",
-    "「이 카드로 애니메이션 초안 만들기」를 누르세요. 영상 제작은 만들어진 단기 프로젝트에서 이어집니다.",
+    "내 캐릭터를 고르고 「이 밈으로 만들기」를 누르세요. 분석과 장면 계획은 앱이 합니다.",
+    "저장된 관찰 카드가 있습니다. 캐릭터를 고르고 「이 밈으로 만들기」를 누르거나, 아래에서 카드를 고쳐도 됩니다. 영상 제작은 만들어진 단기 프로젝트에서 이어집니다.",
   ][stage];
 
   return (
@@ -230,9 +231,15 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
         </ul>
       )}
 
+      {selected && feed?.collectedAt && <MemeQuickMake key={`quick-${selected.id}`} trend={selected} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} />}
       {selected && feed?.collectedAt && <TrendDetail trend={selected} />}
       {/* ② 관찰 카드 — 후보마다 따로 저장되므로 후보가 바뀌면 새로 엽니다(key). 열 때는 저장본만 읽습니다. */}
-      {selected && feed?.collectedAt && <MemeObservationPanel key={selected.id} trend={selected} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} onSavedCardCount={(count) => setSavedCards({ trendId: selected.id, count })} />}
+      {selected && feed?.collectedAt && (
+        <details className="mt-6" data-testid="meme-observations-details">
+          <summary className="cursor-pointer text-xs text-bone-dim hover:text-bone">직접 관찰 카드 확인·고치기 (선택)</summary>
+          <MemeObservationPanel key={selected.id} trend={selected} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} onSavedCardCount={(count) => setSavedCards({ trendId: selected.id, count })} />
+        </details>
+      )}
 
       <p className="mt-9 border-t border-line pt-3 text-[11px] text-bone-faint">
         조회수는 YouTube가 준 값을 그대로, 읽은 시각과 함께 적습니다. 점수를 매기거나 다른 출처의 숫자를 더하지 않습니다.

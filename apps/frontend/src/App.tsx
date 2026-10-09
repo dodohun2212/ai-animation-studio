@@ -15,6 +15,7 @@ import { PhotoCardListScreen } from "./components/PhotoCardListScreen.js";
 import { NewsReelScreen } from "./components/NewsReelScreen.js";
 import { NewsReelListScreen } from "./components/NewsReelListScreen.js";
 import { MemeTrendsScreen } from "./components/MemeTrendsScreen.js";
+import { StoryStudioScreen } from "./components/StoryStudioScreen.js";
 import { NewsReelCreateScreen, type NewsReelDraft } from "./components/NewsReelCreateScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
@@ -86,6 +87,8 @@ type Screen =
   | { name: "newsReelCreate" }
   /** YouTube 밈·챌린지 후보(CLI Round 1268·1269). `trendId` 는 고른 후보 — 주소에 실어 새로고침해도 남깁니다. */
   | { name: "memeTrends"; trendId?: string }
+  /** 소설·이야기를 붙여넣어 장기 프로젝트로 푸는 첫 틀. */
+  | { name: "storyStudio" }
   | { name: "instagramPost"; initialProjectId?: string; initialEpisodeNumber?: number }
   | { name: "archive" }
   | { name: "workflowGuide" }
@@ -122,6 +125,7 @@ const OPTIONAL_PARAMS: ReadonlySet<ScreenParam> = new Set<ScreenParam>(["initial
 const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
   list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: [], newsReel: [], newsReelWrite: [], newsReelCreate: [],
   memeTrends: ["trendId"],
+  storyStudio: [],
   archive: [], workflowGuide: [], longList: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
@@ -197,7 +201,7 @@ const SHORT_PROJECT_SCREEN_NAMES = new Set<Screen["name"]>([
   "imageGeneration", "narrationReview", "sceneEdit", "videoPreview", "videoWorkflow", "videoMerge",
 ]);
 
-type NavIconName = "home" | "long" | "library" | "quote" | "news" | "trend" | "film" | "music" | "share" | "archive" | "workflow" | "settings";
+type NavIconName = "home" | "long" | "library" | "quote" | "news" | "trend" | "story" | "film" | "music" | "share" | "archive" | "workflow" | "settings";
 
 function NavIcon({ name }: { name: NavIconName }) {
   const shared = {
@@ -232,6 +236,14 @@ function NavIcon({ name }: { name: NavIconName }) {
         <svg {...shared}>
           <path d="M3 17l6-6 4 4 8-8" />
           <path d="M15 7h6v6" />
+        </svg>
+      );
+    // 펼친 책 — 「이야기」. 접힌 종이(뉴스)·오르는 선(트렌드)과 모양으로 갈립니다.
+    case "story":
+      return (
+        <svg {...shared}>
+          <path d="M12 6.5C10.5 5 8 4.5 4 4.5v13c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-13c-4 0-6.5.5-8 2z" />
+          <path d="M12 6.5v13" />
         </svg>
       );
     case "long":
@@ -307,7 +319,7 @@ function NavIcon({ name }: { name: NavIconName }) {
   }
 }
 
-type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "newsReel" | "memeTrends" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
+type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "newsReel" | "memeTrends" | "storyStudio" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
 
 /**
  * 어느 화면에서 **왼쪽 어느 항목이 켜지는가.**
@@ -324,6 +336,7 @@ export function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "photoCard") return "photoCard";
   if (name === "newsReel" || name === "newsReelWrite" || name === "newsReelCreate") return "newsReel";
   if (name === "memeTrends") return "memeTrends";
+  if (name === "storyStudio") return "storyStudio";
   // 🔴 만들기 화면은 **어디서 왔느냐**로 갈립니다 — 뉴스 릴에서 왔으면 왼쪽도 뉴스 릴에 남습니다.
   // 여기서 「명언 카드」로 옮겨 버리면 사람이 하던 일에서 **쫓겨난 것처럼** 보입니다.
   if (name === "photoCardCreate") return "photoCard";
@@ -376,6 +389,7 @@ const NAV_GROUPS: { title: string; index: string; items: NavItem[] }[] = [
       // 🟠 만들기 묶음의 끝 — 아직 「이 밈으로 만들기」가 없어서 **고르는 곳**까지만입니다. 그 버튼은 초안 연결
       // 계약이 생기는 다음 단계에 붙습니다(막아 둔 버튼을 먼저 그려 두면 그건 약속이 아니라 거짓말입니다).
       { key: "memeTrends", icon: "trend", label: "밈 트렌드", target: { name: "memeTrends" } },
+      { key: "storyStudio", icon: "story", label: "이야기 만들기", target: { name: "storyStudio" } },
     ],
   },
   {
@@ -1085,6 +1099,7 @@ export function App() {
                 onProjectCreated={handleCreated}
               />
             )}
+            {screen.name === "storyStudio" && <StoryStudioScreen onCreated={handleLongCreated} />}
             {screen.name === "newsReelWrite" && (
               <NewsReelScreen
                 onBack={() => setScreen({ name: "newsReel" })}

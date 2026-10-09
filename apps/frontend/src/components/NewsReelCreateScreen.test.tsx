@@ -188,6 +188,34 @@ describe("NewsReelCreateScreen 장면마다 자막", () => {
     await waitFor(() => expect((screen.getByTestId("news-reel-summary") as HTMLTextAreaElement).value).toBe("국회가 후속 법률 51건을 통과시켰다."));
   });
 
+  /** 캡틴D: 붉은 줄 때문에 릴스가 안 만들어진다 — 어느 칸의 글인지, 어떻게 고치는지 몰라서. 이제 칸을 말하고 따옴표만 빼 준다. */
+  it("tells which field a missing quote is in, and 따옴표 빼기 unblocks it without touching the words", () => {
+    renderScreen();
+    fillLines();
+    fireEvent.change(screen.getByTestId("news-reel-caption1-0"), { target: { value: "「허가 없는 배 엄벌」" } });
+
+    const failed = screen.getByTestId("news-reel-check-failed");
+    expect(failed.textContent).toContain("허가 없는 배 엄벌");
+    expect(screen.getByTestId("news-reel-check-where-허가 없는 배 엄벌").textContent).toContain("1번 장면 자막");
+    expect(screen.getByTestId("news-reel-check-how").textContent).toContain("기사 본문에 이 글이 없다는 뜻");
+    expect(screen.getByTestId("news-reel-create-submit")).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("news-reel-check-unquote-허가 없는 배 엄벌"));
+    expect((screen.getByTestId("news-reel-caption1-0") as HTMLTextAreaElement).value).toBe("허가 없는 배 엄벌");
+    expect(screen.queryByTestId("news-reel-check-failed")).toBeNull();
+    expect(screen.getByTestId("news-reel-create-submit")).toBeEnabled();
+  });
+
+  /** 숫자·날짜는 뜻이 바뀌므로 자동으로 고치지 않는다 — 어느 칸인지만 말하고 버튼은 없다. */
+  it("names the field for a missing number but offers no one-click fix", () => {
+    renderScreen();
+    fillLines();
+    fireEvent.change(screen.getByTestId("news-reel-caption1-0"), { target: { value: "재석 300명 찬성" } });
+    expect(screen.getByTestId("news-reel-check-where-300명").textContent).toContain("1번 장면 자막");
+    expect(screen.queryByTestId("news-reel-check-unquote-300명")).toBeNull();
+    expect(screen.getByTestId("news-reel-create-submit")).toBeDisabled();
+  });
+
   /** 🔴 구워지는 것이 이 줄들이라, 대조도 이 줄들 위에서 돕니다. */
   it("will not make one while a line says something the article does not", () => {
     renderScreen();

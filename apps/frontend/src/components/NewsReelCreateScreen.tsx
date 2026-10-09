@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Asset, NewsArticleInput, NewsDailyCallCount, NewsReelCaption, NewsReelCard, PhotoCardDurationSeconds } from "@ai-animation-studio/shared";
 import { NEWS_CHECK_SCOPE_NOTICE, NEWS_REEL_TEXT_BOXES, NEWS_SUMMARY_MAX_CHARS, checkNewsSummary, countNewsReelText, newsReelTextBox } from "@ai-animation-studio/shared";
+import { fieldsContaining, removeQuoteMarks, type NewsFieldRef } from "../utils/newsClaimFix.js";
 
 import { listAssets } from "../api/assetsApi.js";
 import { NEWS_LEDGER_UNREADABLE_MESSAGE, NewsApiError, createNewsReelCardText, getNewsReelSetup } from "../api/newsApi.js";
@@ -193,6 +194,19 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
     ? checkNewsSummary(joined, draft.article.body)
     : { claims: [], missing: [] };
   const blocked = check.missing.length > 0;
+  /* 붉은 줄이 가리키는 글이 **어느 칸에 있는지** — 칸을 몰라서 못 고치고 서 있던 곳. */
+  const fieldRefs: NewsFieldRef[] = [
+    { label: "제목 첫 줄", value: headline1 },
+    { label: "제목 둘째 줄", value: headline2 },
+    ...captions.map((one, index): NewsFieldRef => ({ label: `${index + 1}번 장면 자막`, value: one })),
+    { label: "게시 본문 요약", value: summary },
+  ];
+  function dropQuoteMarks(span: string): void {
+    setHeadline1((value) => removeQuoteMarks(value, span));
+    setHeadline2((value) => removeQuoteMarks(value, span));
+    setCaptions((current) => current.map((one) => removeQuoteMarks(one, span)));
+    setSummary((value) => removeQuoteMarks(value, span));
+  }
 
   const trimmedCredit = creditText.trim();
   const creditMissing = creditRequired && trimmedCredit.length === 0;
@@ -358,13 +372,32 @@ export function NewsReelCreateScreen({ draft, onBack, onCreated }: {
         {blocked && (
           <div role="alert" className="space-y-1 rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" data-testid="news-reel-check-failed">
             <p>이 글에 <strong>기사에서 못 찾은 것</strong>이 있습니다 — 고쳐야 만들 수 있습니다.</p>
-            <ul className="list-disc space-y-0.5 pl-5 text-xs">
-              {check.missing.map((claim) => (
-                <li key={`${claim.kind}-${claim.text}`} data-testid={`news-reel-check-missing-${claim.text}`}>
-                  {CLAIM_LABEL[claim.kind]} 「{claim.text}」
-                </li>
-              ))}
+            <ul className="list-disc space-y-1.5 pl-5 text-xs">
+              {check.missing.map((claim) => {
+                const where = fieldsContaining(claim.text, fieldRefs);
+                return (
+                  <li key={`${claim.kind}-${claim.text}`} data-testid={`news-reel-check-missing-${claim.text}`}>
+                    {CLAIM_LABEL[claim.kind]} 「{claim.text}」
+                    {where.length > 0 && <span data-testid={`news-reel-check-where-${claim.text}`} className="text-rose-300/80"> — {where.map((field) => field.label).join(" · ")}에 있습니다</span>}
+                    {claim.kind === "quote" && where.length > 0 && (
+                      <button
+                        type="button"
+                        data-testid={`news-reel-check-unquote-${claim.text}`}
+                        className="ml-2 rounded border border-rose-300/40 px-2 py-0.5 text-[11px] text-rose-100 hover:border-rose-200/70"
+                        disabled={pending}
+                        onClick={() => dropQuoteMarks(claim.text)}
+                      >
+                        따옴표 빼기
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
+            <p className="text-xs text-rose-300/80" data-testid="news-reel-check-how">
+              기사 본문에 이 글이 없다는 뜻입니다. 기사에 실제로 있는 문장이면 기사와 똑같이 옮기고, 아니라면 해당 칸에서 고치세요.
+              따옴표로 감싼 말은 「따옴표 빼기」로 인용 표시만 걷어 낼 수 있습니다(말은 그대로 남고, 기사의 인용으로 내세우지 않게 됩니다).
+            </p>
           </div>
         )}
         {/* 🔴 초록 한 줄이 「사실 확인 끝」으로 읽히지 않게, 한계는 늘 적혀 있습니다. */}

@@ -188,7 +188,7 @@ describe("MemeTrendsScreen", () => {
       renderScreen({ trendId: NIKO.id });
       await screen.findByTestId("meme-trend-detail");
       expect(states()).toEqual(["done", "current", "upcoming", "upcoming"]);
-      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("카드로 적고 저장");
+      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("이 밈으로 만들기");
     });
 
     it("moves to the draft step when saved cards exist, and leaves video making upcoming", async () => {
@@ -196,7 +196,7 @@ describe("MemeTrendsScreen", () => {
       vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed(), [`GET /trends/memes/${NIKO.id}/workspace`]: workspace([card]) }));
       renderScreen({ trendId: NIKO.id });
       await waitFor(() => expect(states()).toEqual(["done", "done", "current", "upcoming"]));
-      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("초안 만들기");
+      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("저장된 관찰 카드가 있습니다");
     });
 
     it("lets the first step clear the chosen candidate", async () => {

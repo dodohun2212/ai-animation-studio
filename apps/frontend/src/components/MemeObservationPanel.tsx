@@ -41,6 +41,13 @@ export const MEME_OBSERVATION_KIND_LABELS: Record<MemeObservationKind, string> =
   timing: "타이밍",
 };
 
+/** 빈 카드에서 무엇을 쓰는 건지 보여 주는 예 — 종류마다 다릅니다. */
+const CARD_TEXT_PLACEHOLDER: Record<MemeObservationKind, string> = {
+  line: "예: 「L을 가져가!」 하고 외친다",
+  gesture: "예: 두 손가락으로 L 모양을 만들어 이마에 댄다",
+  timing: "예: 후렴이 시작되는 순간에 맞춰 동작을 시작한다",
+};
+
 /** 화면에서 고치는 카드 한 장. 초는 입력칸 그대로(문자열)로 들고 있다가 저장할 때만 숫자로 바꿉니다. */
 interface DraftCard {
   key: string;
@@ -274,7 +281,12 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
     <section data-testid="meme-observations" aria-label="밈 관찰 카드" className="mt-6 space-y-5 rounded-lg border border-line bg-ground-raised p-5">
       <div className="space-y-1">
         <h2 className="text-base font-semibold text-bone">밈 관찰 카드</h2>
-        <p className="text-xs text-bone-dim">이 밈에서 알아볼 수 있는 말·동작·타이밍을 카드로 적어 둡니다. 다음 단계에서 이 카드로 내 캐릭터 장면을 짭니다.</p>
+        <p className="text-xs text-bone-dim">이 밈이 어떤 밈인지 — 외치는 말, 따라 하는 동작, 맞추는 타이밍 — 을 한 줄씩 적어 두는 곳입니다. 다음 단계에서 이 내용으로 내 캐릭터 장면을 짭니다.</p>
+        <ol data-testid="meme-observations-howto" className="list-inside list-decimal space-y-0.5 pt-1 text-xs text-bone-faint">
+          <li>위 영상 제목을 눌러 새 탭에서 보고, 기억할 말·동작을 아래 카드에 적습니다.</li>
+          <li>「카드 저장」을 누릅니다.</li>
+          <li>저장하면 「이 카드로 애니메이션 초안 만들기」가 나옵니다.</li>
+        </ol>
       </div>
 
       {workspace === null && !loadError && <Spinner label="저장된 카드를 불러오는 중..." />}
@@ -321,10 +333,10 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
                   : `오늘 ${calls.used} / ${calls.limit}회`}
             </p>
             <p className="text-xs text-bone-faint">
-              공개 YouTube 주소를 Gemini에 보내 말·동작·타이밍을 제안받습니다. 결과는 제안일 뿐이고, 요청이 나가면 실패해도 한 번으로 셉니다.
+              선택 사항입니다 — 직접 적어도 됩니다. 분석은 공개 YouTube 주소를 Gemini에 보내 말·동작·타이밍을 제안받는 것이고, 결과는 제안일 뿐입니다. 요청이 나가면 실패해도 한 번으로 셉니다.
             </p>
             {PROVIDER_KEY_NOTES.gemini && (
-              <p className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-300" data-testid="meme-analysis-key-note">
+              <p className="border-l-2 border-amber-400/40 pl-3 text-xs leading-relaxed text-slate-400" data-testid="meme-analysis-key-note">
                 {PROVIDER_KEY_NOTES.gemini}
               </p>
             )}
@@ -383,8 +395,8 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
               내 카드 <span className="font-normal tabular-nums text-bone-faint">{drafts.length} / {MEME_OBSERVATION_LIMITS.cardsMax}</span>
             </h3>
             {unsaved && (
-              <p role="status" data-testid="meme-cards-unsaved" className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-300">
-                저장하지 않은 카드 변경이 있습니다. 「카드 저장」을 누르지 않고 다른 후보로 가면 사라집니다.
+              <p role="status" data-testid="meme-cards-unsaved" className="text-xs text-amber-300">
+                아직 저장하지 않았습니다. 「카드 저장」을 눌러야 남고, 누르지 않고 다른 후보로 가면 사라집니다.
               </p>
             )}
             {drafts.length === 0 && (
@@ -395,6 +407,8 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
                 const suggestion = card.suggestionId ? suggestionsById.get(card.suggestionId) : undefined;
                 const edited = card.origin === "suggestion" && editedFromSuggestion(card, suggestion);
                 const problem = problems[index];
+                // 「글자를 적어 주세요」는 방금 추가한 빈 카드의 할 일 안내이지 오류가 아니라서 붉게 칠하지 않습니다.
+                const problemIsError = problem !== null && card.text.trim().length > 0;
                 const fieldId = `meme-card-${card.key}`;
                 return (
                   <li key={card.key} data-testid={`meme-card-${index}`} className="space-y-2 rounded border border-line p-3">
@@ -421,13 +435,14 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
                       </label>
                       <label className="space-y-1">
                         <span className="block text-[11px] text-bone-dim">시작(초)</span>
-                        <input inputMode="decimal" value={card.start} onChange={(event) => update(card.key, { start: event.target.value })} className="w-20 rounded border border-line bg-slate-900/70 px-2 py-1 text-sm tabular-nums text-bone" data-testid={`meme-card-start-${index}`} />
+                        <input inputMode="decimal" value={card.start} onChange={(event) => update(card.key, { start: event.target.value })} placeholder="예: 2.5" className="w-20 rounded border border-line bg-slate-900/70 px-2 py-1 text-sm tabular-nums text-bone placeholder:text-bone-faint/60" data-testid={`meme-card-start-${index}`} />
                       </label>
                       <label className="space-y-1">
                         <span className="block text-[11px] text-bone-dim">끝(초)</span>
-                        <input inputMode="decimal" value={card.end} onChange={(event) => update(card.key, { end: event.target.value })} className="w-20 rounded border border-line bg-slate-900/70 px-2 py-1 text-sm tabular-nums text-bone" data-testid={`meme-card-end-${index}`} />
+                        <input inputMode="decimal" value={card.end} onChange={(event) => update(card.key, { end: event.target.value })} placeholder="예: 4" className="w-20 rounded border border-line bg-slate-900/70 px-2 py-1 text-sm tabular-nums text-bone placeholder:text-bone-faint/60" data-testid={`meme-card-end-${index}`} />
                       </label>
                     </div>
+                    <p className="text-[11px] text-bone-faint">시작·끝 시간(영상에서 이 장면이 나오는 곳)은 모르면 비워 두어도 됩니다.</p>
                     <label className="block space-y-1" htmlFor={fieldId}>
                       <span className="block text-[11px] text-bone-dim">무엇을 하나요 (말·동작·타이밍)</span>
                       <textarea
@@ -436,13 +451,14 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
                         value={card.text}
                         maxLength={MEME_OBSERVATION_LIMITS.textMax + 20}
                         onChange={(event) => update(card.key, { text: event.target.value })}
-                        aria-invalid={problem !== null}
+                        aria-invalid={problemIsError}
                         aria-describedby={problem ? `${fieldId}-problem` : undefined}
-                        className="w-full rounded border border-line bg-slate-900/70 px-2.5 py-1.5 text-sm text-bone"
+                        placeholder={CARD_TEXT_PLACEHOLDER[card.kind]}
+                        className="w-full rounded border border-line bg-slate-900/70 px-2.5 py-1.5 text-sm text-bone placeholder:text-bone-faint/60"
                         data-testid={`meme-card-text-${index}`}
                       />
                     </label>
-                    {problem && <p id={`${fieldId}-problem`} className="text-xs text-rose-400" data-testid={`meme-card-problem-${index}`}>{problem}</p>}
+                    {problem && <p id={`${fieldId}-problem`} className={`text-xs ${problemIsError ? "text-rose-400" : "text-bone-faint"}`} data-testid={`meme-card-problem-${index}`}>{problem}</p>}
                   </li>
                 );
               })}
