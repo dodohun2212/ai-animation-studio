@@ -21,6 +21,7 @@ interface Props {
 const statusText = (status: ProviderCredentialStatus) =>
   !status.configured ? "저장된 키 없음" : status.connected ? "키 저장됨 · 이 앱에서 사용" : "키 저장됨 · 사용 안 함";
 const statusTone = (status: ProviderCredentialStatus) => !status.configured ? "text-slate-400" : status.connected ? "text-emerald-300" : "text-amber-300";
+const statusDot = (status: ProviderCredentialStatus) => !status.configured ? "bg-slate-500" : status.connected ? "bg-emerald-400" : "bg-amber-400";
 
 export function ProviderCredentialCard({ label, status, onStatusChange, acquireMutation = () => true, releaseMutation = () => {}, disabled = false, onPendingChange = () => {} }: Props) {
   const [value, setValue] = useState("");
@@ -47,12 +48,18 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
   const inputId = `${status.provider}-credential`;
   return (
     <div className="rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-5">
-      <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
-        <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
-        {label}
-      </h3>
-      <p className={`mt-1 text-sm ${statusTone(status)}`}>{statusText(status)}</p>
-      {status.configured && status.maskedValue && <p className="mt-1 font-mono text-sm text-slate-400">{status.maskedValue}</p>}
+      {/* 이름은 왼쪽, 상태는 오른쪽 한 줄 — 카드가 여럿 쌓여도 어느 키가 들어 있는지 한눈에 훑어집니다. */}
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+          <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+          {label}
+        </h3>
+        <p className={`flex items-center gap-2 text-sm ${statusTone(status)}`}>
+          <span aria-hidden="true" className={`h-2 w-2 flex-shrink-0 rounded-full ${statusDot(status)}`} />
+          <span>{statusText(status)}</span>
+        </p>
+      </header>
+      {status.configured && status.maskedValue && <p className="mt-1 text-right font-mono text-sm text-slate-400">{status.maskedValue}</p>}
       <form className="mt-4 space-y-2" onSubmit={save}>
         <label className="block text-sm text-slate-300" htmlFor={inputId}>{label} API 키</label>
         {/* 🔴 조건이지 팁이 아닙니다 — 그래서 저장 뒤가 아니라 **붙여넣는 칸 바로 위**입니다. Gemini 키는 결제가
@@ -61,7 +68,9 @@ export function ProviderCredentialCard({ label, status, onStatusChange, acquireM
             🟠 그리고 제공자마다 다릅니다 — Runway 키는 결제가 **있어야** 정상이라, 「키에 대한 일반 안내」로 쓰면
             지키려던 것을 깨뜨립니다. 그래서 계약이 제공자별 `Record` 로 들고 있고 여기서는 읽기만 합니다. */}
         {PROVIDER_KEY_NOTES[status.provider] && (
-          <p data-testid={`${status.provider}-key-note`} className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3.5 py-2.5 text-xs leading-relaxed text-amber-200">
+          // 🟠 상자·주황 글씨가 아니라 얇은 세로선 + 차분한 글자입니다. 문장은 그대로 입력칸 위에 보이되(조건이라 접지 않습니다),
+          // 입력칸보다 눈에 띄지 않게 — 읽어야 하는 글이지 경고 배너가 아닙니다.
+          <p data-testid={`${status.provider}-key-note`} className="border-l-2 border-amber-400/40 pl-3 text-xs leading-relaxed text-slate-400">
             {PROVIDER_KEY_NOTES[status.provider]}
           </p>
         )}

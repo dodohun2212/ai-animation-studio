@@ -58,7 +58,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
   const updateBudget = (budget: ProviderMonthlyBudget) => setState((old) => old.budgets ? { ...old, budgets: { ...old.budgets, [budget.provider]: budget } } : old);
   const updateVideoModel = (videoModel: VideoModelSetting) => setState((old) => ({ ...old, videoModel }));
   return (
-    <section className="mt-8 max-w-2xl space-y-5">
+    <section className="mt-8 max-w-4xl space-y-5">
       {/* 🔴 This screen had no <h1> at all: its name sat in an <h2> wedged between two buttons, so the one
           element that says which screen you are on read as the middle item of a toolbar. Every other
           screen leads with its title; this one now does too, and the 새로고침 button moves to the header's
@@ -78,7 +78,9 @@ export function ProviderSettingsScreen({ onBack }: Props) {
       )}
       {state.statuses && (
         <div className="space-y-5">
-          <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
+          {/* 키 칸 넷은 2열 — 한 줄씩 쌓이면 화면이 길어져 어느 키가 비었는지 훑기 어렵습니다. 좁은 화면에서는 1열. */}
+          <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+            <ProviderCredentialCard label="OpenAI" status={state.statuses.openai} onStatusChange={update} acquireMutation={() => acquireMutation("openai")} releaseMutation={() => releaseMutation("openai")}/>
           <ProviderCredentialCard label="Runway" status={state.statuses.runway} onStatusChange={update} acquireMutation={() => acquireMutation("runway")} releaseMutation={() => releaseMutation("runway")}/>
           {/* 🟠 예산 카드 **위**입니다. Gemini 는 월 예산이 없어서(무료 등급, 한도는 하루 건수) 아래 카드에 안
               나오는데, 키 칸까지 예산 아래로 내려가면 「예산이 없으니 이 제공자도 없다」로 읽힙니다. 키를 넣는
@@ -89,6 +91,9 @@ export function ProviderSettingsScreen({ onBack }: Props) {
           {state.statuses.youtube && (
             <ProviderCredentialCard label="YouTube" status={state.statuses.youtube} onStatusChange={update} acquireMutation={() => acquireMutation("youtube")} releaseMutation={() => releaseMutation("youtube")}/>
           )}
+          </div>
+          {/* 아래 카드들은 글이 길어 넓히면 읽기 어려워, 예전 폭을 그대로 둡니다. */}
+          <div className="max-w-2xl space-y-5">
           {state.budgets && <MonthlyBudgetCard budgets={state.budgets} onBudgetChange={updateBudget} />}
           {/* Beside the budget on purpose: the model is what decides the per-second rate the budget is spent
               at, so the two numbers a person compares are next to each other rather than a screen apart. */}
@@ -155,6 +160,7 @@ export function ProviderSettingsScreen({ onBack }: Props) {
               단계별 호출 횟수와 예상 비용은 <span className="text-slate-300">작업 워크플로우</span> 화면에 있습니다.
             </p>
           </section>
+          </div>
         </div>
       )}
     </section>
