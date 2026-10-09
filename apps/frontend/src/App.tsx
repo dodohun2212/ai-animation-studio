@@ -1082,6 +1082,7 @@ export function App() {
                 trendId={screen.trendId}
                 onSelect={(trendId) => setScreen(trendId ? { name: "memeTrends", trendId } : { name: "memeTrends" })}
                 onOpenSettings={() => setScreen({ name: "providerSettings" })}
+                onProjectCreated={handleCreated}
               />
             )}
             {screen.name === "newsReelWrite" && (

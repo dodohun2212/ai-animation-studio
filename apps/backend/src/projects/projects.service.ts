@@ -67,7 +67,21 @@ export class ProjectsService {
     const projectId = requireNonEmptyTrimmed(request?.projectId, "projectId");
     const topic = requireNonEmptyTrimmed(request?.topic, "topic");
     const timestamp = new Date().toISOString();
-    const stored = createStoredProject(projectId, topic, timestamp);
+    let stored = createStoredProject(projectId, topic, timestamp);
+    if (request.initialStoryDraft !== undefined) {
+      const draft = request.initialStoryDraft;
+      const keys = ["projectName", "character", "fullStory", "additionalNotes", "sceneCount"];
+      if (!draft || typeof draft !== "object" || Array.isArray(draft)
+        || Object.keys(draft).some((key) => !keys.includes(key)) || keys.some((key) => !(key in draft))
+        || typeof draft.projectName !== "string" || typeof draft.character !== "string"
+        || typeof draft.fullStory !== "string" || typeof draft.additionalNotes !== "string"
+        || !draft.fullStory.trim() || draft.fullStory.length > 6000 || draft.additionalNotes.length > 6000) {
+        throw invalidRequest("initialStoryDraft must contain only supported story fields.");
+      }
+      const { durationSeconds: _durationSeconds, ...defaults } = toShortProjectSettings(stored);
+      const settings = parseShortProjectSettings({ ...defaults, ...draft });
+      stored = applyShortProjectSettings(stored, settings, timestamp);
+    }
     await this.repository.create(stored);
     return { project: toApiProject(stored) };
   }

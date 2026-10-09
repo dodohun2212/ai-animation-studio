@@ -6,6 +6,7 @@ import {
   type MemeTrendEvidence,
   type MemeTrendFeedResponse,
   type MemeTrendVideo,
+  type Project,
 } from "@ai-animation-studio/shared";
 
 import { getMemeTrends, refreshMemeTrends, toMemeTrendDisplayError } from "../api/memeTrendsApi.js";
@@ -20,6 +21,7 @@ interface Props {
   onSelect: (trendId: string | undefined) => void;
   /** 키가 없을 때 갈 곳. 키를 넣는 칸은 API 설정에 있습니다. */
   onOpenSettings: () => void;
+  onProjectCreated: (project: Project) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -60,7 +62,7 @@ function hoursSince(iso: string, now: number): number {
  * 🟠 화면을 열 때는 저장된 마지막 수집만 읽습니다 — YouTube 를 부르지 않습니다. 할당량을 쓰는 건
  * 「YouTube에서 다시 모으기」를 누를 때뿐이고, 실패해도 보고 있던 목록은 그대로 둡니다.
  */
-export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings }: Props) {
+export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectCreated }: Props) {
   const [feed, setFeed] = useState<MemeTrendFeedResponse | null>(null);
   const [loadError, setLoadError] = useState<DisplayError | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -195,7 +197,7 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings }: Props) {
 
       {selected && feed?.collectedAt && <TrendDetail trend={selected} />}
       {/* ② 관찰 카드 — 후보마다 따로 저장되므로 후보가 바뀌면 새로 엽니다(key). 열 때는 저장본만 읽습니다. */}
-      {selected && feed?.collectedAt && <MemeObservationPanel key={selected.id} trend={selected} onOpenSettings={onOpenSettings} />}
+      {selected && feed?.collectedAt && <MemeObservationPanel key={selected.id} trend={selected} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} />}
 
       <p className="mt-9 border-t border-line pt-3 text-[11px] text-bone-faint">
         조회수는 YouTube가 준 값을 그대로, 읽은 시각과 함께 적습니다. 점수를 매기거나 다른 출처의 숫자를 더하지 않습니다.

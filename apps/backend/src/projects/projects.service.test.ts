@@ -9,6 +9,7 @@ import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { LocalProjectAssetMappingsRepository } from "../mappings/mappings.repository.js";
 import { LocalProjectRepository } from "./projects.repository.js";
 import { ProjectsService } from "./projects.service.js";
+import { StoryPromptService } from "../story/story-prompt.service.js";
 
 const CHAR_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=", "base64");
 const SECOND_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
@@ -50,6 +51,30 @@ describe("ProjectsService", () => {
     const response = await service.createProject({ projectId: "  padded_id  ", topic: "  padded topic  " });
     expect(response.project.id).toBe("padded_id");
     expect(response.project.topic).toBe("padded topic");
+  });
+
+  it("stores an initial scene plan atomically with a new short project", async () => {
+    await service.createProject({ projectId: "remix", topic: "새 우주 정거장 이야기", initialStoryDraft: {
+      projectName: "새 우주 정거장 이야기", character: "로봇 토리",
+      fullStory: "1장면: 로봇이 정거장에 도착한다.\n2장면: 새로운 인사를 만들어 떠난다.",
+      additionalNotes: "관찰한 동작의 리듬만 참고하고 원본을 복제하지 않는다.", sceneCount: 2,
+    } });
+    const reopened = new ProjectsService(new LocalProjectRepository(root));
+    const { settings } = await reopened.getProjectSettings("remix");
+    expect(settings).toMatchObject({ topic: "새 우주 정거장 이야기", character: "로봇 토리", sceneCount: 2,
+      fullStory: expect.stringContaining("2장면: 새로운 인사를"), additionalNotes: expect.stringContaining("원본을 복제하지") });
+    expect((await reopened.getProject("remix")).project.workflowState).toBe(WorkflowState.Ready);
+    const preview = await new StoryPromptService(new LocalProjectRepository(root)).preview("remix");
+    expect(preview.preview.originalPrompt).toContain("2장면: 새로운 인사를");
+    expect(preview.preview.originalPrompt).toContain("원본을 복제하지");
+    expect(preview.preview.sceneCount).toBe(2);
+  });
+
+  it("rejects an invalid initial plan before creating a project", async () => {
+    await expect(service.createProject({ projectId: "invalid_remix", topic: "주제", initialStoryDraft: {
+      projectName: "주제", character: "주인공", fullStory: "", additionalNotes: "", sceneCount: 1,
+    } })).rejects.toThrow();
+    await expect(service.getProject("invalid_remix")).rejects.toThrow();
   });
 
   it("rejects an empty or missing projectId/topic", async () => {

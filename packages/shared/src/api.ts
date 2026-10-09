@@ -15,7 +15,15 @@ export interface ApiError {
   details?: Record<string, unknown>;
 }
 
-export interface CreateProjectRequest { projectId: string; topic: string; }
+/** Stored with a new short project before any story Provider call. The story preview reads these ordinary settings. */
+export interface CreateProjectInitialStoryDraft {
+  projectName: string;
+  character: string;
+  fullStory: string;
+  additionalNotes: string;
+  sceneCount: number;
+}
+export interface CreateProjectRequest { projectId: string; topic: string; initialStoryDraft?: CreateProjectInitialStoryDraft; }
 export interface CreateProjectResponse { project: Project; }
 export interface ListProjectsResponse { projects: ProjectSummary[]; }
 export interface GetProjectResponse { project: Project; }

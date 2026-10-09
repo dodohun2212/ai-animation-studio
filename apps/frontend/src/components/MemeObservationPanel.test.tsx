@@ -60,12 +60,25 @@ const PUT = "PUT /trends/memes/niko/cards";
 
 function renderPanel() {
   const onOpenSettings = vi.fn();
-  render(<MemeObservationPanel trend={TREND} onOpenSettings={onOpenSettings} />);
+  render(<MemeObservationPanel trend={TREND} onOpenSettings={onOpenSettings} onProjectCreated={() => {}} />);
   return { onOpenSettings };
 }
 
 describe("MemeObservationPanel", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("opens the remix plan only from saved cards and waits for changed cards to be saved", async () => {
+    const card = { id: "saved-1", kind: "gesture" as const, text: "양손으로 하트", startSeconds: null, endSeconds: null,
+      origin: "manual" as const, sourceVideoId: null };
+    const calls = backend({ [GET]: [{ status: 200, body: workspace({ cards: [card], cardsSavedAt: SAVED_AT }) }] });
+    renderPanel();
+    const open = await screen.findByTestId("meme-remix-open");
+    expect(open).not.toBeDisabled();
+    fireEvent.change(screen.getByTestId("meme-card-text-0"), { target: { value: "새 동작" } });
+    expect(open).toBeDisabled();
+    expect(screen.getByText("먼저 바뀐 카드를 저장해 주세요.")).toBeTruthy();
+    expect(calls.map((call) => call.method)).toEqual(["GET"]);
+  });
 
   /** 🔴 후보를 고르는 것으로는 Gemini 를 부르지 않습니다 — 저장본 읽기 한 번뿐. */
   it("only reads the saved workspace when opened, and defaults to the most-viewed video", async () => {

@@ -51,6 +51,10 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 영상 분석은 별도 `meme_analysis_call_usage.json`에 요청 **전에** 1회를 기록한다. 하루 최대 3회이며 실제 전송 뒤 실패해도 1회를 쓴다. 실패 시 기존 분석과 카드는 남고 `MEME_ANALYSIS_FAILED`의 `details.dailyCalls`가 새 횟수를 알린다. 장부가 읽히지 않으면 전송하지 않는다. 키 누락, 현재 후보 밖 영상, 카드 형식·충돌, 작업 공간 저장 오류는 각각 `MEME_ANALYSIS_KEY_MISSING`, `MEME_ANALYSIS_VIDEO_NOT_IN_TREND`, `MEME_CARDS_INVALID`, `MEME_CARDS_CONFLICT`, `MEME_WORKSPACE_STORE_UNREADABLE`로 구분한다. 현재 피드에서 빠진 후보는 `MEME_TREND_UNKNOWN`이지만 사람이 적은 카드 파일을 지우지 않는다. 저장 파일에는 YouTube 조회수·제목 등의 메타데이터를 복사하지 않는다.
 
 
+## 밈 관찰 카드에서 단기 프로젝트 초안으로
+
+`CreateProjectRequest.initialStoryDraft?`는 `{ projectName, character, fullStory, additionalNotes, sceneCount }`를 받는다. 새 프로젝트를 만들 때 기존 단기 설정에 함께 저장하며, 유효하지 않으면 프로젝트를 만들지 않는다. `fullStory`에는 사람이 수정한 2–12장면 계획, `additionalNotes`에는 저장한 관찰 카드와 원본 복제 금지 지시가 들어간다. 기존 대본 미리보기는 이 설정을 읽기만 하고 Provider를 호출하지 않는다. 실제 대본 생성은 기존 승인·예산 게이트를 통과해야 한다. 이 필드를 생략한 일반 단기 프로젝트 생성은 기존과 같다.
+
 ## 대표 Route (예시, 전체 목록 아님)
 
 마이그레이션 초기에 작성된 예시 목록이다. 지금은 단기·장기 프로젝트, Story,

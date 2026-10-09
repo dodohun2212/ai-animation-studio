@@ -8,6 +8,7 @@ import {
   type MemeObservationKind,
   type MemeTrend,
   type MemeTrendWorkspace,
+  type Project,
   type SaveMemeObservationCardsRequest,
 } from "@ai-animation-studio/shared";
 
@@ -20,12 +21,14 @@ import {
 } from "../api/memeTrendsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
+import { MemeRemixDraftPanel } from "./MemeRemixDraftPanel.js";
 import { outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
   trend: MemeTrend;
   /** 키가 없을 때 갈 곳 — Gemini 키 칸은 API 설정에 있습니다. */
   onOpenSettings: () => void;
+  onProjectCreated: (project: Project) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -139,7 +142,7 @@ function editedFromSuggestion(card: DraftCard, suggestion: MemeAnalysisSuggestio
  * 성공해도 카드는 바뀌지 않고, 「카드로 가져오기」를 누른 것만 복사됩니다. 그래서 분석이 실패하거나 키가 없어도
  * 사람이 적어 둔 것은 그대로이고, **직접 적는 길이 언제나 열려 있습니다.**
  */
-export function MemeObservationPanel({ trend, onOpenSettings }: Props) {
+export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated }: Props) {
   const [workspace, setWorkspace] = useState<MemeTrendWorkspace | null>(null);
   const [loadError, setLoadError] = useState<DisplayError | null>(null);
   const [drafts, setDrafts] = useState<DraftCard[]>([]);
@@ -150,6 +153,7 @@ export function MemeObservationPanel({ trend, onOpenSettings }: Props) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<DisplayError | null>(null);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [showRemixDraft, setShowRemixDraft] = useState(false);
 
   function adoptSaved(next: MemeTrendWorkspace): void {
     const nextDrafts = next.cards.map(toDraft);
@@ -458,6 +462,19 @@ export function MemeObservationPanel({ trend, onOpenSettings }: Props) {
                   </button>
                 )}
               </div>
+            )}
+          </div>
+          <div className="border-t border-line pt-4">
+            {workspace.cards.length === 0 ? (
+              <p className="text-xs text-bone-dim">관찰 카드를 하나 이상 저장하면 새 캐릭터의 장면 계획을 만들 수 있습니다.</p>
+            ) : (
+              <button type="button" className={outlineButton} disabled={unsaved || saving} onClick={() => setShowRemixDraft(true)} data-testid="meme-remix-open">
+                이 카드로 애니메이션 초안 만들기
+              </button>
+            )}
+            {unsaved && workspace.cards.length > 0 && <p className="mt-1 text-xs text-amber-300">먼저 바뀐 카드를 저장해 주세요.</p>}
+            {showRemixDraft && workspace.cards.length > 0 && !unsaved && (
+              <MemeRemixDraftPanel key={workspace.cardsSavedAt ?? "unsaved"} trend={trend} cards={workspace.cards} onCreated={onProjectCreated} />
             )}
           </div>
         </>

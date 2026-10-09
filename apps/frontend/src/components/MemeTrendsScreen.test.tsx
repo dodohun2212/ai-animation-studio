@@ -53,7 +53,7 @@ function feed(overrides: Partial<MemeTrendFeedResponse> = {}): MemeTrendFeedResp
 function renderScreen(props: Partial<Parameters<typeof MemeTrendsScreen>[0]> = {}) {
   const onSelect = vi.fn();
   const onOpenSettings = vi.fn();
-  render(<MemeTrendsScreen onSelect={onSelect} onOpenSettings={onOpenSettings} {...props} />);
+  render(<MemeTrendsScreen onSelect={onSelect} onOpenSettings={onOpenSettings} onProjectCreated={() => {}} {...props} />);
   return { onSelect, onOpenSettings };
 }
 
