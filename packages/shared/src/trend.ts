@@ -1,6 +1,6 @@
 /** Recent YouTube metadata yields candidates, not verified cross-platform trends or video-content analysis. */
 export const MEME_TREND_MIN_VIDEOS = 3;
-export const MEME_TREND_MIN_CHANNELS = 2;
+export const MEME_TREND_MIN_CHANNELS = 3;
 
 export interface MemeTrendVideo {
   videoId: string;

@@ -15,6 +15,7 @@ import { ProviderSettingsService } from "../settings/provider-settings.service.j
 const API_ROOT = "https://www.googleapis.com/youtube/v3";
 const SEARCH_TERMS = ["밈 챌린지", "유행어 챌린지", "요즘 밈"] as const;
 const SEARCH_DAYS = 30;
+const RECENT_SEARCH_DAYS = 7;
 // YouTube's non-authorized API data must be refreshed or deleted after 30 days.
 const CACHE_MAX_AGE_MS = 30 * 86_400_000;
 const GENERIC_NAMES = new Set(["밈", "챌린지", "쇼츠", "shorts", "댄스", "춤", "유행", "유행어", "요즘", "추천", "귀여운", "재밌는", "fyp", "foryou", "viral", "reels", "trending", "trend", "kpop", "funny"]);
@@ -100,7 +101,7 @@ function toTrendVideo(item: YoutubeVideoItem, observedAt: string, previous?: Mem
   };
 }
 
-/** Same observed name in three videos from two channels is a candidate; metadata alone does not verify a common gesture. */
+/** Same observed name in three videos from three channels is a candidate; metadata alone does not verify a common gesture. */
 export function groupMemeCandidates(items: YoutubeVideoItem[], observedAt: string, previous: MemeTrend[] = []): MemeTrend[] {
   const priorById = new Map(previous.map((trend) => [trend.id, trend]));
   const priorVideoById = new Map(previous.flatMap((trend) => trend.videos.map((video) => [video.videoId, video] as const)));
@@ -128,9 +129,17 @@ export function groupMemeCandidates(items: YoutubeVideoItem[], observedAt: strin
     const evidence = [...group.evidence.values()].sort((a, b) => b.videoCount - a.videoCount || a.text.localeCompare(b.text, "ko"));
     return [{ id, name: evidence[0]!.text.replace(/^#/u, ""), evidence, videos, channelCount, firstObservedAt: priorById.get(id)?.firstObservedAt ?? observedAt, lastObservedAt: observedAt }];
   }).sort((a, b) => {
-    // The best video from a different channel matters first: one creator's many viral clips are not spread.
-    const supportA = a.videos.find((video) => video.channelId !== a.videos[0]?.channelId)?.viewCount ?? 0;
-    const supportB = b.videos.find((video) => video.channelId !== b.videos[0]?.channelId)?.viewCount ?? 0;
+    // The third independent creator's best video matters first: one creator's many viral clips are not spread.
+    const thirdCreatorViews = (videos: MemeTrendVideo[]): number => {
+      const seen = new Set<string>();
+      return videos.find((video) => {
+        if (seen.has(video.channelId)) return false;
+        seen.add(video.channelId);
+        return seen.size === MEME_TREND_MIN_CHANNELS;
+      })?.viewCount ?? 0;
+    };
+    const supportA = thirdCreatorViews(a.videos);
+    const supportB = thirdCreatorViews(b.videos);
     const viewsA = a.videos.reduce((sum, video) => sum + (video.viewCount ?? 0), 0);
     const viewsB = b.videos.reduce((sum, video) => sum + (video.viewCount ?? 0), 0);
     return supportB - supportA || viewsB - viewsA || b.channelCount - a.channelCount;
@@ -211,11 +220,17 @@ export class MemeTrendsService {
   }
 
   private async fetchVideos(key: string): Promise<YoutubeVideoItem[]> {
-    const publishedAfter = new Date(this.now().getTime() - SEARCH_DAYS * 86_400_000).toISOString();
+    const now = this.now().getTime();
+    const searches = [
+      { order: "viewCount", publishedAfter: new Date(now - SEARCH_DAYS * 86_400_000).toISOString() },
+      { order: "date", publishedAfter: new Date(now - RECENT_SEARCH_DAYS * 86_400_000).toISOString() },
+    ];
     const ids = new Set<string>();
     for (const q of SEARCH_TERMS) {
-      const result = await this.request("search", key, { part: "snippet", type: "video", regionCode: "KR", relevanceLanguage: "ko", publishedAfter, videoDuration: "short", order: "viewCount", maxResults: "50", q });
-      for (const item of apiItems<YoutubeSearchItem>(result)) if (item.id?.videoId) ids.add(item.id.videoId);
+      for (const search of searches) {
+        const result = await this.request("search", key, { part: "snippet", type: "video", regionCode: "KR", relevanceLanguage: "ko", videoDuration: "short", maxResults: "50", q, ...search });
+        for (const item of apiItems<YoutubeSearchItem>(result)) if (item.id?.videoId) ids.add(item.id.videoId);
+      }
     }
     const all: YoutubeVideoItem[] = [];
     const videoIds = [...ids];
