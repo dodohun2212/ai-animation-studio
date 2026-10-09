@@ -50,6 +50,14 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 영상 분석은 별도 `meme_analysis_call_usage.json`에 요청 **전에** 1회를 기록한다. 하루 최대 3회이며 실제 전송 뒤 실패해도 1회를 쓴다. 실패 시 기존 분석과 카드는 남고 `MEME_ANALYSIS_FAILED`의 `details.dailyCalls`가 새 횟수를 알린다. 장부가 읽히지 않으면 전송하지 않는다. 키 누락, 현재 후보 밖 영상, 카드 형식·충돌, 작업 공간 저장 오류는 각각 `MEME_ANALYSIS_KEY_MISSING`, `MEME_ANALYSIS_VIDEO_NOT_IN_TREND`, `MEME_CARDS_INVALID`, `MEME_CARDS_CONFLICT`, `MEME_WORKSPACE_STORE_UNREADABLE`로 구분한다. 현재 피드에서 빠진 후보는 `MEME_TREND_UNKNOWN`이지만 사람이 적은 카드 파일을 지우지 않는다. 저장 파일에는 YouTube 조회수·제목 등의 메타데이터를 복사하지 않는다.
 
+## 소설 분석 — M1
+
+`POST /story-analysis/preview`는 `NovelStoryAnalysisInput`을 검증하고 OpenAI로 보낼 정확한 프롬프트, 입력·프롬프트 SHA-256, 모델, 글자 수, 고정 예상 비용을 돌려준다. Provider 호출·저장은 없다. 원문 상한은 JavaScript 문자열 길이 6,000이며 제목 120자, 한 줄 설명 500자, 출처 메모 500자, 회차 1–20, 회차당 장면 2–12를 받는다. `rightsConfirmed: true`가 필수다. 저장된 OpenAI 키가 없을 때도 프롬프트는 미리 볼 수 있지만 `providerAvailable`은 `false`다.
+
+`POST /story-analysis`는 같은 입력과 미리보기의 해시, `approved: true`를 요구한다. 서버가 입력과 프롬프트를 다시 만들어 해시가 다르면 거절하고, OpenAI 월 예산 장부를 통과한 뒤에만 한 번 호출한다. 모델은 `gpt-5.6-luna`이며 추상 이야기 구조(줄거리·장르·분위기·주제·인물 카드·회차 구성·주의 표지)를 strict JSON Schema로 돌려준다. 현재 예상 비용은 호출당 `$0.05`로 보수적으로 잡는다. OpenAI Responses 요청은 `store: false`를 사용한다.
+
+원문 본문은 `learning_data/story_sources/`나 예산 장부에 쓰지 않는다. 입력 해시를 파일명으로 사용하며, 저장값은 해시·프롬프트 해시·제목·선택 출처 메모·권리 확인 시각·모델·회차/장면 수·분석 결과뿐이다. 같은 입력의 성공 결과는 다시 돌려주고 Provider를 재호출하지 않는다. 분석 시도 직전 `.claimed` 파일을 독점 생성하므로 응답이 모호하게 끊겨도 같은 입력은 다시 보내지 않는다. 이 기능의 오류 코드는 `STORY_ANALYSIS_INVALID_REQUEST`, `STORY_ANALYSIS_PROMPT_STALE`, `STORY_ANALYSIS_KEY_MISSING`, `STORY_ANALYSIS_BUDGET_EXCEEDED`, `STORY_ANALYSIS_ALREADY_ATTEMPTED`, `STORY_ANALYSIS_STORAGE_ERROR`, `STORY_ANALYSIS_PROVIDER_ERROR`다.
+
 
 ## 밈 관찰 카드에서 단기 프로젝트 초안으로
 

@@ -40,7 +40,7 @@ describe("StoryStudioScreen", () => {
 
   it("says plainly what does not work yet, as text and not as buttons", async () => {
     mockServer();
-    render(<StoryStudioScreen onCreated={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onOpenSettings={() => {}} />);
     const panel = screen.getByTestId("story-not-yet");
     expect(panel.textContent).toContain("Reddit 주소만 넣어 글 가져오기");
     expect(panel.textContent).toContain("사전 승인과 이용 조건");
@@ -49,34 +49,64 @@ describe("StoryStudioScreen", () => {
     await screen.findByTestId("story-title");
   });
 
-  /** M0: 분량 칸을 화면에서 뺐다 — 설정 칸처럼 보이지 않게, 기본값으로 만들고 장기 프로젝트 설정에서 조절한다(회차 나누기 화면에는 조절 UI가 없다 — CLI 1310). */
-  it("has no episode or scene count fields — they start from the defaults", async () => {
+  /** M1: AI 분석이 회차 구성의 개수를 입력으로 받아서 회차 수·장면 수 칸이 다시 생겼다. 처음 값은 기본값(3·6). */
+  it("has the episode and scene count fields again, starting from the defaults", async () => {
     mockServer();
-    render(<StoryStudioScreen onCreated={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onOpenSettings={() => {}} />);
     await screen.findByTestId("story-title");
-    expect(screen.queryByTestId("story-episodes")).toBeNull();
-    expect(screen.queryByTestId("story-scenes")).toBeNull();
+    expect((screen.getByTestId("story-episodes") as HTMLInputElement).value).toBe("3");
+    expect((screen.getByTestId("story-scenes") as HTMLInputElement).value).toBe("6");
     expect(STORY_DEFAULTS).toEqual({ episodeCount: 3, sceneCount: 6 });
   });
 
-  /** CLI 1310: M0 의 실제 동작을 말한다 — 원문은 개요에 그대로 저장되고 기존 개요 AI 가 읽는다. 재창작을 확정 표현으로 약속하지 않는다. */
-  it("states what M0 really does and does not promise a rewrite", async () => {
-    mockServer();
-    const { container } = render(<StoryStudioScreen onCreated={() => {}} />);
+  /** M1: 분석 미리보기는 입력이 다 차야 열리고, 칸의 값(회차 수·장면 수·출처 메모)을 그대로 요청에 싣는다. 빈 출처 메모는 보내지 않는다. */
+  it("opens the analysis preview only for a complete form and sends the form values", async () => {
+    const fetchMock = mockServer({
+      "POST /story-analysis/preview": {
+        preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", model: "gpt-5.6-luna", sourceCharacterCount: 4, estimatedCostUsd: 0.05, providerAvailable: true },
+      },
+    });
+    render(<StoryStudioScreen onCreated={() => {}} onOpenSettings={() => {}} />);
     await screen.findByTestId("story-title");
-    const notice = screen.getByTestId("story-m0-notice").textContent ?? "";
-    expect(notice).toContain("그대로 저장");
-    expect(notice).toContain("구조적으로 막지는 못합니다");
-    const page = container.textContent ?? "";
-    expect(page).not.toContain("원문을 그대로 쓰지 않고 새 이야기로 다시 씁니다");
-    expect(page).not.toContain("새 이야기로 다시 쓰도록 지시하지만");
-    expect(page).toContain("장기 프로젝트 설정");
-    expect(page).not.toContain("거기서 조절합니다");
+    expect((screen.getByTestId("story-preview-run") as HTMLButtonElement).disabled).toBe(true);
+    fill("story-title", "달빛 문");
+    fill("story-logline", "문을 발견한다");
+    fill("story-text", "본문");
+    expect((screen.getByTestId("story-preview-run") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("story-rights"));
+    expect((screen.getByTestId("story-preview-run") as HTMLButtonElement).disabled).toBe(false);
+
+    fill("story-episodes", "5");
+    fill("story-scenes", "8");
+    fireEvent.click(screen.getByTestId("story-preview-run"));
+    await screen.findByTestId("story-preview");
+    const call = sent(fetchMock).find((entry) => entry.url === "/story-analysis/preview")!;
+    expect(call.body).toEqual({ sourceText: "본문", title: "달빛 문", logline: "문을 발견한다", rightsConfirmed: true, episodeCount: 5, sceneCount: 8 });
+    expect("sourceNote" in call.body).toBe(false);
+    expect(sent(fetchMock).some((entry) => entry.url === "/story-analysis")).toBe(false);
+  });
+
+  it("sends the source note to the analysis only when one was written", async () => {
+    const fetchMock = mockServer({
+      "POST /story-analysis/preview": {
+        preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", model: "gpt-5.6-luna", sourceCharacterCount: 4, estimatedCostUsd: 0.05, providerAvailable: true },
+      },
+    });
+    render(<StoryStudioScreen onCreated={() => {}} onOpenSettings={() => {}} />);
+    await screen.findByTestId("story-title");
+    fill("story-title", "t");
+    fill("story-logline", "l");
+    fill("story-text", "본문");
+    fill("story-source", "  작가 이름  ");
+    fireEvent.click(screen.getByTestId("story-rights"));
+    fireEvent.click(screen.getByTestId("story-preview-run"));
+    await screen.findByTestId("story-preview");
+    expect(sent(fetchMock).find((entry) => entry.url === "/story-analysis/preview")!.body.sourceNote).toBe("작가 이름");
   });
 
   it("asks for the required fields before sending anything", async () => {
     const fetchMock = mockServer();
-    render(<StoryStudioScreen onCreated={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onOpenSettings={() => {}} />);
     fireEvent.click(screen.getByTestId("story-submit"));
     expect((await screen.findByTestId("story-error")).textContent).toContain("제목");
     fill("story-title", "달빛 문");
@@ -92,7 +122,7 @@ describe("StoryStudioScreen", () => {
   it("will not create anything until the person confirms the text is theirs or permitted", async () => {
     const fetchMock = mockServer({ "POST /long-projects": { project: makeLongProject() } });
     const onCreated = vi.fn();
-    render(<StoryStudioScreen onCreated={onCreated} />);
+    render(<StoryStudioScreen onCreated={onCreated} onOpenSettings={() => {}} />);
     fill("story-title", "t");
     fill("story-logline", "l");
     fill("story-text", "본문");
@@ -107,7 +137,7 @@ describe("StoryStudioScreen", () => {
 
   it("refuses a text over the limit and shows the count", async () => {
     const fetchMock = mockServer();
-    render(<StoryStudioScreen onCreated={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onOpenSettings={() => {}} />);
     fill("story-title", "t");
     fill("story-logline", "l");
     fill("story-text", "가".repeat(STORY_TEXT_LIMIT + 1));
@@ -122,7 +152,7 @@ describe("StoryStudioScreen", () => {
     const project = makeLongProject();
     const fetchMock = mockServer({ "POST /long-projects": { project } });
     const onCreated = vi.fn();
-    render(<StoryStudioScreen onCreated={onCreated} />);
+    render(<StoryStudioScreen onCreated={onCreated} onOpenSettings={() => {}} />);
     await screen.findByTestId("story-title");
     fill("story-title", "달빛 문");
     fill("story-logline", "평범한 직장인이 낯선 문을 발견한다");
@@ -152,7 +182,7 @@ describe("StoryStudioScreen", () => {
   it("keeps what was typed and shows the server's message when creation fails", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({ "GET /assets?assetType=character": { assets: [] } }, { "POST /long-projects": { status: 400, body: { code: "LONG_PROJECT_ALREADY_EXISTS", message: "raw" } } }));
     const onCreated = vi.fn();
-    render(<StoryStudioScreen onCreated={onCreated} />);
+    render(<StoryStudioScreen onCreated={onCreated} onOpenSettings={() => {}} />);
     fill("story-title", "t");
     fill("story-logline", "l");
     fill("story-text", "본문");
@@ -165,7 +195,7 @@ describe("StoryStudioScreen", () => {
 
   it("still works when the library cannot be read", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({}, { "GET /assets?assetType=character": { status: 500, body: { code: "X", message: "boom" } } }));
-    render(<StoryStudioScreen onCreated={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onOpenSettings={() => {}} />);
     fireEvent.click(screen.getByTestId("story-add-character"));
     await waitFor(() => expect(screen.getByText("보관함 캐릭터 목록을 불러오지 못했습니다. 짝짓기 없이 적을 수 있습니다.")).toBeTruthy());
     expect(screen.getByTestId("story-character-asset-0")).toBeTruthy();

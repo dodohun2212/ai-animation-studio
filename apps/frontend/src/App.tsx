@@ -1105,7 +1105,7 @@ export function App() {
                 onProjectCreated={handleCreated}
               />
             )}
-            {screen.name === "storyStudio" && <StoryStudioScreen onCreated={handleStoryCreated} />}
+            {screen.name === "storyStudio" && <StoryStudioScreen onCreated={handleStoryCreated} onOpenSettings={() => setScreen({ name: "providerSettings" })} />}
             {screen.name === "newsReelWrite" && (
               <NewsReelScreen
                 onBack={() => setScreen({ name: "newsReel" })}

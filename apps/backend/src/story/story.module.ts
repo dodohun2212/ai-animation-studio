@@ -11,6 +11,7 @@ import { OpenAiBudget } from "../providers/openai-budget.js";
 import { StoryPromptController } from "./story-prompt.controller.js";
 import { StoryPromptService } from "./story-prompt.service.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
+import { StoryAnalysisService } from "./story-analysis.service.js";
 
 @Module({
   imports: [ProjectsModule, ProjectAssetMappingsModule, ProviderSettingsModule, AssetsModule],
@@ -22,6 +23,11 @@ import { ProviderSettingsRepository } from "../settings/provider-settings.reposi
       useFactory: (projects: LocalProjectRepository, mappings: ProjectAssetMappingsService, providerSettings: ProviderSettingsService, budget: OpenAiBudget, assets: LocalAssetsRepository) =>
         new StoryPromptService(projects, undefined, mappings, providerSettings, budget, assets),
       inject: [LocalProjectRepository, ProjectAssetMappingsService, ProviderSettingsService, OpenAiBudget, LocalAssetsRepository],
+    },
+    {
+      provide: StoryAnalysisService,
+      useFactory: (root: string, providerSettings: ProviderSettingsService, budget: OpenAiBudget) => new StoryAnalysisService(root, providerSettings, budget),
+      inject: [LEARNING_DATA_ROOT, ProviderSettingsService, OpenAiBudget],
     },
   ],
 })

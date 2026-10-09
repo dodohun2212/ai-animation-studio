@@ -5,4 +5,5 @@ export * from "./mapping.js";
 export * from "./trend.js";
 export * from "./news-reel-card.js";
 export * from "./news-summary-check.js";
+export * from "./novel-story.js";
 export * from "./workflow.js";

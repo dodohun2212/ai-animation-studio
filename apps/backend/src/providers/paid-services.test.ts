@@ -44,6 +44,7 @@ const PAID_SERVICES = [
   "long-projects/long-projects.service.ts",
   "narration/local-narration-generation.service.ts",
   "narration/narration-review.service.ts",
+  "story/story-analysis.service.ts",
   "story/story-prompt.service.ts",
   "videos/local-video-submission.service.ts",
   "videos/local-video-workflow.service.ts",
