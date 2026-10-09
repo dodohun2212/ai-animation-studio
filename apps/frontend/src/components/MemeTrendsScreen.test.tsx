@@ -135,39 +135,66 @@ describe("MemeTrendsScreen", () => {
     expect(measured.textContent).toContain("실제 +15,000회");
     expect(measured.textContent).toContain("비교 기준");
     expect(measured.textContent).not.toContain("지난 수집");
-    // 첫 수집은 속도 대신 안내, 조회수 비공개는 아무것도 말하지 않는다.
-    expect(screen.getByTestId("meme-video-growth-v1").getAttribute("data-growth")).toBe("no-baseline");
-    expect(screen.getByTestId("meme-video-growth-v1").textContent).toBe("비교할 이전 조회수가 없습니다. 24시간 이상 간격으로 다시 모아 주세요.");
-    expect(screen.getByTestId("meme-video-growth-v1").textContent).not.toContain("첫 수집");
+    // 계산되지 않은 영상마다 같은 안내를 되풀이하지 않는다 — 영상 줄에는 아무것도 없고, 목록 위 한 줄이 한 번만 말한다.
+    expect(screen.queryByTestId("meme-video-growth-v1")).toBeNull();
     expect(screen.queryByTestId("meme-video-growth-v3")).toBeNull();
+    const summary = screen.getByTestId("meme-growth-summary");
+    expect(summary.getAttribute("data-growth")).toBe("partial");
+    expect(summary.textContent).toContain("계산된 영상에만");
   });
 
-  /** 백엔드는 조회수가 줄었거나 30일이 지나면 이전 값 필드를 생략한다 — 첫 수집과 같은 중립 문구여야 한다(CLI 1287). */
-  it("says the same neutral line for a first read and for a response whose baseline the server cleared", async () => {
+  /** 백엔드는 조회수가 줄었거나 30일이 지나면 이전 값 필드를 생략한다 — 첫 수집과 같은 중립 한 줄이어야 하고, 영상마다 되풀이하지 않는다(CLI 1287·1307). */
+  it("says one neutral line for first reads and for responses whose baseline the server cleared", async () => {
     const trend: MemeTrend = { ...NIKO, videos: [video({ videoId: "f1" }), video({ videoId: "f2", url: "https://www.youtube.com/watch?v=f2", channelId: "c2", viewCount: 10_000 }), NIKO.videos[2]!] };
     vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed({ trends: [trend] }) }));
     renderScreen({ trendId: NIKO.id });
-    const first = await screen.findByTestId("meme-video-growth-f1");
-    const cleared = screen.getByTestId("meme-video-growth-f2");
-    expect(first.textContent).toBe(cleared.textContent);
-    expect(first.textContent).not.toContain("첫 수집");
+    const summary = await screen.findByTestId("meme-growth-summary");
+    expect(summary.getAttribute("data-growth")).toBe("no-baseline");
+    expect(summary.textContent).toContain("비교할 이전 조회수가 없어");
+    expect(summary.textContent).not.toContain("첫 수집");
+    expect(screen.queryByTestId("meme-video-growth-f1")).toBeNull();
+    expect(screen.queryByTestId("meme-video-growth-f2")).toBeNull();
+    expect(screen.getAllByText(/비교할 이전 조회수가 없어/)).toHaveLength(1);
   });
 
-  /** 🔴 비교 기준과 24시간이 안 지났거나 조회수가 줄었으면 속도를 지어내지 않는다. */
+  /** 🔴 비교 기준과 24시간이 안 지났거나 조회수가 줄었으면 속도를 지어내지 않는다 — 한 줄로만 말한다. */
   it.each([
     ["one hour later", { previousViewCount: 29_000, previousViewCountObservedAt: new Date(Date.parse(OBSERVED) - 3_600_000).toISOString() }, "too-short", "24시간이 안 지나"],
     ["25 hours later", { previousViewCount: 30_000, previousViewCountObservedAt: new Date(Date.parse(OBSERVED) - 25 * 3_600_000).toISOString() }, "measured", "관찰 기간 평균 +13,824회/일"],
     ["a falling count", { previousViewCount: 90_000, previousViewCountObservedAt: new Date(Date.parse(OBSERVED) - 48 * 3_600_000).toISOString() }, "invalid", "맞지 않아"],
     ["an anchor over 30 days old", { previousViewCount: 1_000, previousViewCountObservedAt: new Date(Date.parse(OBSERVED) - 40 * 86_400_000).toISOString() }, "invalid", "30일"],
   ] as const)("shows the right growth state for %s", async (_name, previous, state, text) => {
-    const trend: MemeTrend = { ...NIKO, videos: [video({ videoId: "g1", viewCount: 44_400, ...previous }), ...NIKO.videos.slice(1)] };
+    const trend: MemeTrend = { ...NIKO, videos: [video({ videoId: "g1", viewCount: 44_400, ...previous }), NIKO.videos[2]!] };
     vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed({ trends: [trend] }) }));
     renderScreen({ trendId: NIKO.id });
 
-    const growth = await screen.findByTestId("meme-video-growth-g1");
-    expect(growth.getAttribute("data-growth")).toBe(state);
-    expect(growth.textContent).toContain(text);
-    if (state !== "measured") expect(growth.textContent).not.toMatch(/회\/일/);
+    if (state === "measured") {
+      const growth = await screen.findByTestId("meme-video-growth-g1");
+      expect(growth.getAttribute("data-growth")).toBe("measured");
+      expect(growth.textContent).toContain(text);
+      expect(screen.queryByTestId("meme-growth-summary")).toBeNull();
+      return;
+    }
+    const summary = await screen.findByTestId("meme-growth-summary");
+    expect(summary.getAttribute("data-growth")).toBe(state);
+    expect(summary.textContent).toContain(text);
+    expect(summary.textContent).not.toMatch(/회\/일/);
+    expect(screen.queryByTestId("meme-video-growth-g1")).toBeNull();
+  });
+
+  /** 같은 근거를 두 번 보여 주지 않는다: 후보 카드엔 칩이 없고(이름이 첫 근거), 상세에서 한 번만. 영상이 많으면 처음 5편만. */
+  it("shows the evidence chips once, in the detail, and folds a long video list", async () => {
+    const many: MemeTrend = { ...NIKO, videos: Array.from({ length: 8 }, (_, index) => video({ videoId: `m${index}`, url: `https://www.youtube.com/watch?v=m${index}`, channelId: `c${index}` })) };
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed({ trends: [many] }) }));
+    renderScreen({ trendId: NIKO.id });
+    const detail = await screen.findByTestId("meme-trend-detail");
+    expect(screen.getByTestId(`meme-trend-open-${NIKO.id}`).textContent).not.toContain("영상 3편");
+    expect(detail.textContent).toContain("#니코니코니 · 영상 3편");
+    expect(within(screen.getByTestId(`meme-trend-open-${NIKO.id}`)).queryAllByRole("listitem")).toHaveLength(0);
+    expect(within(screen.getByTestId("meme-trend-videos")).getAllByRole("listitem")).toHaveLength(5);
+    fireEvent.click(screen.getByTestId("meme-videos-toggle"));
+    expect(within(screen.getByTestId("meme-trend-videos")).getAllByRole("listitem")).toHaveLength(8);
+    expect(screen.getByTestId("meme-videos-toggle").textContent).toBe("영상 줄여 보기");
   });
 
   /** 단계 띠: 후보 고르기 전 → 후보를 고름(카드 없음) → 저장한 카드가 있음. 앞 단계는 끝남, 지금 단계는 한 곳. */
@@ -188,7 +215,7 @@ describe("MemeTrendsScreen", () => {
       renderScreen({ trendId: NIKO.id });
       await screen.findByTestId("meme-trend-detail");
       expect(states()).toEqual(["done", "current", "upcoming", "upcoming"]);
-      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("이 밈으로 만들기");
+      expect(screen.queryByTestId("meme-flow-hint")).toBeNull();
     });
 
     it("moves to the draft step when saved cards exist, and leaves video making upcoming", async () => {
@@ -196,7 +223,7 @@ describe("MemeTrendsScreen", () => {
       vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed(), [`GET /trends/memes/${NIKO.id}/workspace`]: workspace([card]) }));
       renderScreen({ trendId: NIKO.id });
       await waitFor(() => expect(states()).toEqual(["done", "done", "current", "upcoming"]));
-      expect(screen.getByTestId("meme-flow-hint").textContent).toContain("저장된 관찰 카드가 있습니다");
+      expect(screen.queryByTestId("meme-flow-hint")).toBeNull();
     });
 
     it("lets the first step clear the chosen candidate", async () => {

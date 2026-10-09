@@ -112,11 +112,8 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
     { key: "draft", label: "초안 만들기" },
     { key: "make", label: "영상 제작" },
   ];
-  const stageHint = [
-    hasTrends ? "목록에서 밈 후보를 하나 고르세요." : "먼저 「YouTube에서 다시 모으기」로 후보를 모으세요.",
-    "내 캐릭터를 고르고 「이 밈으로 만들기」를 누르세요. 분석과 장면 계획은 앱이 합니다.",
-    "저장된 관찰 카드가 있습니다. 캐릭터를 고르고 「이 밈으로 만들기」를 누르거나, 아래에서 카드를 고쳐도 됩니다. 영상 제작은 만들어진 단기 프로젝트에서 이어집니다.",
-  ][stage];
+  // 후보를 고른 뒤에는 바로 아래 「이 밈으로 만들기」 카드가 할 일을 말하므로 띠 옆 안내는 첫 단계에만 둡니다(같은 말을 두 번 하지 않음).
+  const stageHint = stage === 0 ? (hasTrends ? "목록에서 밈 후보를 하나 고르세요." : "먼저 「YouTube에서 다시 모으기」로 후보를 모으세요.") : null;
 
   return (
     <section>
@@ -158,7 +155,7 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
       {/* 🟠 스크롤해도 따라옵니다 — 후보를 고르면 상세·관찰 카드가 아래로 길게 이어져, 띠가 화면 밖으로 나가면 「어디까지 왔나」를 잃습니다. */}
       <div className="sticky top-0 z-10 -mx-1 mt-5 bg-ground px-1 py-2" data-testid="meme-flow">
         <StepRibbon steps={steps} currentIndex={stage} />
-        <p className="mt-2 text-xs text-bone-dim" data-testid="meme-flow-hint">{stageHint}</p>
+        {stageHint && <p className="mt-2 text-xs text-bone-dim" data-testid="meme-flow-hint">{stageHint}</p>}
       </div>
 
       <div className="mt-5 border-b border-line" />
@@ -214,9 +211,8 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
       )}
 
       {selected && (
-        <div className="mt-4 flex items-center gap-3 text-xs text-bone-dim">
-          <span>고른 밈 후보만 보이고 있습니다.</span>
-          <button type="button" data-testid="meme-trends-show-all" className={smallOutlineButton} onClick={() => onSelect(undefined)}>다른 밈 고르기</button>
+        <div className="mt-4">
+          <button type="button" data-testid="meme-trends-show-all" className={smallOutlineButton} onClick={() => onSelect(undefined)}>← 다른 밈 고르기</button>
         </div>
       )}
 
@@ -241,9 +237,6 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
         </details>
       )}
 
-      <p className="mt-9 border-t border-line pt-3 text-[11px] text-bone-faint">
-        조회수는 YouTube가 준 값을 그대로, 읽은 시각과 함께 적습니다. 점수를 매기거나 다른 출처의 숫자를 더하지 않습니다.
-      </p>
     </section>
   );
 }
@@ -277,7 +270,6 @@ function TrendCard({ trend, selected, onSelect }: { trend: MemeTrend; selected: 
         : <span aria-hidden="true" className="h-20 w-20 flex-shrink-0 rounded bg-slate-950/40" />}
       <span className="min-w-0 flex-1 space-y-1.5">
         <span className="block truncate text-sm font-medium text-bone">{trend.name}</span>
-        <EvidenceChips evidence={trend.evidence.slice(0, 3)} />
         <span className="block text-[11px] text-bone-dim" data-testid={`meme-trend-stats-${trend.id}`}>
           최고 조회수 {top === null ? "비공개" : views(top)} · 영상 {trend.videos.length}편 · 채널 {trend.channelCount}곳
         </span>
@@ -291,55 +283,60 @@ function TrendCard({ trend, selected, onSelect }: { trend: MemeTrend; selected: 
  * 속도는 shared `memeVideoGrowth` 가 유효하다고 한 때만 — 24시간 이상·30일 미만 간격에서 조회수가 줄지 않은 경우입니다.
  * 「관찰 기간 평균」이지 지금의 속도도, 앞날의 예측도 아닙니다. 백엔드는 빠른 재수집 뒤에도 최초 비교 기준을 유지하므로
  * 「지난 수집」이 아니라 「비교 기준」이라 부릅니다.
- * 이전 값이 없는 까닭은 단정하지 않습니다 — 첫 수집일 수도, 백엔드가 감소·30일 경과로 기준을 비운 것일 수도 있습니다.
+ * 🟠 계산되지 않은 영상마다 같은 안내를 되풀이하지 않습니다 — 그건 목록 위 한 줄(`growthSummary`)이 한 번만 말합니다.
  */
 function Growth({ video }: { video: MemeTrendVideo }) {
-  const testId = `meme-video-growth-${video.videoId}`;
-  if (video.viewCount === null) return null;
-  if (video.previousViewCount === undefined || video.previousViewCountObservedAt === undefined) {
-    return (
-      <span className="block text-bone-faint" data-testid={testId} data-growth="no-baseline">
-        비교할 이전 조회수가 없습니다. 24시간 이상 간격으로 다시 모아 주세요.
-      </span>
-    );
-  }
   const growth = memeVideoGrowth(video);
-  if (growth) {
-    return (
-      <span className="block text-bone-dim" data-testid={testId} data-growth="measured">
-        관찰 기간 평균 +{growth.viewsPerDay.toLocaleString("ko-KR")}회/일
-        <span className="text-bone-faint">
-          {" "}· 실제 +{growth.viewsGained.toLocaleString("ko-KR")}회 · 비교 기준 {formatDateTime(video.previousViewCountObservedAt)} → {formatDateTime(video.viewCountObservedAt)}
-        </span>
-      </span>
-    );
-  }
-  const elapsedMs = Date.parse(video.viewCountObservedAt) - Date.parse(video.previousViewCountObservedAt);
-  const tooShort = Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs < MEME_GROWTH_MIN_INTERVAL_MS;
+  if (!growth || video.previousViewCountObservedAt === undefined) return null;
   return (
-    <span className="block text-bone-faint" data-testid={testId} data-growth={tooShort ? "too-short" : "invalid"}>
-      {tooShort
-        ? "비교 기준(" + formatDateTime(video.previousViewCountObservedAt) + ")과 24시간이 안 지나 속도를 계산하지 않았습니다. 24시간 이상 뒤에 다시 모아 주세요."
-        : "비교 기준과 조회수가 맞지 않아 속도를 계산하지 않았습니다. 조회수가 줄었거나 기준이 30일을 넘었을 수 있습니다."}
+    <span className="block text-bone-dim" data-testid={`meme-video-growth-${video.videoId}`} data-growth="measured">
+      관찰 기간 평균 +{growth.viewsPerDay.toLocaleString("ko-KR")}회/일
+      <span className="text-bone-faint">
+        {" "}· 실제 +{growth.viewsGained.toLocaleString("ko-KR")}회 · 비교 기준 {formatDateTime(video.previousViewCountObservedAt)} → {formatDateTime(video.viewCountObservedAt)}
+      </span>
     </span>
   );
 }
 
+type GrowthSummaryState = "no-baseline" | "too-short" | "invalid" | "partial";
+
+/** 속도가 계산되지 않은 영상이 있을 때만 — 이유는 이전 값이 없는 것, 24시간 미만, 맞지 않는 값 중 하나. 이유를 단정하지 않습니다. */
+export function growthSummary(videos: MemeTrendVideo[]): { state: GrowthSummaryState; text: string } | null {
+  const readable = videos.filter((video) => video.viewCount !== null);
+  if (readable.length === 0) return null;
+  const measured = readable.filter((video) => memeVideoGrowth(video) !== null).length;
+  if (measured === readable.length) return null;
+  if (measured > 0) return { state: "partial", text: "속도는 계산된 영상에만 표시합니다 — 나머지는 이전 조회수가 없거나 비교할 수 없습니다." };
+  const withBaseline = readable.filter((video) => video.previousViewCount !== undefined && video.previousViewCountObservedAt !== undefined);
+  if (withBaseline.length === 0) return { state: "no-baseline", text: "비교할 이전 조회수가 없어 증가 속도는 아직 없습니다. 24시간 이상 간격으로 다시 모으면 표시됩니다." };
+  const tooShort = withBaseline.some((video) => {
+    const elapsed = Date.parse(video.viewCountObservedAt) - Date.parse(video.previousViewCountObservedAt!);
+    return Number.isFinite(elapsed) && elapsed >= 0 && elapsed < MEME_GROWTH_MIN_INTERVAL_MS;
+  });
+  return tooShort
+    ? { state: "too-short", text: "비교 기준과 24시간이 안 지나 속도를 계산하지 않았습니다. 24시간 이상 뒤에 다시 모아 주세요." }
+    : { state: "invalid", text: "비교 기준과 조회수가 맞지 않아 속도를 계산하지 않았습니다. 조회수가 줄었거나 기준이 30일을 넘었을 수 있습니다." };
+}
+
+/** 처음엔 이만큼만 — 많게는 수십 편이라 선택 카드 아래가 영상 줄로 가득 차지 않게(나머지는 펼쳐 봅니다). */
+const DETAIL_VIDEOS_SHOWN = 5;
+
 function TrendDetail({ trend }: { trend: MemeTrend }) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? trend.videos : trend.videos.slice(0, DETAIL_VIDEOS_SHOWN);
+  const summary = growthSummary(trend.videos);
   return (
     <section data-testid="meme-trend-detail" aria-label={`${trend.name} 묶인 영상`} className="mt-8 space-y-4 rounded-lg border border-line bg-ground-raised p-5">
       <div className="space-y-2">
-        <h2 className="text-base font-semibold text-bone">{trend.name}</h2>
-        <p className="text-xs text-bone-dim">
-          같은 밈으로 묶은 근거 — 제목·설명·태그에서 실제로 본 글자입니다. 영상 내용은 아직 보지 않았습니다.
-        </p>
+        <h2 className="text-base font-semibold text-bone">묶은 근거</h2>
         <EvidenceChips evidence={trend.evidence} withCounts />
         <p className="text-[11px] text-bone-faint">
-          처음 본 수집 {formatDateTime(trend.firstObservedAt)} · 마지막으로 본 수집 {formatDateTime(trend.lastObservedAt)} · 서로 다른 채널 {trend.channelCount}곳
+          제목·설명·태그에서 본 글자 · 처음 본 수집 {formatDateTime(trend.firstObservedAt)} · 마지막으로 본 수집 {formatDateTime(trend.lastObservedAt)} · 서로 다른 채널 {trend.channelCount}곳
         </p>
+        {summary && <p className="text-[11px] text-bone-faint" data-testid="meme-growth-summary" data-growth={summary.state}>{summary.text}</p>}
       </div>
       <ul className="divide-y divide-line" data-testid="meme-trend-videos">
-        {trend.videos.map((video) => (
+        {shown.map((video) => (
           <li key={video.videoId} className="flex gap-3 py-3" data-testid={`meme-video-${video.videoId}`}>
             {video.thumbnailUrl
               ? <img src={video.thumbnailUrl} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-16 w-28 flex-shrink-0 rounded object-cover" />
@@ -361,6 +358,11 @@ function TrendDetail({ trend }: { trend: MemeTrend }) {
           </li>
         ))}
       </ul>
+      {trend.videos.length > DETAIL_VIDEOS_SHOWN && (
+        <button type="button" data-testid="meme-videos-toggle" className={smallOutlineButton} onClick={() => setShowAll((old) => !old)}>
+          {showAll ? "영상 줄여 보기" : `나머지 영상 ${trend.videos.length - DETAIL_VIDEOS_SHOWN}편 더 보기`}
+        </button>
+      )}
     </section>
   );
 }
