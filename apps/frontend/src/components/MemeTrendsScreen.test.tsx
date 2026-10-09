@@ -31,9 +31,9 @@ const NIKO: MemeTrend = {
   videos: [
     video(),
     video({ videoId: "v2", url: "https://www.youtube.com/watch?v=v2", channelId: "c2", channelTitle: "채널 둘", viewCount: 45_000, previousViewCount: 30_000, previousViewCountObservedAt: "2026-10-06T00:00:00.000Z" }),
-    video({ videoId: "v3", url: "https://www.youtube.com/watch?v=v3", channelId: "c2", channelTitle: "채널 둘", viewCount: null, thumbnailUrl: null }),
+    video({ videoId: "v3", url: "https://www.youtube.com/watch?v=v3", channelId: "c3", channelTitle: "채널 셋", viewCount: null, thumbnailUrl: null }),
   ],
-  channelCount: 2,
+  channelCount: 3,
   firstObservedAt: OBSERVED,
   lastObservedAt: OBSERVED,
 };
@@ -90,7 +90,7 @@ describe("MemeTrendsScreen", () => {
     renderScreen();
 
     const stats = await screen.findByTestId(`meme-trend-stats-${NIKO.id}`);
-    expect(stats.textContent).toBe("최고 조회수 120,000회 · 영상 3편 · 채널 2곳");
+    expect(stats.textContent).toBe("최고 조회수 120,000회 · 영상 3편 · 채널 3곳");
     expect(screen.getByTestId(`meme-trend-stats-${L_TAKE.id}`).textContent).toContain("최고 조회수 비공개");
   });
 
@@ -128,8 +128,46 @@ describe("MemeTrendsScreen", () => {
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
 
-    expect(screen.getByTestId("meme-video-growth-v2").textContent).toContain("+15,000회");
-    expect(screen.queryByTestId("meme-video-growth-v1")).toBeNull();
+    const measured = screen.getByTestId("meme-video-growth-v2");
+    expect(measured.getAttribute("data-growth")).toBe("measured");
+    expect(measured.textContent).toContain("관찰 기간 평균 +");
+    expect(measured.textContent).toContain("/일");
+    expect(measured.textContent).toContain("실제 +15,000회");
+    expect(measured.textContent).toContain("비교 기준");
+    expect(measured.textContent).not.toContain("지난 수집");
+    // 첫 수집은 속도 대신 안내, 조회수 비공개는 아무것도 말하지 않는다.
+    expect(screen.getByTestId("meme-video-growth-v1").getAttribute("data-growth")).toBe("no-baseline");
+    expect(screen.getByTestId("meme-video-growth-v1").textContent).toBe("비교할 이전 조회수가 없습니다. 24시간 이상 간격으로 다시 모아 주세요.");
+    expect(screen.getByTestId("meme-video-growth-v1").textContent).not.toContain("첫 수집");
+    expect(screen.queryByTestId("meme-video-growth-v3")).toBeNull();
+  });
+
+  /** 백엔드는 조회수가 줄었거나 30일이 지나면 이전 값 필드를 생략한다 — 첫 수집과 같은 중립 문구여야 한다(CLI 1287). */
+  it("says the same neutral line for a first read and for a response whose baseline the server cleared", async () => {
+    const trend: MemeTrend = { ...NIKO, videos: [video({ videoId: "f1" }), video({ videoId: "f2", url: "https://www.youtube.com/watch?v=f2", channelId: "c2", viewCount: 10_000 }), NIKO.videos[2]!] };
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed({ trends: [trend] }) }));
+    renderScreen({ trendId: NIKO.id });
+    const first = await screen.findByTestId("meme-video-growth-f1");
+    const cleared = screen.getByTestId("meme-video-growth-f2");
+    expect(first.textContent).toBe(cleared.textContent);
+    expect(first.textContent).not.toContain("첫 수집");
+  });
+
+  /** 🔴 비교 기준과 24시간이 안 지났거나 조회수가 줄었으면 속도를 지어내지 않는다. */
+  it.each([
+    ["one hour later", { previousViewCount: 29_000, previousViewCountObservedAt: new Date(Date.parse(OBSERVED) - 3_600_000).toISOString() }, "too-short", "24시간이 안 지나"],
+    ["25 hours later", { previousViewCount: 30_000, previousViewCountObservedAt: new Date(Date.parse(OBSERVED) - 25 * 3_600_000).toISOString() }, "measured", "관찰 기간 평균 +13,824회/일"],
+    ["a falling count", { previousViewCount: 90_000, previousViewCountObservedAt: new Date(Date.parse(OBSERVED) - 48 * 3_600_000).toISOString() }, "invalid", "맞지 않아"],
+    ["an anchor over 30 days old", { previousViewCount: 1_000, previousViewCountObservedAt: new Date(Date.parse(OBSERVED) - 40 * 86_400_000).toISOString() }, "invalid", "30일"],
+  ] as const)("shows the right growth state for %s", async (_name, previous, state, text) => {
+    const trend: MemeTrend = { ...NIKO, videos: [video({ videoId: "g1", viewCount: 44_400, ...previous }), ...NIKO.videos.slice(1)] };
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed({ trends: [trend] }) }));
+    renderScreen({ trendId: NIKO.id });
+
+    const growth = await screen.findByTestId("meme-video-growth-g1");
+    expect(growth.getAttribute("data-growth")).toBe(state);
+    expect(growth.textContent).toContain(text);
+    if (state !== "measured") expect(growth.textContent).not.toMatch(/회\/일/);
   });
 
   it("says when a remembered candidate is no longer in the list instead of showing an empty detail", async () => {

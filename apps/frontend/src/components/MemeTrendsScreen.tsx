@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import {
+  MEME_GROWTH_MIN_INTERVAL_MS,
   MEME_TREND_MIN_CHANNELS,
   MEME_TREND_MIN_VIDEOS,
+  memeVideoGrowth,
   type MemeTrend,
   type MemeTrendEvidence,
   type MemeTrendFeedResponse,
@@ -245,13 +247,40 @@ function TrendCard({ trend, selected, onSelect }: { trend: MemeTrend; selected: 
   );
 }
 
-/** 재수집으로 이전 값이 있을 때만 — 한 번 읽은 숫자로는 「늘고 있다」를 말할 수 없습니다. */
+/**
+ * 속도는 shared `memeVideoGrowth` 가 유효하다고 한 때만 — 24시간 이상·30일 미만 간격에서 조회수가 줄지 않은 경우입니다.
+ * 「관찰 기간 평균」이지 지금의 속도도, 앞날의 예측도 아닙니다. 백엔드는 빠른 재수집 뒤에도 최초 비교 기준을 유지하므로
+ * 「지난 수집」이 아니라 「비교 기준」이라 부릅니다.
+ * 이전 값이 없는 까닭은 단정하지 않습니다 — 첫 수집일 수도, 백엔드가 감소·30일 경과로 기준을 비운 것일 수도 있습니다.
+ */
 function Growth({ video }: { video: MemeTrendVideo }) {
-  if (video.previousViewCount === undefined || video.previousViewCountObservedAt === undefined || video.viewCount === null) return null;
-  const delta = video.viewCount - video.previousViewCount;
+  const testId = `meme-video-growth-${video.videoId}`;
+  if (video.viewCount === null) return null;
+  if (video.previousViewCount === undefined || video.previousViewCountObservedAt === undefined) {
+    return (
+      <span className="block text-bone-faint" data-testid={testId} data-growth="no-baseline">
+        비교할 이전 조회수가 없습니다. 24시간 이상 간격으로 다시 모아 주세요.
+      </span>
+    );
+  }
+  const growth = memeVideoGrowth(video);
+  if (growth) {
+    return (
+      <span className="block text-bone-dim" data-testid={testId} data-growth="measured">
+        관찰 기간 평균 +{growth.viewsPerDay.toLocaleString("ko-KR")}회/일
+        <span className="text-bone-faint">
+          {" "}· 실제 +{growth.viewsGained.toLocaleString("ko-KR")}회 · 비교 기준 {formatDateTime(video.previousViewCountObservedAt)} → {formatDateTime(video.viewCountObservedAt)}
+        </span>
+      </span>
+    );
+  }
+  const elapsedMs = Date.parse(video.viewCountObservedAt) - Date.parse(video.previousViewCountObservedAt);
+  const tooShort = Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs < MEME_GROWTH_MIN_INTERVAL_MS;
   return (
-    <span className="text-bone-faint" data-testid={`meme-video-growth-${video.videoId}`}>
-      {" "}· 지난 수집({formatDateTime(video.previousViewCountObservedAt)}) 이후 {delta >= 0 ? "+" : ""}{delta.toLocaleString("ko-KR")}회
+    <span className="block text-bone-faint" data-testid={testId} data-growth={tooShort ? "too-short" : "invalid"}>
+      {tooShort
+        ? "비교 기준(" + formatDateTime(video.previousViewCountObservedAt) + ")과 24시간이 안 지나 속도를 계산하지 않았습니다. 24시간 이상 뒤에 다시 모아 주세요."
+        : "비교 기준과 조회수가 맞지 않아 속도를 계산하지 않았습니다. 조회수가 줄었거나 기준이 30일을 넘었을 수 있습니다."}
     </span>
   );
 }
