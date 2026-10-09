@@ -18,7 +18,14 @@ const SEARCH_DAYS = 30;
 const RECENT_SEARCH_DAYS = 7;
 // YouTube's non-authorized API data must be refreshed or deleted after 30 days.
 const CACHE_MAX_AGE_MS = 30 * 86_400_000;
-const GENERIC_NAMES = new Set(["밈", "챌린지", "쇼츠", "shorts", "댄스", "춤", "유행", "유행어", "요즘", "추천", "귀여운", "재밌는", "fyp", "foryou", "viral", "reels", "trending", "trend", "kpop", "funny"]);
+// A repeated broad topic is not evidence that independent creators are copying one meme.
+// Keep this list conservative: a concrete catchphrase or challenge name must still pass.
+const GENERIC_NAMES = new Set([
+  "밈", "챌린지", "쇼츠", "릴스", "댄스", "춤", "유행", "유행어", "요즘", "추천", "귀여운", "재밌는", "웃긴", "웃긴영상", "개그", "일상", "브이로그", "음악", "노래", "게임", "애니메이션",
+  "meme", "memes", "challenge", "challenges", "short", "shorts", "ytshorts", "shortvideo", "reels", "fyp", "foryou", "foryoupage", "viral", "viralvideo", "trending", "trendingnow", "trend", "funny", "comedy", "humor", "dance", "music", "song", "gaming", "game", "vlog", "daily", "edit", "asmr", "kpop", "animation", "relatable",
+  // Standalone franchise/game topics commonly occur across unrelated short videos.
+  "mario", "sonic", "roblox", "minecraft", "마리오", "소닉", "로블록스", "마인크래프트",
+]);
 
 type YoutubeSearchItem = { id?: { videoId?: string } };
 export type YoutubeVideoItem = {
@@ -252,6 +259,17 @@ export class MemeTrendsService {
       const result = await this.request("videos", key, { part: "snippet,statistics,contentDetails", id: videoIds.slice(offset, offset + 50).join(","), maxResults: "50" });
       all.push(...apiItems<YoutubeVideoItem>(result));
     }
+    // Since July 2025 mostPopular covers trending music, movies and gaming rather than
+    // the former general Trending page. Use it only as another discovery sample; the
+    // short-duration and independent-creator gates below still apply to every item.
+    const chart = await this.request("videos", key, {
+      part: "snippet,statistics,contentDetails", chart: "mostPopular", regionCode: "KR", maxResults: "50",
+    });
+    const oldest = now - SEARCH_DAYS * 86_400_000;
+    all.push(...apiItems<YoutubeVideoItem>(chart).filter((item) => {
+      const published = Date.parse(item.snippet?.publishedAt ?? "");
+      return Number.isFinite(published) && published >= oldest && published <= now;
+    }));
     return all;
   }
 }

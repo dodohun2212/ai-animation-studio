@@ -72,6 +72,19 @@ describe("meme trend discovery", () => {
     expect(trends[0]).toMatchObject({ name: "L을 가져가", channelCount: 3, evidence: [{ kind: "phrase", text: "L을 가져가", videoCount: 3 }] });
   });
 
+  it("rejects broad tags and standalone game names while keeping a concrete challenge", () => {
+    // These names were present in the user's saved candidate feed; only 권루트 was
+    // judged to identify a specific pattern rather than a topic or format.
+    const broad = "#challenge #mario #memes #comedy #meme #웃긴영상 #animation #sonic #roblox #릴스 #relatable";
+    const items = [
+      video("aaaaaaaaaaa", "creator-a", `${broad} #권루트`),
+      video("bbbbbbbbbbb", "creator-b", `${broad} #권루트`),
+      video("ccccccccccc", "creator-c", `${broad} #권루트`),
+    ];
+    expect(groupMemeCandidates(items, observedAt).map((trend) => trend.name)).toEqual(["권루트"]);
+    expect(groupMemeCandidates(items.map((item) => ({ ...item, snippet: { ...item.snippet, title: broad } })), observedAt)).toEqual([]);
+  });
+
   it("ranks a meme supported by another popular creator above one dominant clip", () => {
     const trends = groupMemeCandidates([
       video("ggggggggggg", "solo", "#한방밈", "9000000"),
@@ -106,7 +119,7 @@ describe("meme trend discovery", () => {
     const service = new MemeTrendsService(root, settings, fetchImpl, () => new Date(observedAt));
     const first = await service.refresh();
     expect(first.trends[0]?.videos[0]?.viewCount).toBe(400000);
-    expect(fetchImpl).toHaveBeenCalledTimes(7);
+    expect(fetchImpl).toHaveBeenCalledTimes(8);
     const searchUrls = fetchMock.mock.calls.map(([url]) => url).filter((url) => url.pathname.endsWith("/search"));
     expect(searchUrls).toHaveLength(6);
     expect(searchUrls.map((url) => url.searchParams.get("order"))).toEqual(["viewCount", "date", "viewCount", "date", "viewCount", "date"]);
@@ -114,8 +127,11 @@ describe("meme trend discovery", () => {
     expect(searchUrls[1]?.searchParams.get("publishedAfter")).toBe("2026-10-01T00:00:00.000Z");
     const detailUrl = fetchMock.mock.calls.map(([url]) => url).find((url) => url.pathname.endsWith("/videos"));
     expect(detailUrl?.searchParams.get("id")).toBe("aaaaaaaaaaa,bbbbbbbbbbb,ccccccccccc");
+    const chartUrl = fetchMock.mock.calls.map(([url]) => url).find((url) => url.searchParams.get("chart") === "mostPopular");
+    expect(chartUrl?.searchParams.get("regionCode")).toBe("KR");
+    expect(chartUrl?.searchParams.get("part")).toBe("snippet,statistics,contentDetails");
     expect(await service.get()).toEqual(first);
-    expect(fetchImpl).toHaveBeenCalledTimes(7);
+    expect(fetchImpl).toHaveBeenCalledTimes(8);
 
     const laterFetch = vi.fn(async () => { throw new Error("offline"); }) as unknown as typeof fetch;
     const later = new MemeTrendsService(root, settings, laterFetch, () => new Date("2026-10-09T00:00:00Z"));
@@ -137,6 +153,22 @@ describe("meme trend discovery", () => {
     const feed = await service.refresh();
     expect(feed.trends[0]?.channelCount).toBe(3);
     expect(feed.trends[0]?.videos).toHaveLength(3);
+  });
+
+  it("discovers a short-video meme from the popularity chart without a search match", async () => {
+    const { root, settings } = await setup();
+    await settings.save("youtube", { value: "mock-youtube-data-api-key" });
+    const longVideo = { ...video("ddddddddddd", "creator-d", "#니코니코니"), contentDetails: { duration: "PT4M" } };
+    const oldVideo = { ...video("eeeeeeeeeee", "creator-e", "#니코니코니"), snippet: { ...video("eeeeeeeeeee", "creator-e", "#니코니코니").snippet, publishedAt: "2026-08-01T00:00:00Z" } };
+    const fetchMock = vi.fn(async (url: URL) => ({
+      ok: true,
+      json: async () => ({ items: url.searchParams.get("chart") === "mostPopular" ? [...sample, longVideo, oldVideo] : [] }),
+    } as Response));
+    const service = new MemeTrendsService(root, settings, fetchMock as unknown as typeof fetch, () => new Date(observedAt));
+    const feed = await service.refresh();
+    expect(feed.trends).toHaveLength(1);
+    expect(feed.trends[0]?.videos).toHaveLength(3);
+    expect(fetchMock.mock.calls.filter(([url]) => url.searchParams.get("chart") === "mostPopular")).toHaveLength(1);
   });
 
   it("distinguishes provider quota refusal from transport failure and keeps the prior feed", async () => {

@@ -13,7 +13,7 @@
 
 ## 탐색 근거
 
-- 첫 자동 수집 경로는 [YouTube Data API 검색](https://developers.google.com/youtube/v3/docs/search/list)과 [영상 상세 API](https://developers.google.com/youtube/v3/docs/videos/list)다. 한국 지역의 최근 짧은 영상 후보에서 반복되는 이름·문구·해시태그를 **밈 후보**로 묶고, 각 대표 영상의 게시일·조회수를 확인한다. `videoDuration=short`는 4분 미만 필터이므로 이 값만으로 Shorts라고 부르지 않는다.
+- 자동 수집 경로는 [YouTube Data API 검색](https://developers.google.com/youtube/v3/docs/search/list)과 [영상 상세·인기 차트 API](https://developers.google.com/youtube/v3/docs/videos/list)다. 한국 지역의 최근 짧은 영상 후보에서 반복되는 구체적인 이름·문구·해시태그를 **밈 후보**로 묶고, 각 대표 영상의 게시일·조회수를 확인한다. `videoDuration=short`는 4분 미만 필터이므로 이 값만으로 Shorts라고 부르지 않는다. `mostPopular`는 2025년 7월부터 인기 음악·영화·게임 차트 중심이므로 밈의 증명이 아닌 추가 발견 표본으로만 쓴다. 이 표본에도 최근 30일·4분 미만·독립 채널 조건을 적용하고, 넓은 일반 태그와 게임/IP 이름만 반복된 후보는 제외한다.
 - 이 자동 수집은 API 설정 화면에서 한 번 `YOUTUBE_DATA_API_KEY`를 저장해야 쓸 수 있다. 검색은 최근 30일 조회수 순과 최근 7일 게시일 순의 제한된 표본이며 제목·해시태그가 겹친다는 것만 확인한다. 같은 이름이 영상 3편 이상·서로 다른 채널 3곳 이상에서 관찰될 때만 후보로 표시한다. 실제로 같은 동작을 하는지는 선택 후 영상 분석과 사용자의 확인을 거친다. 키가 없거나 API가 실패해도 링크를 직접 입력하라는 기본 흐름으로 돌리지 않는다.
 - 초기 순위는 서로 다른 채널의 최상위 영상 3편 중 세 번째 조회수를 먼저 보고, 그다음 표본 영상의 합계와 참여 채널 수를 본다. 한 제작자의 여러 인기 영상이 후보 상단을 독식하지 않게 한다. 게시일·조회수는 각각 근거로 표시한다. 같은 후보를 날짜를 두고 재수집한 후에만 조회수 증가 속도를 계산한다. ‘조회수 규모’와 ‘지금 확산 중인가’를 별도로 표시한다. 서로 다른 출처의 조회수를 무리하게 합산하지 않는다.
 - [YouTube 개발자 정책](https://developers.google.com/youtube/terms/developer-policies)에 맞춰 수집한 비승인 API 메타데이터는 30일 안에 다시 확인하거나 삭제한다. 오래된 캐시를 최신 조회수처럼 내보내지 않는다.
