@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isMemeTrendFeedResponse, isMemeTrendWorkspace } from "./trend.js";
+import { isMemeTrendFeedResponse, isMemeTrendWorkspace, memeVideoGrowth, type MemeTrendVideo } from "./trend.js";
 
 const observedAt = "2026-10-08T00:00:00.000Z";
 const trend = {
@@ -21,6 +21,26 @@ describe("meme trend response guards", () => {
     expect(isMemeTrendFeedResponse(feed)).toBe(true);
     expect(isMemeTrendFeedResponse({ ...feed, trends: [{ ...trend, videos: [{ ...trend.videos[0], previousViewCount: 10 }] }] })).toBe(false);
     expect(isMemeTrendFeedResponse({ ...feed, trends: [{ ...trend, videos: [{ ...trend.videos[0], viewCount: "0" }] }] })).toBe(false);
+  });
+});
+
+describe("observed meme video growth", () => {
+  const measured: MemeTrendVideo = {
+    ...trend.videos[0]!, viewCount: 350, viewCountObservedAt: "2026-10-09T12:00:00.000Z",
+    previousViewCount: 200, previousViewCountObservedAt: observedAt,
+  };
+
+  it("returns a 24-hour-normalized average only for a valid measured interval", () => {
+    expect(memeVideoGrowth(measured)).toEqual({ viewsGained: 150, viewsPerDay: 100 });
+    expect(memeVideoGrowth({ ...measured, viewCountObservedAt: "2026-10-09T00:00:00.000Z" })).toEqual({ viewsGained: 150, viewsPerDay: 150 });
+    expect(memeVideoGrowth({ ...measured, viewCountObservedAt: "2026-10-08T23:59:59.000Z" })).toBeNull();
+  });
+
+  it("refuses first reads, falling counts, reversed times and expired anchors", () => {
+    expect(memeVideoGrowth({ ...measured, previousViewCount: undefined, previousViewCountObservedAt: undefined })).toBeNull();
+    expect(memeVideoGrowth({ ...measured, viewCount: 199 })).toBeNull();
+    expect(memeVideoGrowth({ ...measured, viewCountObservedAt: "2026-10-07T00:00:00.000Z" })).toBeNull();
+    expect(memeVideoGrowth({ ...measured, viewCountObservedAt: "2026-11-07T00:00:00.000Z" })).toBeNull();
   });
 });
 

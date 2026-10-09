@@ -43,6 +43,25 @@ describe("meme trend discovery", () => {
     expect(later[0]?.videos.find((item) => item.videoId === "aaaaaaaaaaa")).toMatchObject({ previousViewCount: 200000, previousViewCountObservedAt: observedAt });
   });
 
+  it("keeps the earlier observation across quick refreshes and resets after a falling count", () => {
+    const first = groupMemeCandidates(sample, observedAt);
+    const oneHour = groupMemeCandidates([
+      video("aaaaaaaaaaa", "creator-a", "#니코니코니", "210000"), ...sample.slice(1),
+    ], "2026-10-08T01:00:00.000Z", first);
+    const aAfterHour = oneHour[0]?.videos.find((item) => item.videoId === "aaaaaaaaaaa");
+    expect(aAfterHour).toMatchObject({ previousViewCount: 200000, previousViewCountObservedAt: observedAt });
+    const nextDay = groupMemeCandidates([
+      video("aaaaaaaaaaa", "creator-a", "#니코니코니", "250000"), ...sample.slice(1),
+    ], "2026-10-09T01:00:00.000Z", oneHour);
+    expect(nextDay[0]?.videos.find((item) => item.videoId === "aaaaaaaaaaa")).toMatchObject({
+      previousViewCount: 200000, previousViewCountObservedAt: observedAt,
+    });
+    const falling = groupMemeCandidates([
+      video("aaaaaaaaaaa", "creator-a", "#니코니코니", "240000"), ...sample.slice(1),
+    ], "2026-10-09T02:00:00.000Z", nextDay);
+    expect(falling[0]?.videos.find((item) => item.videoId === "aaaaaaaaaaa")?.previousViewCount).toBeUndefined();
+  });
+
   it("groups a repeated quoted catchphrase without requiring a hashtag", () => {
     const quoted = [
       video("ddddddddddd", "creator-a", "오늘은 ‘L을 가져가’"),

@@ -1,6 +1,8 @@
 /** Recent YouTube metadata yields candidates, not verified cross-platform trends or video-content analysis. */
 export const MEME_TREND_MIN_VIDEOS = 3;
 export const MEME_TREND_MIN_CHANNELS = 3;
+export const MEME_GROWTH_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
+export const MEME_GROWTH_MAX_INTERVAL_MS = 30 * MEME_GROWTH_MIN_INTERVAL_MS;
 
 export interface MemeTrendVideo {
   videoId: string;
@@ -14,6 +16,15 @@ export interface MemeTrendVideo {
   viewCountObservedAt: string;
   previousViewCount?: number;
   previousViewCountObservedAt?: string;
+}
+
+/** Observed average over the stated interval, never a prediction or an estimated current rate. */
+export function memeVideoGrowth(video: MemeTrendVideo): { viewsGained: number; viewsPerDay: number } | null {
+  if (video.viewCount === null || video.previousViewCount === undefined || video.previousViewCountObservedAt === undefined) return null;
+  const elapsedMs = Date.parse(video.viewCountObservedAt) - Date.parse(video.previousViewCountObservedAt);
+  const viewsGained = video.viewCount - video.previousViewCount;
+  if (!Number.isFinite(elapsedMs) || elapsedMs < MEME_GROWTH_MIN_INTERVAL_MS || elapsedMs >= MEME_GROWTH_MAX_INTERVAL_MS || viewsGained < 0) return null;
+  return { viewsGained, viewsPerDay: Math.round(viewsGained / elapsedMs * MEME_GROWTH_MIN_INTERVAL_MS) };
 }
 
 export interface MemeTrendEvidence {

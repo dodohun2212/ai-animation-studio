@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { HttpException, HttpStatus } from "@nestjs/common";
 import {
-  MEME_TREND_MIN_CHANNELS, MEME_TREND_MIN_VIDEOS, isMemeTrendFeedResponse,
+  MEME_GROWTH_MAX_INTERVAL_MS, MEME_TREND_MIN_CHANNELS, MEME_TREND_MIN_VIDEOS, isMemeTrendFeedResponse,
   type ApiError, type MemeTrend, type MemeTrendEvidence,
   type MemeTrendFeedResponse, type MemeTrendVideo,
 } from "@ai-animation-studio/shared";
@@ -92,12 +92,26 @@ function toTrendVideo(item: YoutubeVideoItem, observedAt: string, previous?: Mem
   const viewCount = parsedViews !== null && Number.isSafeInteger(parsedViews) && parsedViews >= 0 ? parsedViews : null;
   const thumbnail = snippet.thumbnails?.medium?.url ?? snippet.thumbnails?.default?.url ?? null;
   const thumbnailUrl = thumbnail && /^https:\/\/i.ytimg.com\//u.test(thumbnail) ? thumbnail : null;
+  // Keep the earliest recent anchor across quick refreshes; otherwise repeated clicks
+  // would always reset the 24-hour observation window before it could mature.
+  const previousCount = previous?.viewCount;
+  const oldAnchorAt = previous?.previousViewCountObservedAt;
+  const oldAnchorCount = previous?.previousViewCount;
+  const oldAnchorAge = oldAnchorAt ? Date.parse(observedAt) - Date.parse(oldAnchorAt) : NaN;
+  const keepOldAnchor = oldAnchorCount !== undefined && oldAnchorAt !== undefined
+    && Number.isFinite(oldAnchorAge) && oldAnchorAge > 0 && oldAnchorAge < MEME_GROWTH_MAX_INTERVAL_MS
+    && previousCount !== null && previousCount !== undefined && oldAnchorCount <= previousCount;
+  const anchorCount = keepOldAnchor ? oldAnchorCount : previousCount;
+  const anchorAt = keepOldAnchor ? oldAnchorAt : previous?.viewCountObservedAt;
+  const anchorAge = anchorAt ? Date.parse(observedAt) - Date.parse(anchorAt) : NaN;
+  const validAnchor = viewCount !== null && anchorCount !== null && anchorCount !== undefined && anchorAt !== undefined
+    && Number.isFinite(anchorAge) && anchorAge > 0 && anchorAge < MEME_GROWTH_MAX_INTERVAL_MS
+    && viewCount >= anchorCount && (previousCount === null || previousCount === undefined || viewCount >= previousCount);
   return {
     videoId: id, url: `https://www.youtube.com/watch?v=${id}`, title: snippet.title,
     channelId: snippet.channelId, channelTitle: snippet.channelTitle ?? snippet.channelId,
     publishedAt: snippet.publishedAt, thumbnailUrl, viewCount, viewCountObservedAt: observedAt,
-    ...(viewCount !== null && previous?.viewCount !== null && previous?.viewCount !== undefined
-      ? { previousViewCount: previous.viewCount, previousViewCountObservedAt: previous.viewCountObservedAt } : {}),
+    ...(validAnchor ? { previousViewCount: anchorCount, previousViewCountObservedAt: anchorAt } : {}),
   };
 }
 
