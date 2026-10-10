@@ -32,7 +32,7 @@ export class MemeObservationService {
   }
 
   private async trend(trendId: string) {
-    const found = (await this.trends.get()).trends.find((item) => item.id === trendId);
+    const found = (await this.trends.get()).trends.find((item) => item.id === trendId || item.aliases?.includes(trendId));
     if (!found) throw apiError("MEME_TREND_UNKNOWN", "현재 밈 후보 목록에 없는 항목입니다. 목록을 다시 확인해 주세요.", HttpStatus.NOT_FOUND);
     return found;
   }
@@ -71,13 +71,18 @@ export class MemeObservationService {
   }
 
   private empty(trendId: string): SavedWorkspace { return { trendId, analyses: [], cards: [], cardsSavedAt: null }; }
+  private storedWorkspace(store: Record<string, SavedWorkspace>, trend: Awaited<ReturnType<MemeObservationService["trend"]>>): { key: string; saved: SavedWorkspace } {
+    const key = [trend.id, ...(trend.aliases ?? [])].find((id) => store[id]) ?? trend.id;
+    return { key, saved: store[key] ?? this.empty(trend.id) };
+  }
   private async dailyCalls(): Promise<MemeTrendWorkspace["dailyCalls"]> {
     try { return await this.quota.dailyCalls(); } catch { return null; }
   }
 
   async get(trendId: string): Promise<MemeTrendWorkspace> {
-    await this.trend(trendId);
-    return { ...((await this.readStore())[trendId] ?? this.empty(trendId)), dailyCalls: await this.dailyCalls() };
+    const trend = await this.trend(trendId);
+    const { saved } = this.storedWorkspace(await this.readStore(), trend);
+    return { ...saved, trendId: trend.id, dailyCalls: await this.dailyCalls() };
   }
 
   private async mutate<T>(change: (store: Record<string, SavedWorkspace>) => Promise<T>): Promise<T> {
@@ -98,7 +103,7 @@ export class MemeObservationService {
     catch { throw apiError("MEME_CARDS_INVALID", "카드는 20개 이하, 글은 200자 이하, 시간은 0~600초로 입력해 주세요.", HttpStatus.BAD_REQUEST); }
     if (new Set(cards.map((card) => card.id)).size !== cards.length) throw apiError("MEME_CARDS_INVALID", "카드 ID가 중복됐습니다.", HttpStatus.BAD_REQUEST);
     return this.mutate(async (store) => {
-      const saved = store[trendId] ?? this.empty(trendId);
+      const { key, saved } = this.storedWorkspace(store, trend);
       if (saved.cardsSavedAt !== body.expectedCardsSavedAt) throw apiError("MEME_CARDS_CONFLICT", "다른 저장본이 있습니다. 목록을 다시 읽어 주세요.", HttpStatus.CONFLICT);
       // A saved source can age out of the refreshed feed; keep that user's card editable.
       const validVideoIds = new Set([...trend.videos.map((video) => video.videoId),
@@ -107,8 +112,9 @@ export class MemeObservationService {
       if (cards.some((card) => card.sourceVideoId && !validVideoIds.has(card.sourceVideoId))) {
         throw apiError("MEME_CARDS_INVALID", "카드의 출처 영상이 이 밈 후보에 없습니다.", HttpStatus.BAD_REQUEST);
       }
-      const next = { ...saved, cards, cardsSavedAt: this.now().toISOString() };
-      store[trendId] = next;
+      const next = { ...saved, trendId: trend.id, cards, cardsSavedAt: this.now().toISOString() };
+      if (key !== trend.id) delete store[key];
+      store[trend.id] = next;
       await this.writeStore(store);
       return { ...next, dailyCalls: await this.dailyCalls() };
     });
@@ -129,7 +135,7 @@ export class MemeObservationService {
     if (typeof videoId !== "string" || !sourceVideo) {
       throw apiError("MEME_ANALYSIS_VIDEO_NOT_IN_TREND", "선택한 영상이 이 밈 후보에 없습니다. 목록을 다시 읽어 주세요.", HttpStatus.BAD_REQUEST);
     }
-    const savedBeforeRequest = (await this.readStore())[trendId] ?? this.empty(trendId);
+    const savedBeforeRequest = this.storedWorkspace(await this.readStore(), trend).saved;
     const sameVideo = savedBeforeRequest.analyses.find((item) => item.sourceVideoId === videoId);
     const otherVideos = savedBeforeRequest.analyses.filter((item) => item.sourceVideoId !== videoId);
     const knownSourceVideos = otherVideos.map((item) => trend.videos.find((video) => video.videoId === item.sourceVideoId));
@@ -159,13 +165,14 @@ export class MemeObservationService {
       throw apiError("MEME_ANALYSIS_FAILED", `Gemini 영상 분석에 실패했습니다 (${reason}). 오늘 1회를 사용했습니다. 아래에서 직접 적을 수 있습니다.`, HttpStatus.BAD_GATEWAY, { dailyCalls });
     }
     return this.mutate(async (store) => {
-      const saved = store[trendId] ?? this.empty(trendId);
+      const { key, saved } = this.storedWorkspace(store, trend);
       const previous = saved.analyses.findIndex((item) => item.sourceVideoId === videoId);
       const analyses = [...saved.analyses];
       if (previous >= 0) analyses[previous] = analysis;
       else analyses.push(analysis);
-      const next = { ...saved, analyses };
-      store[trendId] = next;
+      const next = { ...saved, trendId: trend.id, analyses };
+      if (key !== trend.id) delete store[key];
+      store[trend.id] = next;
       await this.writeStore(store);
       return { ...next, dailyCalls };
     });

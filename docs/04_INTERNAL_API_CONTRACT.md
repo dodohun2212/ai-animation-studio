@@ -40,9 +40,13 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 ## 밈·챌린지 후보 피드
 
-`GET /trends/memes`는 저장된 마지막 YouTube 후보 목록만 읽고 외부 API를 호출하지 않는다. `POST /trends/memes/refresh`만 YouTube Data API의 최근 한국 대상 짧은 영상 메타데이터를 수집한다. 제목·설명·태그에 공통 해시태그나 문구가 영상 3편 이상, 서로 다른 채널 2곳 이상에 나온 것을 **후보**로 묶는다. 같은 응답에 대표 영상들이 있어 화면에서 바로 펼쳐 볼 수 있다. 이 단계는 영상 속 행동을 분석하거나 프로젝트를 만들지 않는다.
+`GET /trends/memes`는 저장된 마지막 YouTube 후보 목록만 읽고 외부 API를 호출하지 않는다. `POST /trends/memes/refresh`만 YouTube Data API의 최근 KR·US·JP 짧은 영상 메타데이터를 수집한다. 공통 이름·문구가 영상 3편 이상, 서로 다른 채널 3곳 이상에 나오고 세 번째 채널의 최고 조회수가 3천 이상일 때 **후보**로 묶는다. 같은 영상이 절반 이상 겹치는 후보는 관찰 기록이 둘 다 저장된 경우를 제외하고 합친다. 이 단계는 영상 속 행동을 분석하거나 프로젝트를 만들지 않는다.
 
 공통 DTO와 검증 함수는 `packages/shared/src/trend.ts`, route helper는 `API_ROUTES`에 있다. 각 영상의 `viewCount`는 API에 없으면 `null`; `viewCountObservedAt`은 그 값을 읽은 시각이다. 과거 같은 영상의 숫자가 있을 때만 `previousViewCount`와 `previousViewCountObservedAt`을 함께 보낸다. 수집 실패는 저장된 목록을 지우지 않는다(단, 수집 후 30일이 된 메타데이터는 정책에 맞춰 삭제한다). `MEME_TREND_KEY_MISSING`은 YouTube 키 설정, `MEME_TREND_QUOTA_EXCEEDED`는 할당량 종료, `MEME_TREND_SOURCE_FAILED`는 출처 실패, `MEME_TREND_STORE_UNREADABLE`은 저장 파일 문제를 구분한다. 키는 `ProviderCredentialKind`의 `youtube`로만 저장하며 응답에 실리지 않는다.
+
+선택 필드 `MemeTrendVideo.likeCount/commentCount/channelSubscriberCount`는 API에서 비공개·누락이면 `null`이다. `memeVideoAgeAverageViewsPerHour`는 게시 후 조회수 평균이며 재수집 실측 증가와 다르다. 후보의 `recentChannelCount`는 최근 7일 참여 채널 수, `medianViewsPerHour`는 채널별 대표 영상의 실측 증가(있을 때) 또는 게시 후 평균의 중간값, `medianViewsPerSubscriber`는 구독자 수를 최소 1천으로 놓고 계산한 조회수 비율의 중간값이다. 개인별 반응 줄은 실제 구독자 수로 계산하므로 후보 순위의 비율과 다를 수 있다. `discoverySources`는 `search`·`popular`·`music-chart`, `songs[]`는 음악 차트 제목으로 찾은 검색 표본의 출처다. `aliases[]`는 병합 전 ID이며 기존 작업 공간 조회·저장 시 본래 기록을 이어 준다. 구 계약 캐시는 이 선택 필드 없이도 읽힌다.
+
+한 번의 수동 수집은 검색 최대 22회다. 미국 태평양 날짜 기준 하루 4회까지 로컬 장부 `meme_trend_refresh_usage.json`에 요청 전에 예약한다(최대 88회 검색). 다섯 번째 요청은 YouTube에 접속하기 전 `MEME_TREND_LOCAL_LIMIT_REACHED`/429로 거절한다. 실패한 시도도 API 요청 가능성을 보수적으로 계산해 1회로 센다. 장부를 읽거나 쓸 수 없으면 수집을 시작하지 않는다.
 
 ## 밈 관찰 작업 공간
 

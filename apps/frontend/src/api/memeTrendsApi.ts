@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  MEME_TREND_REFRESH_LIMIT_PER_PACIFIC_DAY,
   isMemeTrendFeedResponse,
   isMemeTrendWorkspace,
   type AnalyzeMemeVideoRequest,
@@ -36,6 +37,8 @@ export class MemeTrendsApiError extends Error {
 
 const SAFE_ERRORS: Record<string, string> = {
   MEME_TREND_KEY_MISSING: "YouTube Data API 키가 없습니다. API 설정의 YouTube 칸에 키를 넣은 뒤 다시 모아 주세요.",
+  // CLI 1356·1358: 수동 수집도 하루(미국 태평양 날짜) N회까지(shared 상수) — 앱 장부가 먼저 막으므로 이때는 YouTube 요청이 나가지 않았습니다.
+  MEME_TREND_LOCAL_LIMIT_REACHED: `오늘 밈 후보 수집 ${MEME_TREND_REFRESH_LIMIT_PER_PACIFIC_DAY}회 한도에 도달했습니다. 이 앱이 막은 것이라 YouTube에는 요청하지 않았습니다. YouTube 일일 할당량이 초기화된 뒤(미국 태평양 시간 자정) 다시 모아 주세요. 아래는 지난번에 모은 목록입니다.`,
   MEME_TREND_QUOTA_EXCEEDED: "YouTube API 할당량이 끝났습니다. 다시 눌러도 같은 결과이니 구글 클라우드 콘솔에서 할당량 재설정 시각을 확인한 뒤 다시 모아 주세요.",
   MEME_TREND_SOURCE_FAILED: "YouTube에서 밈 후보를 가져오지 못했습니다. 연결과 키의 YouTube Data API 활성화 상태를 확인한 뒤 다시 모아 주세요.",
   MEME_TREND_STORE_UNREADABLE: "밈 후보 저장 파일을 읽거나 쓰지 못했습니다. 다시 눌러도 같은 결과이니 meme_trends_youtube.json 을 확인해 주세요.",

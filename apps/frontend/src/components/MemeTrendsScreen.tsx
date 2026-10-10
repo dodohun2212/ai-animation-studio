@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   MEME_GROWTH_MIN_INTERVAL_MS,
   MEME_TREND_MIN_CHANNELS,
+  MEME_TREND_MIN_THIRD_CREATOR_VIEWS,
   MEME_TREND_MIN_VIDEOS,
+  MEME_TREND_REFRESH_LIMIT_PER_PACIFIC_DAY,
+  memeVideoAgeAverageViewsPerHour,
   memeVideoGrowth,
   type MemeTrend,
   type MemeTrendEvidence,
@@ -48,6 +51,29 @@ function topViews(trend: MemeTrend): number | null {
 function latestPublished(trend: MemeTrend): string {
   return trend.videos.reduce((latest, video) => (Date.parse(video.publishedAt) > Date.parse(latest) ? video.publishedAt : latest), trend.videos[0]!.publishedAt);
 }
+
+/**
+ * 근거 숫자(CLI 1355) — 서버가 정렬에 쓰는 순서대로 따로 보여 줍니다. 하나의 점수로 합치지 않습니다(§3.11).
+ * 예전 캐시에는 이 필드가 없으므로, 없으면 「미수집」이라고 말하고 0 으로 채우지 않습니다.
+ */
+export function trendSignals(trend: MemeTrend): { recent: string; perHour: string } {
+  return {
+    recent: trend.recentChannelCount === undefined ? "최근 7일 참여 미수집" : `최근 7일 참여 채널 ${trend.recentChannelCount}곳`,
+    perHour: trend.medianViewsPerHour === undefined ? "시간당 조회수 미수집"
+      : trend.medianViewsPerHour === null ? "시간당 조회수 계산 안 됨"
+        : `시간당 ${trend.medianViewsPerHour.toLocaleString("ko-KR")}회(중간값)`,
+  };
+}
+
+const DISCOVERY_LABEL: Record<NonNullable<MemeTrend["discoverySources"]>[number], string> = {
+  search: "검색",
+  popular: "인기 동영상",
+  "music-chart": "음악 차트 곡 검색",
+};
+const REGION_LABEL: Record<"KR" | "US" | "JP", string> = { KR: "한국", US: "미국", JP: "일본" };
+
+/** 구독자 대비 조회수 — 1 이면 구독자 수만큼 봤다는 뜻. 작은 채널에서 크게 터졌는지를 봅니다. */
+const perSubscriber = (value: number) => `${value.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}배`;
 
 function hoursSince(iso: string, now: number): number {
   return (now - Date.parse(iso)) / 3_600_000;
@@ -104,7 +130,8 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
   }
 
   const now = Date.now();
-  const selected = trendId && feed ? feed.trends.find((trend) => trend.id === trendId) ?? null : null;
+  // 겹치는 후보를 서버가 합치면 예전 id 는 `aliases` 에 남습니다(CLI 1355) — 주소에 남은 옛 id 로도 같은 후보가 열립니다.
+  const selected = trendId && feed ? feed.trends.find((trend) => trend.id === trendId || (trend.aliases ?? []).includes(trendId)) ?? null : null;
   const stale = feed?.collectedAt ? hoursSince(feed.collectedAt, now) >= MEME_TRENDS_STALE_HOURS : false;
 
   const cardCount = selected && savedCards?.trendId === selected.id ? savedCards.count : 0;
@@ -146,14 +173,17 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
       {/* 🔴 범위 — 항상 보입니다. 이 줄이 없으면 이 화면은 「지금의 유행 전부」처럼 읽힙니다. */}
       <div className="mt-4 space-y-1 text-xs text-bone-dim" data-testid="meme-trends-scope">
         <p>
-          출처: YouTube 공식 API · 한국 · 최근 4분 미만 영상 ·{" "}
+          출처: YouTube 공식 API · 한국·미국·일본 검색과 지역별 음악 차트 곡 · 최근 4분 미만 영상 ·{" "}
           {feed?.collectedAt
             ? <>마지막 수집 <span data-testid="meme-trends-collected-at">{formatDateTime(feed.collectedAt)}</span></>
             : "아직 모은 적 없음"}
         </p>
         <p className="text-bone-faint">
           YouTube 밈 후보입니다. Instagram·TikTok 유행은 포함하지 않고, 영상 속 말·동작은 아직 분석하지 않았습니다.
-          서로 다른 채널 {MEME_TREND_MIN_CHANNELS}곳 이상, 영상 {MEME_TREND_MIN_VIDEOS}편 이상에서 같은 해시태그·문구가 보인 것만 묶었습니다.
+          서로 다른 채널 {MEME_TREND_MIN_CHANNELS}곳 이상, 영상 {MEME_TREND_MIN_VIDEOS}편 이상에서 같은 해시태그·문구가 보인 것만 묶었고, 세 번째 채널 영상 조회수가 {MEME_TREND_MIN_THIRD_CREATOR_VIEWS.toLocaleString("ko-KR")}회 이상인 것만 남겼으며, 플랫폼·형식 태그(tiktok, shorts, 밈 맞히기 같은)는 뺐습니다. 제목·태그 같은 메타데이터로 고른 후보일 뿐 유행을 확정한 것은 아닙니다.
+        </p>
+        <p className="text-bone-faint" data-testid="meme-trends-order">
+          순서는 최근 7일 안에 따라 한 채널 수 → 시간당 조회수 중간값 → 구독자 대비 조회수 순입니다. 하나의 점수가 아니며, 같은 음원을 쓴 쇼츠 수처럼 YouTube API가 주지 않는 지표는 없습니다.
         </p>
       </div>
 
@@ -192,7 +222,13 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
 
       {stale && feed?.collectedAt && (
         <p role="status" data-testid="meme-trends-stale" className="mt-4 rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-300">
-          마지막 수집이 {Math.floor(hoursSince(feed.collectedAt, now))}시간 전입니다. 아래 조회수는 그때 읽은 값이라 지금과 다를 수 있습니다.
+          마지막 수집이 {Math.floor(hoursSince(feed.collectedAt, now))}시간 전입니다. 아래 조회수는 그때 읽은 값이라 지금과 다를 수 있습니다. 지금 다시 모으면 증가 속도도 계산됩니다.
+        </p>
+      )}
+      {/* 수동 재수집 안내(캡틴D 1354) — 자동으로 모으지 않습니다. 24시간이 지나야 실측 증가가 생깁니다. */}
+      {!stale && feed?.collectedAt && (
+        <p data-testid="meme-trends-recollect" className="mt-4 text-xs text-bone-faint">
+          마지막 수집 {Math.floor(hoursSince(feed.collectedAt, now))}시간 전 · 24시간 이상 지난 뒤 「YouTube에서 다시 모으기」를 누르면 영상별 증가 속도가 계산됩니다(자동으로 모으지 않음 · 하루 {MEME_TREND_REFRESH_LIMIT_PER_PACIFIC_DAY}회까지).
         </p>
       )}
 
@@ -276,6 +312,7 @@ function EvidenceChips({ evidence, withCounts = false }: { evidence: MemeTrendEv
 
 function TrendCard({ trend, selected, onSelect }: { trend: MemeTrend; selected: boolean; onSelect: () => void }) {
   const top = topViews(trend);
+  const signals = trendSignals(trend);
   const thumbnail = trend.videos.find((video) => video.thumbnailUrl)?.thumbnailUrl ?? null;
   return (
     <button
@@ -290,6 +327,9 @@ function TrendCard({ trend, selected, onSelect }: { trend: MemeTrend; selected: 
         : <span aria-hidden="true" className="h-20 w-20 flex-shrink-0 rounded bg-slate-950/40" />}
       <span className="min-w-0 flex-1 space-y-1.5">
         <span className="block truncate text-sm font-medium text-bone">{trend.name}</span>
+        <span className="block text-[11px] text-bone-dim" data-testid={`meme-trend-signals-${trend.id}`}>
+          {signals.recent} · {signals.perHour}
+        </span>
         <span className="block text-[11px] text-bone-dim" data-testid={`meme-trend-stats-${trend.id}`}>
           최고 조회수 {top === null ? "비공개" : views(top)} · 영상 {trend.videos.length}편 · 채널 {trend.channelCount}곳
         </span>
@@ -307,7 +347,15 @@ function TrendCard({ trend, selected, onSelect }: { trend: MemeTrend; selected: 
  */
 function Growth({ video }: { video: MemeTrendVideo }) {
   const growth = memeVideoGrowth(video);
-  if (!growth || video.previousViewCountObservedAt === undefined) return null;
+  if (!growth || video.previousViewCountObservedAt === undefined) {
+    // 실측 증가가 없을 때만 — 게시 후 누적 조회수의 시간 평균(최소 6시간). 실측과 섞지 않게 이름을 따로 붙입니다.
+    const average = memeVideoAgeAverageViewsPerHour(video);
+    return average === null ? null : (
+      <span className="block text-bone-faint" data-testid={`meme-video-age-average-${video.videoId}`} data-growth="age-average">
+        게시 후 평균 시간당 {average.toLocaleString("ko-KR")}회 (실측 증가 아님)
+      </span>
+    );
+  }
   return (
     <span className="block text-bone-dim" data-testid={`meme-video-growth-${video.videoId}`} data-growth="measured">
       관찰 기간 평균 +{growth.viewsPerDay.toLocaleString("ko-KR")}회/일
@@ -338,6 +386,17 @@ export function growthSummary(videos: MemeTrendVideo[]): { state: GrowthSummaryS
     : { state: "invalid", text: "비교 기준과 조회수가 맞지 않아 속도를 계산하지 않았습니다. 조회수가 줄었거나 기준이 30일을 넘었을 수 있습니다." };
 }
 
+/** 영상 한 편의 반응·채널 규모 — 숨겨진 값은 「비공개」, 예전 캐시에서 없던 값은 「미수집」. */
+export function videoReactions(video: MemeTrendVideo): string {
+  const amount = (value: number | null | undefined, unit: string) =>
+    value === undefined ? `${unit} 미수집` : value === null ? `${unit} 비공개` : `${unit} ${value.toLocaleString("ko-KR")}`;
+  const parts = [amount(video.likeCount, "좋아요"), amount(video.commentCount, "댓글"), amount(video.channelSubscriberCount, "구독자")];
+  if (video.viewCount !== null && typeof video.channelSubscriberCount === "number" && video.channelSubscriberCount > 0) {
+    parts.push(`구독자 대비 ${perSubscriber(video.viewCount / video.channelSubscriberCount)}`);
+  }
+  return parts.join(" · ");
+}
+
 /** 처음엔 이만큼만 — 많게는 수십 편이라 선택 카드 아래가 영상 줄로 가득 차지 않게(나머지는 펼쳐 봅니다). */
 const DETAIL_VIDEOS_SHOWN = 5;
 
@@ -345,6 +404,7 @@ function TrendDetail({ trend }: { trend: MemeTrend }) {
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? trend.videos : trend.videos.slice(0, DETAIL_VIDEOS_SHOWN);
   const summary = growthSummary(trend.videos);
+  const signals = trendSignals(trend);
   return (
     <section data-testid="meme-trend-detail" aria-label={`${trend.name} 묶인 영상`} className="mt-8 space-y-4 rounded-lg border border-line bg-ground-raised p-5">
       <div className="space-y-2">
@@ -355,6 +415,38 @@ function TrendDetail({ trend }: { trend: MemeTrend }) {
         </p>
         {summary && <p className="text-[11px] text-bone-faint" data-testid="meme-growth-summary" data-growth={summary.state}>{summary.text}</p>}
       </div>
+      <dl data-testid="meme-trend-signals" className="grid gap-x-3 gap-y-1 text-[11px] sm:grid-cols-[auto_1fr]">
+        <dt className="text-bone-faint">참여 확산</dt>
+        <dd className="text-bone-dim">{signals.recent} · 전체 채널 {trend.channelCount}곳</dd>
+        <dt className="text-bone-faint">속도</dt>
+        <dd className="text-bone-dim">{signals.perHour} — 실측 증가가 있는 영상은 그 값, 없으면 게시 후 평균</dd>
+        <dt className="text-bone-faint">구독자 대비</dt>
+        <dd className="text-bone-dim" data-testid="meme-trend-per-subscriber">
+          {trend.medianViewsPerSubscriber === undefined ? "미수집" : trend.medianViewsPerSubscriber === null ? "계산 안 됨(구독자 수 비공개)" : `조회수가 구독자의 ${perSubscriber(trend.medianViewsPerSubscriber)}(중간값)`}
+          {/* 서버 순위 계산은 `viewCount / max(subscriberCount, 1000)` 이라 영상 줄의 실제 비율과 다를 수 있습니다(CLI 1358). */}
+          {trend.medianViewsPerSubscriber !== undefined && trend.medianViewsPerSubscriber !== null && (
+            <span className="text-bone-faint" data-testid="meme-trend-per-subscriber-note"> · 순위 계산은 구독자 1,000명 미만을 1,000명으로 계산</span>
+          )}
+        </dd>
+        <dt className="text-bone-faint">찾은 경로</dt>
+        <dd className="text-bone-dim" data-testid="meme-trend-sources">
+          {trend.discoverySources && trend.discoverySources.length > 0 ? trend.discoverySources.map((source) => DISCOVERY_LABEL[source]).join(" · ") : "미수집"}
+        </dd>
+        {trend.songs && trend.songs.length > 0 && (
+          <>
+            <dt className="text-bone-faint">차트 곡</dt>
+            <dd className="text-bone-dim" data-testid="meme-trend-songs">
+              {trend.songs.map((song, index) => (
+                <span key={`${song.regionCode}:${song.chartVideoId}`}>
+                  {index > 0 ? " · " : ""}
+                  <a href={`https://www.youtube.com/watch?v=${song.chartVideoId}`} target="_blank" rel="noopener noreferrer" className="underline-offset-2 hover:underline">{song.title}</a>
+                  {" "}({REGION_LABEL[song.regionCode]} 음악 차트)
+                </span>
+              ))}
+            </dd>
+          </>
+        )}
+      </dl>
       <ul className="divide-y divide-line" data-testid="meme-trend-videos">
         {shown.map((video) => (
           <li key={video.videoId} className="flex gap-3 py-3" data-testid={`meme-video-${video.videoId}`}>
@@ -374,6 +466,7 @@ function TrendDetail({ trend }: { trend: MemeTrend }) {
                 <span className="text-bone-faint"> ({formatDateTime(video.viewCountObservedAt)}에 읽음)</span>
                 <Growth video={video} />
               </p>
+              <p className="text-[11px] text-bone-faint" data-testid={`meme-video-reactions-${video.videoId}`}>{videoReactions(video)}</p>
             </div>
           </li>
         ))}

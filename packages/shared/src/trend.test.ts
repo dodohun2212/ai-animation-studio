@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isMemeTrendFeedResponse, isMemeTrendWorkspace, memeVideoGrowth, type MemeTrendVideo } from "./trend.js";
+import { isMemeTrendFeedResponse, isMemeTrendWorkspace, memeVideoAgeAverageViewsPerHour, memeVideoGrowth, type MemeTrendVideo } from "./trend.js";
 
 const observedAt = "2026-10-08T00:00:00.000Z";
 const trend = {
@@ -41,6 +41,12 @@ describe("observed meme video growth", () => {
     expect(memeVideoGrowth({ ...measured, viewCount: 199 })).toBeNull();
     expect(memeVideoGrowth({ ...measured, viewCountObservedAt: "2026-10-07T00:00:00.000Z" })).toBeNull();
     expect(memeVideoGrowth({ ...measured, viewCountObservedAt: "2026-11-07T00:00:00.000Z" })).toBeNull();
+  });
+
+  it("keeps the publish-age average separate and caps the first six hours", () => {
+    expect(memeVideoAgeAverageViewsPerHour({ ...measured, viewCount: 600, publishedAt: "2026-10-09T10:00:00Z" })).toBe(100);
+    expect(memeVideoAgeAverageViewsPerHour({ ...measured, viewCount: null })).toBeNull();
+    expect(memeVideoAgeAverageViewsPerHour({ ...measured, publishedAt: "2026-10-10T00:00:00Z" })).toBeNull();
   });
 });
 

@@ -11,7 +11,7 @@ import { groupMemeCandidates, MemeTrendsService } from "./meme-trends.service.js
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
 
-const video = (id: string, channelId: string, title: string, viewCount?: string) => ({
+const video = (id: string, channelId: string, title: string, viewCount = "10000") => ({
   id,
   snippet: { title, channelId, channelTitle: channelId, publishedAt: "2026-10-07T00:00:00Z", thumbnails: { medium: { url: "https://i.ytimg.com/vi/test/mqdefault.jpg" } } },
   statistics: { viewCount },
@@ -85,6 +85,44 @@ describe("meme trend discovery", () => {
     expect(groupMemeCandidates(items.map((item) => ({ ...item, snippet: { ...item.snippet, title: broad } })), observedAt)).toEqual([]);
   });
 
+  it("normalizes format tags and merges overlapping names without losing saved IDs", () => {
+    const items = [
+      video("aaaaaaaaaaa", "a", "#권루트 #L을가져가 #TikTok", "20000"),
+      video("bbbbbbbbbbb", "b", "#권루트 #L을가져가 #funny_memes", "30000"),
+      video("ccccccccccc", "c", "#권루트 #L을가져가 #YouTubeShorts", "40000"),
+    ];
+    const merged = groupMemeCandidates(items, observedAt);
+    expect(merged).toHaveLength(1);
+    expect([merged[0]!.id, ...(merged[0]!.aliases ?? [])].sort()).toEqual(["l을가져가", "권루트"].sort());
+    expect(merged[0]!.videos).toHaveLength(3);
+    expect(groupMemeCandidates(items, observedAt, [], { protectedIds: new Set(["l을가져가"]) })[0]?.id).toBe("l을가져가");
+    expect(groupMemeCandidates(items, observedAt, [], { protectedIds: new Set(["l을가져가", "권루트"]) })).toHaveLength(2);
+  });
+
+  it("does not let one shared video bridge unrelated three-channel patterns", () => {
+    const items = [
+      video("aaaaaaaaaaa", "a", "#첫패턴 #둘째패턴", "10000"),
+      video("bbbbbbbbbbb", "b", "#첫패턴", "10000"),
+      video("ccccccccccc", "c", "#첫패턴", "10000"),
+      video("ddddddddddd", "d", "#둘째패턴", "10000"),
+      video("eeeeeeeeeee", "e", "#둘째패턴", "10000"),
+    ];
+    expect(groupMemeCandidates(items, observedAt)).toHaveLength(2);
+  });
+
+  it("ranks recent independent participation and captures reaction and subscriber evidence", () => {
+    const items = [
+      ...sample.map((item) => ({ ...item, statistics: { viewCount: item.statistics.viewCount, likeCount: "120", commentCount: "12" } })),
+      video("ddddddddddd", "d", "#새로운춤", "20000"),
+      video("eeeeeeeeeee", "e", "#새로운춤", "20000"),
+      video("fffffffffff", "f", "#새로운춤", "20000"),
+    ];
+    const trends = groupMemeCandidates(items, observedAt, [], { subscribers: new Map([ ["creator-a", 1000], ["creator-b", 2000], ["creator-c", null] ]) });
+    expect(trends.find((trend) => trend.id === "니코니코니")).toMatchObject({ recentChannelCount: 3, medianViewsPerSubscriber: 175 });
+    expect(trends.find((trend) => trend.id === "니코니코니")?.medianViewsPerHour).toBeGreaterThan(0);
+    expect(trends.find((trend) => trend.id === "니코니코니")?.videos[0]).toMatchObject({ likeCount: 120, commentCount: 12, channelSubscriberCount: null });
+  });
+
   it("ranks a meme supported by another popular creator above one dominant clip", () => {
     const trends = groupMemeCandidates([
       video("ggggggggggg", "solo", "#한방밈", "9000000"),
@@ -95,7 +133,7 @@ describe("meme trend discovery", () => {
       video("kkkkkkkkkkk", "b", "#퍼진밈", "250000"),
       video("lllllllllll", "c", "#퍼진밈", "200000"),
     ], observedAt);
-    expect(trends.map((trend) => trend.name)).toEqual(["퍼진밈", "한방밈"]);
+    expect(trends.map((trend) => trend.name)).toEqual(["퍼진밈"]);
   });
 
   it("reads the saved feed without calling YouTube, and refuses refresh without a key", async () => {
@@ -125,6 +163,11 @@ describe("meme trend discovery", () => {
     const { root, settings } = await setup();
     await settings.save("youtube", { value: "mock-youtube-data-api-key" });
     const fetchMock = vi.fn(async (url: URL) => {
+      if (url.pathname.endsWith("/channels")) return { ok: true, json: async () => ({ items: [
+        { id: "creator-a", statistics: { subscriberCount: "1000" } },
+        { id: "creator-b", statistics: { subscriberCount: "2000" } },
+        { id: "creator-c", statistics: { hiddenSubscriberCount: true, subscriberCount: "5000" } },
+      ] }) } as Response;
       const items = url.pathname.endsWith("/search")
         ? sample.map((item) => ({ id: { videoId: item.id } })) : sample;
       return { ok: true, json: async () => ({ items }) } as Response;
@@ -133,19 +176,23 @@ describe("meme trend discovery", () => {
     const service = new MemeTrendsService(root, settings, fetchImpl, () => new Date(observedAt));
     const first = await service.refresh();
     expect(first.trends[0]?.videos[0]?.viewCount).toBe(400000);
-    expect(fetchImpl).toHaveBeenCalledTimes(8);
+    expect(first.trends[0]?.videos.find((video) => video.channelId === "creator-c")?.channelSubscriberCount).toBeNull();
+    expect(first.trends[0]?.medianViewsPerSubscriber).toBe(175);
+    expect(first.trends[0]?.discoverySources).toEqual(["search", "music-chart", "popular"]);
+    expect(first.trends[0]?.songs?.length).toBeGreaterThan(0);
+    expect(fetchImpl).toHaveBeenCalledTimes(28);
     const searchUrls = fetchMock.mock.calls.map(([url]) => url).filter((url) => url.pathname.endsWith("/search"));
-    expect(searchUrls).toHaveLength(6);
-    expect(searchUrls.map((url) => url.searchParams.get("order"))).toEqual(["viewCount", "date", "viewCount", "date", "viewCount", "date"]);
+    expect(searchUrls).toHaveLength(22);
+    expect(searchUrls.slice(0, 8).map((url) => url.searchParams.get("order"))).toEqual(["viewCount", "date", "viewCount", "date", "viewCount", "date", "viewCount", "date"]);
     expect(searchUrls[0]?.searchParams.get("publishedAfter")).toBe("2026-09-08T00:00:00.000Z");
     expect(searchUrls[1]?.searchParams.get("publishedAfter")).toBe("2026-10-01T00:00:00.000Z");
-    const detailUrl = fetchMock.mock.calls.map(([url]) => url).find((url) => url.pathname.endsWith("/videos"));
+    const detailUrl = fetchMock.mock.calls.map(([url]) => url).find((url) => url.pathname.endsWith("/videos") && url.searchParams.has("id"));
     expect(detailUrl?.searchParams.get("id")).toBe("aaaaaaaaaaa,bbbbbbbbbbb,ccccccccccc");
-    const chartUrl = fetchMock.mock.calls.map(([url]) => url).find((url) => url.searchParams.get("chart") === "mostPopular");
+    const chartUrl = fetchMock.mock.calls.map(([url]) => url).find((url) => url.searchParams.get("chart") === "mostPopular" && !url.searchParams.has("videoCategoryId"));
     expect(chartUrl?.searchParams.get("regionCode")).toBe("KR");
     expect(chartUrl?.searchParams.get("part")).toBe("snippet,statistics,contentDetails");
     expect(await service.get()).toEqual(first);
-    expect(fetchImpl).toHaveBeenCalledTimes(8);
+    expect(fetchImpl).toHaveBeenCalledTimes(28);
 
     const laterFetch = vi.fn(async () => { throw new Error("offline"); }) as unknown as typeof fetch;
     const later = new MemeTrendsService(root, settings, laterFetch, () => new Date("2026-10-09T00:00:00Z"));
@@ -182,7 +229,7 @@ describe("meme trend discovery", () => {
     const feed = await service.refresh();
     expect(feed.trends).toHaveLength(1);
     expect(feed.trends[0]?.videos).toHaveLength(3);
-    expect(fetchMock.mock.calls.filter(([url]) => url.searchParams.get("chart") === "mostPopular")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url.searchParams.get("chart") === "mostPopular")).toHaveLength(4);
   });
 
   it("distinguishes provider quota refusal from transport failure and keeps the prior feed", async () => {
@@ -192,6 +239,20 @@ describe("meme trend discovery", () => {
     const service = new MemeTrendsService(root, settings, fetchImpl);
     await expect(service.refresh()).rejects.toMatchObject({ response: { code: "MEME_TREND_QUOTA_EXCEEDED" } });
     expect(await service.get()).toMatchObject({ collectedAt: null, trends: [] });
+    expect(JSON.parse(await fs.readFile(path.join(root, "meme_trend_refresh_usage.json"), "utf8"))).toMatchObject({ used: 1 });
+  });
+
+  it("reserves at most four manual collections per Pacific day before contacting YouTube", async () => {
+    const { root, settings } = await setup();
+    await settings.save("youtube", { value: "mock-youtube-data-api-key" });
+    const fetchMock = vi.fn(async (url: URL) => ({ ok: true, json: async () => ({ items: url.pathname.endsWith("/search")
+      ? sample.map((item) => ({ id: { videoId: item.id } })) : url.searchParams.has("id") && url.pathname.endsWith("/videos") ? sample : [] }) } as Response));
+    const service = new MemeTrendsService(root, settings, fetchMock as unknown as typeof fetch, () => new Date(observedAt));
+    for (let i = 0; i < 4; i++) await service.refresh();
+    const calls = fetchMock.mock.calls.length;
+    await expect(service.refresh()).rejects.toMatchObject({ response: { code: "MEME_TREND_LOCAL_LIMIT_REACHED" } });
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+    expect(JSON.parse(await fs.readFile(path.join(root, "meme_trend_refresh_usage.json"), "utf8"))).toMatchObject({ used: 4 });
   });
 
   it("refuses an unreadable saved feed before contacting YouTube", async () => {

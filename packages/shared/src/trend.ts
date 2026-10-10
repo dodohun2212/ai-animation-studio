@@ -1,6 +1,8 @@
 /** Recent YouTube metadata yields candidates, not verified cross-platform trends or video-content analysis. */
 export const MEME_TREND_MIN_VIDEOS = 3;
 export const MEME_TREND_MIN_CHANNELS = 3;
+export const MEME_TREND_MIN_THIRD_CREATOR_VIEWS = 3_000;
+export const MEME_TREND_REFRESH_LIMIT_PER_PACIFIC_DAY = 4;
 export const MEME_GROWTH_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const MEME_GROWTH_MAX_INTERVAL_MS = 30 * MEME_GROWTH_MIN_INTERVAL_MS;
 export const MEME_ANALYSIS_SOURCE_LIMIT = 3;
@@ -15,6 +17,9 @@ export interface MemeTrendVideo {
   thumbnailUrl: string | null;
   viewCount: number | null;
   viewCountObservedAt: string;
+  likeCount?: number | null;
+  commentCount?: number | null;
+  channelSubscriberCount?: number | null;
   previousViewCount?: number;
   previousViewCountObservedAt?: string;
 }
@@ -36,12 +41,26 @@ export interface MemeTrendEvidence {
 
 export interface MemeTrend {
   id: string;
+  /** Old candidate IDs that resolve to this candidate after overlapping evidence is merged. */
+  aliases?: string[];
   name: string;
   evidence: MemeTrendEvidence[];
   videos: MemeTrendVideo[];
   channelCount: number;
   firstObservedAt: string;
   lastObservedAt: string;
+  recentChannelCount?: number;
+  medianViewsPerHour?: number | null;
+  medianViewsPerSubscriber?: number | null;
+  discoverySources?: Array<"search" | "popular" | "music-chart">;
+  songs?: Array<{ title: string; regionCode: "KR" | "US" | "JP"; chartVideoId: string }>;
+}
+
+/** Publish-to-observation average, distinct from the measured repeat-observation growth. */
+export function memeVideoAgeAverageViewsPerHour(video: MemeTrendVideo): number | null {
+  if (video.viewCount === null) return null;
+  const ageHours = (Date.parse(video.viewCountObservedAt) - Date.parse(video.publishedAt)) / 3_600_000;
+  return Number.isFinite(ageHours) && ageHours >= 0 ? Math.round(video.viewCount / Math.max(ageHours, 6)) : null;
 }
 
 export interface MemeTrendFeedResponse {
@@ -122,6 +141,9 @@ function isMemeTrendVideo(value: unknown): value is MemeTrendVideo {
     && typeof value.channelId === "string" && typeof value.channelTitle === "string" && iso(value.publishedAt)
     && (value.thumbnailUrl === null || typeof value.thumbnailUrl === "string")
     && (value.viewCount === null || count(value.viewCount)) && iso(value.viewCountObservedAt)
+    && (value.likeCount === undefined || value.likeCount === null || count(value.likeCount))
+    && (value.commentCount === undefined || value.commentCount === null || count(value.commentCount))
+    && (value.channelSubscriberCount === undefined || value.channelSubscriberCount === null || count(value.channelSubscriberCount))
     && (value.previousViewCount === undefined || count(value.previousViewCount))
     && (value.previousViewCountObservedAt === undefined || iso(value.previousViewCountObservedAt))
     && (value.previousViewCount === undefined) === (value.previousViewCountObservedAt === undefined);
@@ -130,6 +152,12 @@ function isMemeTrendVideo(value: unknown): value is MemeTrendVideo {
 function isMemeTrend(value: unknown): value is MemeTrend {
   if (!record(value)) return false;
   return typeof value.id === "string" && typeof value.name === "string" && count(value.channelCount)
+    && (value.aliases === undefined || (Array.isArray(value.aliases) && value.aliases.every((id: unknown) => typeof id === "string")))
+    && (value.recentChannelCount === undefined || count(value.recentChannelCount))
+    && (value.medianViewsPerHour === undefined || value.medianViewsPerHour === null || count(value.medianViewsPerHour))
+    && (value.medianViewsPerSubscriber === undefined || value.medianViewsPerSubscriber === null || (typeof value.medianViewsPerSubscriber === "number" && Number.isFinite(value.medianViewsPerSubscriber) && value.medianViewsPerSubscriber >= 0))
+    && (value.discoverySources === undefined || (Array.isArray(value.discoverySources) && value.discoverySources.every((source: unknown) => source === "search" || source === "popular" || source === "music-chart")))
+    && (value.songs === undefined || (Array.isArray(value.songs) && value.songs.every((song: unknown) => record(song) && typeof song.title === "string" && (song.regionCode === "KR" || song.regionCode === "US" || song.regionCode === "JP") && typeof song.chartVideoId === "string")))
     && iso(value.firstObservedAt) && iso(value.lastObservedAt)
     && Array.isArray(value.evidence) && value.evidence.length > 0
     && value.evidence.every((item: unknown) => record(item) && (item.kind === "hashtag" || item.kind === "phrase") && typeof item.text === "string" && count(item.videoCount))

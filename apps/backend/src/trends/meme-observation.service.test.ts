@@ -28,6 +28,21 @@ async function setup(fetchImpl: typeof fetch = vi.fn() as unknown as typeof fetc
 }
 
 describe("meme observation workspace", () => {
+  it("keeps a saved alias workspace reachable after candidate names merge", async () => {
+    const { root, service, trendId } = await setup();
+    const first = await service.saveCards(trendId, { expectedCardsSavedAt: null, cards: [{ kind: "gesture", text: "손을 든다", startSeconds: null, endSeconds: null, origin: "manual", sourceVideoId: null }] });
+    const feedPath = path.join(root, "meme_trends_youtube.json");
+    const feed = JSON.parse(await fs.readFile(feedPath, "utf8")) as { trends: Array<{ id: string; aliases?: string[] }> };
+    feed.trends[0]!.id = "새이름";
+    feed.trends[0]!.aliases = [trendId];
+    await fs.writeFile(feedPath, JSON.stringify(feed));
+    expect((await service.get("새이름")).cards).toEqual(first.cards);
+    const next = await service.saveCards("새이름", { expectedCardsSavedAt: first.cardsSavedAt, cards: first.cards });
+    expect(next.trendId).toBe("새이름");
+    const store = JSON.parse(await fs.readFile(path.join(root, "meme_observation_workspaces.json"), "utf8")) as Record<string, unknown>;
+    expect(store[trendId]).toBeUndefined();
+    expect(store["새이름"]).toBeDefined();
+  });
   it("reads and saves manual cards without a provider key, then rejects stale edits", async () => {
     const { service, trendId } = await setup();
     expect(await service.get(trendId)).toMatchObject({ analyses: [], cards: [], dailyCalls: { used: 0, limit: 3 } });

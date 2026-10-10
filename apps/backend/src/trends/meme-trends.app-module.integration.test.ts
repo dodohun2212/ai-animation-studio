@@ -45,7 +45,7 @@ it("wires the saved observation workspace and manual card routes without a provi
   const observedAt = new Date().toISOString();
   const trends = groupMemeCandidates(["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"].map((id, i) => ({
     id, snippet: { title: "#니코니코니", channelId: `channel-${i}`, publishedAt: observedAt },
-    statistics: { viewCount: "1000" }, contentDetails: { duration: "PT30S" },
+    statistics: { viewCount: "10000" }, contentDetails: { duration: "PT30S" },
   })), observedAt);
   await fs.writeFile(path.join(root, "meme_trends_youtube.json"), JSON.stringify({ source: "youtube", regionCode: "KR", collectedAt: observedAt, trends }));
   app = await NestFactory.create(AppModule, { logger: false });

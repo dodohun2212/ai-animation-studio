@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MemeTrend, MemeTrendFeedResponse, MemeTrendVideo } from "@ai-animation-studio/shared";
-import { MEME_TREND_MIN_CHANNELS, MEME_TREND_MIN_VIDEOS } from "@ai-animation-studio/shared";
+import { MEME_TREND_MIN_CHANNELS, MEME_TREND_MIN_THIRD_CREATOR_VIEWS, MEME_TREND_MIN_VIDEOS, MEME_TREND_REFRESH_LIMIT_PER_PACIFIC_DAY } from "@ai-animation-studio/shared";
 import { stubFetchByRoute } from "../api/testUtils.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { MemeTrendsScreen } from "./MemeTrendsScreen.js";
@@ -351,5 +351,101 @@ describe("MemeTrendsScreen", () => {
     vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": { source: "tiktok", regionCode: "KR", collectedAt: null, trends: [] } }));
     renderScreen();
     expect((await screen.findByTestId("meme-trends-load-error")).getAttribute("data-error-code")).toBe("CLIENT_MALFORMED_RESPONSE");
+  });
+});
+
+/** CLI 1355: 후보 선정 근거 숫자 — 정렬 순서대로 따로 보이고, 점수로 합치지 않으며, 없는 값은 「미수집」. */
+describe("MemeTrendsScreen — selection signals (CLI 1355)", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const SIGNALED: MemeTrend = {
+    ...NIKO,
+    id: "hashtag-kwon",
+    name: "권루트",
+    aliases: ["phrase-l-take"],
+    recentChannelCount: 5,
+    medianViewsPerHour: 1_234,
+    medianViewsPerSubscriber: 2.5,
+    discoverySources: ["search", "music-chart"],
+    songs: [{ title: "STORM II", regionCode: "US", chartVideoId: "abcdefghijk" }],
+    videos: [
+      video({ likeCount: 900, commentCount: 40, channelSubscriberCount: 60_000 }),
+      video({ videoId: "v2", url: "https://www.youtube.com/watch?v=v2", channelId: "c2", likeCount: null, commentCount: null, channelSubscriberCount: null, viewCount: 45_000, previousViewCount: 30_000, previousViewCountObservedAt: "2026-10-06T00:00:00.000Z" }),
+      video({ videoId: "v3", url: "https://www.youtube.com/watch?v=v3", channelId: "c3" }),
+    ],
+  };
+  const selectedServer = (trend: MemeTrend) => stubFetchByRoute({
+    "GET /trends/memes": feed({ trends: [trend, L_TAKE] }),
+    [`GET /trends/memes/${trend.id}/workspace`]: { trendId: trend.id, analyses: [], cards: [], cardsSavedAt: null, dailyCalls: { used: 0, limit: 3 } },
+    "GET /assets?assetType=character": { assets: [] },
+  });
+
+  it("shows recent participation and the median hourly views on the card, and says when an old feed lacks them", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed({ trends: [SIGNALED, L_TAKE] }) }));
+    renderScreen();
+    expect((await screen.findByTestId("meme-trend-signals-hashtag-kwon")).textContent).toBe("최근 7일 참여 채널 5곳 · 시간당 1,234회(중간값)");
+    expect(screen.getByTestId("meme-trend-signals-phrase-l").textContent).toBe("최근 7일 참여 미수집 · 시간당 조회수 미수집");
+    expect(screen.getByTestId("meme-trends-order").textContent).toContain("하나의 점수가 아니며");
+    expect(screen.getByTestId("meme-trends-scope").textContent).toContain("한국·미국·일본");
+    expect(screen.getByTestId("meme-trends-recollect").textContent).toContain(`자동으로 모으지 않음 · 하루 ${MEME_TREND_REFRESH_LIMIT_PER_PACIFIC_DAY}회까지`);
+    // CLI 1358: 하한 기준과 「후보일 뿐」 문구가 범위 줄에 shared 상수로.
+    expect(screen.getByTestId("meme-trends-scope").textContent).toContain(`세 번째 채널 영상 조회수가 ${MEME_TREND_MIN_THIRD_CREATOR_VIEWS.toLocaleString("ko-KR")}회 이상`);
+    expect(screen.getByTestId("meme-trends-scope").textContent).toContain("3,000회 이상");
+    expect(screen.getByTestId("meme-trends-scope").textContent).toContain("유행을 확정한 것은 아닙니다");
+    expect(document.body.textContent).not.toMatch(/점수 \d|트렌드 점수/);
+  });
+
+  it("opens a merged candidate from its old id, and lays out subscriber ratio, sources, chart songs and per-video reactions", async () => {
+    vi.stubGlobal("fetch", selectedServer(SIGNALED));
+    renderScreen({ trendId: "phrase-l-take" });
+    await screen.findByTestId("meme-trend-detail");
+    expect(screen.queryByTestId("meme-trend-missing")).toBeNull();
+    expect(screen.getByTestId("meme-trend-per-subscriber").textContent).toBe("조회수가 구독자의 2.5배(중간값) · 순위 계산은 구독자 1,000명 미만을 1,000명으로 계산");
+    expect(screen.getByTestId("meme-trend-sources").textContent).toBe("검색 · 음악 차트 곡 검색");
+    const songs = screen.getByTestId("meme-trend-songs");
+    expect(songs.textContent).toContain("STORM II (미국 음악 차트)");
+    expect(songs.querySelector("a")!.getAttribute("href")).toBe("https://www.youtube.com/watch?v=abcdefghijk");
+    expect(songs.querySelector("a")!.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(screen.getByTestId("meme-video-reactions-v1").textContent).toBe("좋아요 900 · 댓글 40 · 구독자 60,000 · 구독자 대비 2배");
+    expect(screen.getByTestId("meme-video-reactions-v2").textContent).toBe("좋아요 비공개 · 댓글 비공개 · 구독자 비공개");
+    expect(screen.getByTestId("meme-video-reactions-v3").textContent).toBe("좋아요 미수집 · 댓글 미수집 · 구독자 미수집");
+  });
+
+  /** 실측 증가가 있는 영상은 그 값, 없는 영상만 「게시 후 평균」— 둘을 같은 이름으로 섞지 않는다. */
+  it("keeps measured growth and the publish-age average apart", async () => {
+    vi.stubGlobal("fetch", selectedServer(SIGNALED));
+    renderScreen({ trendId: SIGNALED.id });
+    await screen.findByTestId("meme-trend-detail");
+    expect(screen.getByTestId("meme-video-growth-v2")).toBeTruthy();
+    expect(screen.queryByTestId("meme-video-age-average-v2")).toBeNull();
+    expect(screen.getByTestId("meme-video-age-average-v1").textContent).toContain("실측 증가 아님");
+    expect(screen.queryByTestId("meme-video-age-average-v3")).toBeTruthy();
+  });
+
+  it("says a missing per-subscriber value was not collected rather than zero", async () => {
+    const old: MemeTrend = { ...NIKO, id: "old-feed" };
+    vi.stubGlobal("fetch", selectedServer(old));
+    renderScreen({ trendId: "old-feed" });
+    await screen.findByTestId("meme-trend-detail");
+    expect(screen.getByTestId("meme-trend-per-subscriber").textContent).toBe("미수집");
+    expect(screen.getByTestId("meme-trend-sources").textContent).toBe("미수집");
+    expect(screen.queryByTestId("meme-trend-songs")).toBeNull();
+  });
+
+  /** CLI 1356: 하루 4회 한도는 앱이 막은 것 — YouTube 에 요청하지 않았다고 말하고, 지난 목록은 그대로. */
+  it("explains the local daily collection limit and keeps the last list", async () => {
+    vi.stubGlobal("fetch", stubFetchByRoute(
+      { "GET /trends/memes": feed() },
+      { "POST /trends/memes/refresh": { status: 429, body: { code: "MEME_TREND_LOCAL_LIMIT_REACHED", message: "raw" } } },
+    ));
+    renderScreen();
+    await screen.findByTestId("meme-trends-list");
+    fireEvent.click(screen.getByTestId("meme-trends-refresh"));
+    const alert = await screen.findByTestId("meme-trends-refresh-error");
+    expect(alert.getAttribute("data-error-code")).toBe("MEME_TREND_LOCAL_LIMIT_REACHED");
+    expect(alert.textContent).toContain("YouTube에는 요청하지 않았습니다");
+    expect(alert.textContent).toContain(`수집 ${MEME_TREND_REFRESH_LIMIT_PER_PACIFIC_DAY}회 한도`);
+    expect(alert.textContent).not.toContain("raw");
+    expect(screen.getByTestId("meme-trends-list")).toBeTruthy();
   });
 });
