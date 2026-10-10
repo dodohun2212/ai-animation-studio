@@ -36,6 +36,7 @@ describe("novel source service", () => {
     expect(result.results[0]).toMatchObject({ sourceId: "11", title: "Alice's Adventures in Wonderland", language: "en" });
     expect(result.hasNextPage).toBe(true);
     const calledUrl = new URL(String(fetcher.mock.calls[0]![0]));
+    expect(calledUrl.pathname).toBe("/books/");
     expect(calledUrl.searchParams.get("copyright")).toBe("false");
     expect(calledUrl.searchParams.get("languages")).toBe("en");
     expect(calledUrl.searchParams.get("topic")).toBe("fantasy");
@@ -52,7 +53,23 @@ describe("novel source service", () => {
     expect(result.selectedCharacterCount).toBe(result.sourceText!.length);
     expect(result.needsChapterRange).toBe(false);
     expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(String(fetcher.mock.calls[0]![0])).toBe("https://gutendex.com/books/11/");
     expect(String(fetcher.mock.calls[1]![0])).toBe(`${GUTENBERG_TEXT_MIRROR}/cache/epub/11/pg11.txt`);
+  });
+
+  it("excludes repeated contents headings and includes letters in selectable chapter ranges", async () => {
+    const text = `*** START OF THE PROJECT GUTENBERG EBOOK TEST ***\nTitle\nCONTENTS\n Letter 1\n Letter 2\n Chapter 1\n Chapter 2\n\n\nLetter 1\n${"a".repeat(31_000)}\nLetter 2\n${"b".repeat(31_000)}\nChapter 1\n${"c".repeat(31_000)}\nChapter 2\n${"d".repeat(31_000)}\n*** END OF THE PROJECT GUTENBERG EBOOK TEST ***`;
+    const fetcher = vi.fn(async (input: URL | RequestInfo) => String(input).includes("gutendex.com") ? jsonResponse(record()) : new Response(text));
+    const service = new NovelSourceService({ request: fetcher as unknown as (url: URL, init: RequestInit) => Promise<Response> });
+
+    const inspection = await service.importWork({ sourceId: "11" });
+    expect(inspection.needsChapterRange).toBe(true);
+    expect(inspection.chapters.map(({ title }) => title)).toEqual(["Letter 1", "Letter 2", "Chapter 1", "Chapter 2"]);
+    expect(inspection.chapters.every(({ characterCount }) => characterCount > 30_000)).toBe(true);
+
+    const selected = await service.importWork({ sourceId: "11", chapterRange: { firstChapter: 1, lastChapter: 1 } });
+    expect(selected.sourceText).toMatch(/^Letter 1\n/);
+    expect(selected.sourceText).not.toContain("CONTENTS");
   });
 
   it("requires a contiguous chapter range over the source cap and rejects a range that is still too long", async () => {

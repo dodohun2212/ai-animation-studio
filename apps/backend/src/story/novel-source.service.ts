@@ -6,11 +6,11 @@ import {
   type NovelSourceImportResponse, type NovelSourceSearchRequest, type NovelSourceSearchResponse,
 } from "@ai-animation-studio/shared";
 
-const GUTENDEX_BASE = "https://gutendex.com/books";
+const GUTENDEX_BASE = "https://gutendex.com/books/";
 /** Project Gutenberg lists this official mirror for automated downloads; do not fetch ebooks from the main website. */
 export const GUTENBERG_TEXT_MIRROR = "https://gutenberg.pglaf.org";
 const MAX_BOOK_DOWNLOAD_BYTES = 32 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 const USER_AGENT = "AI-Animation-Studio/2.0 (https://github.com/dodohun2212/ai-animation-studio)";
 
 type RecordValue = Record<string, unknown>;
@@ -68,23 +68,45 @@ export function normalizeGutenbergText(input: string): string {
   return text.slice(start.index + start[0].length, end.index).trim();
 }
 
-const CHAPTER_HEADING = /^\s*((?:chapter|book|part)\s+(?:\d+|[ivxlcdm]+)\b[^\n]*)\s*$/i;
+const CHAPTER_HEADING = /^\s*((?:chapter|book|part|letter)\s+(?:\d+|[ivxlcdm]+)\b[^\n]*)\s*$/i;
+const CHAPTER_KEY = /^(chapter|book|part|letter)\s+(\d+|[ivxlcdm]+)\b/i;
+const TOC_ENTRY_MAX_CHARS = 200;
 
 function parseChapters(text: string): ParsedText {
-  const offsets: Array<{ offset: number; title: string }> = [];
+  const candidates: Array<{ offset: number; title: string; key: string }> = [];
   for (const match of text.matchAll(/^.*$/gm)) {
     const heading = CHAPTER_HEADING.exec(match[0]);
-    if (heading) offsets.push({ offset: match.index, title: heading[1]!.trim().replace(/\s+/g, " ").slice(0, 200) });
+    if (heading) {
+      const title = heading[1]!.trim().replace(/\s+/g, " ").slice(0, 200);
+      candidates.push({ offset: match.index, title, key: CHAPTER_KEY.exec(title)![0]!.toLowerCase() });
+    }
   }
+  // A Gutenberg table of contents repeats short heading lines before the actual chapters.
+  // Drop a contiguous run only when every entry also occurs later in the text.
+  const lastIndexByKey = new Map(candidates.map((entry, index) => [entry.key, index]));
+  const tocEntries = new Set<number>();
+  for (let index = 0; index < candidates.length - 1;) {
+    const run: number[] = [];
+    while (index < candidates.length - 1
+      && candidates[index + 1]!.offset - candidates[index]!.offset <= TOC_ENTRY_MAX_CHARS
+      && lastIndexByKey.get(candidates[index]!.key)! > index) {
+      run.push(index);
+      index++;
+    }
+    if (run.length >= 3) for (const entry of run) tocEntries.add(entry);
+    index++;
+  }
+  const offsets = candidates.filter((_, index) => !tocEntries.has(index));
+  const firstStart = tocEntries.size > 0 ? offsets[0]?.offset ?? 0 : 0;
   const chapters = offsets.map((entry, index) => {
-    const start = index === 0 ? 0 : entry.offset;
+    const start = index === 0 ? firstStart : entry.offset;
     const end = offsets[index + 1]?.offset ?? text.length;
     return { number: index + 1, title: entry.title, characterCount: text.slice(start, end).trim().length };
   });
   return {
     text,
     chapters,
-    chapterSpans: offsets.map((entry, index) => ({ start: index === 0 ? 0 : entry.offset, end: offsets[index + 1]?.offset ?? text.length })),
+    chapterSpans: offsets.map((entry, index) => ({ start: index === 0 ? firstStart : entry.offset, end: offsets[index + 1]?.offset ?? text.length })),
   };
 }
 
@@ -126,7 +148,7 @@ export class NovelSourceService {
       throw sourceError("NOVEL_SOURCE_INVALID_REQUEST", "연속된 장 범위를 확인해 주세요.", HttpStatus.BAD_REQUEST);
     }
     const id = Number(value.sourceId);
-    const bookPayload = await this.getJson(new URL(`${GUTENDEX_BASE}/${id}`));
+    const bookPayload = await this.getJson(new URL(`${id}/`, GUTENDEX_BASE));
     const book = mapBook(bookPayload);
     if (!book || book.sourceId !== value.sourceId) throw sourceError("NOVEL_SOURCE_NOT_ELIGIBLE", "한국의 보호기간 기준을 확인할 수 있는 원문만 가져올 수 있습니다.", HttpStatus.NOT_FOUND);
     const parsed = parseChapters(await this.fetchText(id));

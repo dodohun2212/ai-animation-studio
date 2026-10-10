@@ -4765,3 +4765,9 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 - Cowork 1346과 통합: 「소설에서 시작」에 Project Gutenberg 영어 작품 검색·선택 UI, 선택 후 분량 확인, 120,000자 초과 작품의 연속 장 범위 선택을 연결했다. 정확한 문자 수는 검색 메타데이터에 없어 목록에 길이 필터를 두지 않는다. citation은 저자·번역자·작품 ID·권리 필터 안내·전체/선택 길이·범위를 기록하며 원문은 저장하지 않는다.
 - 백엔드는 Gutendex 메타데이터를 검색하고, 저자/번역자 전원의 알려진 사망연도와 한국 보호기간 기준을 확인한다. 텍스트 원문은 선택 후 Project Gutenberg 미러에서 메모리에 가져온다. Nest DI 오류를 고치고 HTTP 호출을 별도 adapter로 분리했다. citation 가드는 catalog 전용 `subjects` 없이도 citation 계약을 받도록 맞췄다.
 - 전체 workspace 검증: backend 2,089 pass/1 skip, frontend 2,176, shared 140, desktop 38; 전체 typecheck·build 통과. 프론트 단일 화면 읽기 검사는 통과했지만 당시 백엔드가 기동 오류였고, 이후 `/health`와 무료 분석 미리보기 route를 확인했다. 미리보기는 Provider를 호출하지 않았다. Gutendex 실검색은 실행 환경의 외부 네트워크 연결 실패로 503을 반환해 확인하지 못했다. 실제 소설 분석/저장·유료 Provider 호출은 하지 않았다.
+
+## 2026-10-10 — 소설 출처 실측 오류 수정
+
+- Gutendex 검색·상세 요청을 `/books/`·`/books/{id}/` 정규 경로로 보내 느린 리다이렉트를 피하고, 첫 질의·원문 내려받기를 위해 요청 제한을 15초에서 60초로 늘렸다. 이 PC의 실제 `amontillado` 앱 검색은 14.06초에 후보 1건을 반환했다.
+- 장 범위 분석에서 목차의 반복된 짧은 머리 줄을 제외하고 `Letter` 구분을 포함했다. 실제 Project Gutenberg 프랑켄슈타인 #84의 장 목록은 목차를 포함한 48개에서 편지 4개+본문 24개인 28개로 바뀌었다. 1–7번 장의 길이를 실측했고, 대표 목차/본문 혼합 원문 테스트에서 1번 범위가 `Letter 1` 본문으로 시작하는 것을 확인했다.
+- 전체 typecheck·test·build 통과: backend 2090 pass/1 skip, frontend 2185, shared 140, desktop 38. 공유 테스트가 Windows 기본 임시 폴더의 `EPERM`으로 한 차례 시작되지 않아 작업공간 임시 폴더로 다시 실행했고 모든 테스트가 통과했다. 외부 원문은 읽기만 했으며 분석·저장·유료 Provider 호출은 없었다.
