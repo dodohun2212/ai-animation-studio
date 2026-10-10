@@ -137,7 +137,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
   if (state.loading && !state.settings) return <Spinner label="불러오는 중…" className="mt-8" />;
   return (
     <section className="mt-8 max-w-3xl space-y-5">
-      <ScreenHeader title="장기 프로젝트 설정" backLabel="돌아가기" onBack={onBack} />
+      <ScreenHeader title="장기 프로젝트 설정" eyebrow="작품 기본 설정" description="이 작품의 수정 화면입니다 — 직접 설정으로 시작했든 소설(이야기 만들기)에서 시작했든 같은 설정입니다. 소설을 분석 없이 만든 작품이면 원문은 「개요」 칸에 들어 있습니다." backLabel="작품으로 돌아가기" onBack={onBack} />
       {/* CLI Round 1260: said next to 「돌아가기」 rather than by blocking it — leaving stays one click, but not a
           silent one. Only the manual-save form counts; the four cards below save themselves. */}
       {formUnsaved && (

@@ -4,8 +4,8 @@ import { WorkflowState } from "@ai-animation-studio/shared";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { App } from "./App.js";
-import { jsonResponse, makeAsset } from "./api/testUtils.js";
+import { App, StoryArrivalNotice } from "./App.js";
+import { jsonResponse, makeAsset, makeLongProject } from "./api/testUtils.js";
 
 type FakeFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -354,11 +354,15 @@ describe("App", () => {
     expect(window.location.hash).toBe("#/memeTrends");
   });
 
-  /** 이야기 만들기: 메뉴만 눌러서는 AI 도 장기 프로젝트 생성도 부르지 않는다 — 보관함 캐릭터 목록 읽기뿐. 만들면 「회차 나누기(AI)」로 이어진다(설계 docs/08 M0). */
-  it("reaches 이야기 만들기 from the nav, reading only the character library", async () => {
+  /**
+   * 이야기 만들기는 사이드바의 독립 항목이 아니라 「장기 프로젝트 → 새 작품 만들기 → 소설에서 시작」으로만 닿는다(CLI 1327).
+   * 길을 따라가는 동안 AI 도 장기 프로젝트 생성도 부르지 않는다 — 장기 프로젝트 목록과 보관함 캐릭터 목록 읽기뿐.
+   */
+  it("reaches 이야기 만들기 through 장기 프로젝트 → 새 작품 만들기, not as a separate sidebar product", async () => {
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
       const requestUrl = String(input);
       if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/long-projects") return jsonResponse(200, { projects: [] });
       if (requestUrl === "/assets?assetType=character") return jsonResponse(200, { assets: [] });
       throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
     });
@@ -366,11 +370,40 @@ describe("App", () => {
     render(<App />);
 
     await screen.findByText("아직 생성된 프로젝트가 없습니다.");
+    expect(screen.queryByRole("button", { name: "이야기 만들기" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트" }));
+    fireEvent.click(await screen.findByRole("button", { name: /새 작품 만들기/ }));
+    await screen.findByTestId("long-start-methods");
+    expect(window.location.hash).toBe("#/longStart");
+
     fetchMock.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "이야기 만들기" }));
+    fireEvent.click(screen.getByTestId("long-start-story"));
     await screen.findByTestId("story-studio-form");
     expect(fetchMock.mock.calls.map(([url, init]) => `${(init as RequestInit | undefined)?.method ?? "GET"} ${String(url)}`)).toEqual(["GET /assets?assetType=character"]);
     expect(window.location.hash).toBe("#/storyStudio");
+    // 이 화면에서도 사이드바는 「장기 프로젝트」 아래에 있다.
+    expect(screen.getByRole("button", { name: "장기 프로젝트" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("reaches the direct setup from the same chooser, and can switch between the two starts", async () => {
+    const fetchMock = vi.fn<FakeFetch>(async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/long-projects") return jsonResponse(200, { projects: [] });
+      if (requestUrl === "/assets?assetType=character") return jsonResponse(200, { assets: [] });
+      throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "#/longStart";
+    render(<App />);
+
+    fireEvent.click(await screen.findByTestId("long-start-direct"));
+    expect(window.location.hash).toBe("#/longCreate");
+    fireEvent.click(await screen.findByTestId("long-create-from-story"));
+    await screen.findByTestId("story-studio-form");
+    expect(window.location.hash).toBe("#/storyStudio");
+    fireEvent.click(screen.getByTestId("story-start-direct"));
+    expect(window.location.hash).toBe("#/longCreate");
   });
 
   it("reaches the remaining independent nav screens without opening a provider route", async () => {
@@ -1008,8 +1041,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트" }));
     await screen.findByText("아직 생성된 장기 프로젝트가 없습니다.");
 
-    fireEvent.click(screen.getByRole("button", { name: "새 장기 프로젝트" }));
-    fireEvent.change(screen.getByLabelText("폴더 이름"), { target: { value: "long_test" } });
+    fireEvent.click(screen.getByRole("button", { name: "새 작품 만들기" }));
+    // 새 작품 만들기는 시작 방법을 먼저 고른다(직접 설정 / 소설에서 시작) — 직접 설정 쪽으로.
+    fireEvent.click(await screen.findByTestId("long-start-direct"));
+    fireEvent.change(await screen.findByLabelText("폴더 이름"), { target: { value: "long_test" } });
     fireEvent.change(screen.getByLabelText("제목"), { target: { value: seed.title } });
     fireEvent.change(screen.getByLabelText("한 줄 줄거리"), { target: { value: seed.logline } });
     fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트 생성" }));
@@ -1089,12 +1124,74 @@ describe("App", () => {
     const first = render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트" }));
-    await screen.findByRole("button", { name: "새 장기 프로젝트" });
+    await screen.findByRole("button", { name: "새 작품 만들기" });
     expect(window.location.hash).toBe("#/longList");
 
     first.unmount();
     render(<App />);
-    expect(await screen.findByRole("button", { name: "새 장기 프로젝트" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "새 작품 만들기" })).toBeTruthy();
+  });
+
+  /**
+   * CLI 1326·1327: 「분석 없이 만들기」로 방금 만든 작품에 도착하면, 이미 프로젝트가 만들어졌고 원문은 설정의 개요에 있으며 아직 AI 분석은
+   * 하지 않았다는 것을 한 번 말한다. 작품을 떠나면 사라진다.
+   */
+  it("tells what just happened on arrival after 분석 없이 만들기, and drops the notice when leaving the work", async () => {
+    let created: LongProject | null = null;
+    vi.stubGlobal("fetch", vi.fn<FakeFetch>(async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.startsWith("/assets")) return jsonResponse(200, { assets: [] });
+      if (url === "/projects") return jsonResponse(200, { projects: [] });
+      if (url === "/long-projects" && method === "POST") {
+        const request = JSON.parse(String(init?.body)) as CreateLongProjectRequest;
+        created = makeLongProject({ id: request.projectId, title: request.settings.title });
+        return jsonResponse(201, { project: created });
+      }
+      if (url === "/long-projects" && method === "GET") return jsonResponse(200, { projects: [] });
+      if (/^\/long-projects\/[^/]+$/.test(url) && method === "GET" && created) return jsonResponse(200, { project: created });
+      return jsonResponse(404, { code: "NOT_FOUND", message: "x" });
+    }));
+    window.location.hash = "#/storyStudio";
+    render(<App />);
+
+    fireEvent.change(await screen.findByTestId("story-title"), { target: { value: "마지막 종소리" } });
+    fireEvent.change(screen.getByTestId("story-logline"), { target: { value: "종이 울리면 문이 열린다" } });
+    fireEvent.change(screen.getByTestId("story-text"), { target: { value: "어느 날 밤, 종이 울렸다." } });
+    fireEvent.click(screen.getByTestId("story-rights"));
+    fireEvent.click(screen.getByTestId("story-submit"));
+
+    const notice = await screen.findByTestId("story-arrival-notice");
+    expect(notice.getAttribute("data-arrival-kind")).toBe("story-raw");
+    expect(notice.textContent).toContain("아직 AI 분석은 하지 않았습니다");
+    expect(notice.textContent).toContain("개요에 그대로 저장");
+    expect(window.location.hash).toMatch(/^#\/longOutline\?projectId=/);
+
+    fireEvent.click(screen.getByTestId("story-arrival-overview"));
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/longDetail\?projectId=/));
+    expect(screen.getByTestId("story-arrival-notice")).toBeTruthy();
+    expect(screen.queryByTestId("story-arrival-overview")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "장기 프로젝트" }));
+    await waitFor(() => expect(screen.queryByTestId("story-arrival-notice")).toBeNull());
+  });
+
+  it("names the two arrivals differently and lets the person dismiss the notice", () => {
+    const onDismiss = vi.fn();
+    const onOverview = vi.fn();
+    const raw = render(<StoryArrivalNotice kind="story-raw" atOverview={false} onWorkOverview={onOverview} onDismiss={onDismiss} />);
+    expect(raw.getByTestId("story-arrival-notice").textContent).toContain("아직 AI 분석은 하지 않았습니다");
+    fireEvent.click(raw.getByTestId("story-arrival-overview"));
+    expect(onOverview).toHaveBeenCalledTimes(1);
+    raw.unmount();
+
+    const analysed = render(<StoryArrivalNotice kind="story-analysis" atOverview onWorkOverview={onOverview} onDismiss={onDismiss} />);
+    const text = analysed.getByTestId("story-arrival-notice").textContent ?? "";
+    expect(text).toContain("회차 개요와 인물이 이미 채워져");
+    expect(text).toContain("수정 화면");
+    expect(text).not.toContain("아직 AI 분석은 하지 않았습니다");
+    fireEvent.click(analysed.getByTestId("story-arrival-dismiss"));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it("opens the project list when the address points at nothing", async () => {

@@ -9,6 +9,8 @@ import { LONG_STORY_HINTS, filledCountLabel } from "./ui/longStoryHints.js";
 interface CreateLongProjectFormProps {
   onCreated: (project: LongProject) => void;
   onCancel: () => void;
+  /** 소설이 있으면 「소설에서 시작(이야기 만들기)」로 바꿉니다 — 같은 장기 프로젝트를 만드는 다른 시작 방법입니다. */
+  onStartFromStory?: () => void;
 }
 
 interface FieldErrors {
@@ -80,7 +82,7 @@ function Field({
   );
 }
 
-export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProjectFormProps) {
+export function CreateLongProjectForm({ onCreated, onCancel, onStartFromStory }: CreateLongProjectFormProps) {
   const [projectId, setProjectId] = useState("");
   const [settings, setSettings] = useState<LongProjectSettings>(EMPTY_SETTINGS);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -151,9 +153,11 @@ export function CreateLongProjectForm({ onCreated, onCancel }: CreateLongProject
           being made or how to leave. */}
       <ScreenHeader
         title="새 장편 프로젝트 만들기"
-        description="여러 회차로 이어지는 작품입니다. 여기서는 폴더 이름과 작품 전체에 적용될 설정만 정합니다."
-        backLabel="장편 프로젝트 목록으로"
+        eyebrow="장기 프로젝트 · 새 작품 — 직접 설정"
+        description="여러 회차로 이어지는 작품입니다. 여기서는 폴더 이름과 작품 전체에 적용될 설정만 정합니다. 만든 뒤 이 설정은 「작품 기본 설정」에서 고칠 수 있고, 소설에서 시작해도 같은 장기 프로젝트가 만들어집니다."
+        backLabel="새 작품 만들기로"
         onBack={onCancel}
+        actions={onStartFromStory ? <button type="button" data-testid="long-create-from-story" onClick={onStartFromStory} className="rounded border border-line px-3 py-1.5 text-sm text-bone-dim hover:border-bone-faint/60 hover:text-bone">소설에서 시작하기 (이야기 만들기)</button> : undefined}
         className="mt-8"
       />
     <form

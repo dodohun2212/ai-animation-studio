@@ -40,11 +40,12 @@ describe("StoryStudioScreen", () => {
 
   it("says plainly what does not work yet, as text and not as buttons", async () => {
     mockServer();
-    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     const panel = screen.getByTestId("story-not-yet");
     expect(panel.textContent).toContain("Reddit 주소만 넣어 글 가져오기");
     expect(panel.textContent).toContain("사전 승인과 이용 조건");
-    expect(panel.textContent).toContain("등장인물을 자동으로 뽑고");
+    // 인물 자동 추출·이미지 등록은 이제 있다(AI 분석 + 인물 이미지) — 「준비 중」으로 과소 안내하지 않는다(CLI 1325).
+    expect(panel.textContent).not.toContain("등장인물을 자동으로 뽑고");
     expect(panel.querySelector("button")).toBeNull();
     await screen.findByTestId("story-title");
   });
@@ -52,7 +53,7 @@ describe("StoryStudioScreen", () => {
   /** M1: AI 분석이 회차 구성의 개수를 입력으로 받아서 회차 수·장면 수 칸이 다시 생겼다. 처음 값은 기본값(3·6). */
   it("has the episode and scene count fields again, starting from the defaults", async () => {
     mockServer();
-    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     await screen.findByTestId("story-title");
     expect((screen.getByTestId("story-episodes") as HTMLInputElement).value).toBe("3");
     expect((screen.getByTestId("story-scenes") as HTMLInputElement).value).toBe("6");
@@ -66,7 +67,7 @@ describe("StoryStudioScreen", () => {
         preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", model: "gpt-5.6-luna", sourceCharacterCount: 4, estimatedCostUsd: 0.05, providerAvailable: true },
       },
     });
-    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     await screen.findByTestId("story-title");
     expect((screen.getByTestId("story-preview-run") as HTMLButtonElement).disabled).toBe(true);
     fill("story-title", "달빛 문");
@@ -92,7 +93,7 @@ describe("StoryStudioScreen", () => {
         preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", model: "gpt-5.6-luna", sourceCharacterCount: 4, estimatedCostUsd: 0.05, providerAvailable: true },
       },
     });
-    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     await screen.findByTestId("story-title");
     fill("story-title", "t");
     fill("story-logline", "l");
@@ -104,9 +105,48 @@ describe("StoryStudioScreen", () => {
     expect(sent(fetchMock).find((entry) => entry.url === "/story-analysis/preview")!.body.sourceNote).toBe("작가 이름");
   });
 
+  /** CLI 1326: 입력칸에서 Enter(폼 제출)로는 분석 없는 만들기가 일어나지 않고, 전용 버튼을 눌러야만 만들어진다. */
+  it("does not create a project when Enter submits the form from a field", async () => {
+    const fetchMock = mockServer({ "POST /long-projects": { project: makeLongProject() } });
+    const onCreated = vi.fn();
+    render(<StoryStudioScreen onCreated={onCreated} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
+    await screen.findByTestId("story-title");
+    fill("story-title", "달빛 문");
+    fill("story-logline", "문을 발견한다");
+    fill("story-text", "본문");
+    fireEvent.click(screen.getByTestId("story-rights"));
+    fireEvent.submit(screen.getByTestId("story-studio-form"));
+    fireEvent.keyDown(screen.getByTestId("story-title"), { key: "Enter", code: "Enter" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sent(fetchMock)).toEqual([]);
+    expect(onCreated).not.toHaveBeenCalled();
+    expect((screen.getByTestId("story-submit") as HTMLButtonElement).type).toBe("button");
+    fireEvent.click(screen.getByTestId("story-submit"));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+    expect(sent(fetchMock).filter((call) => call.url === "/long-projects")).toHaveLength(1);
+  });
+
+  /** CLI 1327: 이야기 만들기는 장기 프로젝트의 한 시작 방법이라는 관계를 첫 화면이 말하고, 다른 방법·목록으로 갈 길이 있다. */
+  it("says it is one way to start a long project, and can go back or switch to the direct setup", async () => {
+    mockServer();
+    const onBack = vi.fn();
+    const onStartDirect = vi.fn();
+    const { container } = render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={onBack} onStartDirect={onStartDirect} onOpenSettings={() => {}} />);
+    await screen.findByTestId("story-title");
+    const page = container.textContent ?? "";
+    expect(page).toContain("장기 프로젝트 · 새 작품");
+    expect(page).toContain("만들어진 것은 같은 장기 프로젝트");
+    expect(page).toContain("분석 없이 만들면 붙여넣은 글은 프로젝트 개요에");
+    expect(page).not.toContain("소설에서 인물을 자동으로 뽑는 기능은 준비 중");
+    fireEvent.click(screen.getByTestId("story-start-direct"));
+    expect(onStartDirect).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /새 작품 만들기로/ }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
   it("asks for the required fields before sending anything", async () => {
     const fetchMock = mockServer();
-    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     fireEvent.click(screen.getByTestId("story-submit"));
     expect((await screen.findByTestId("story-error")).textContent).toContain("제목");
     fill("story-title", "달빛 문");
@@ -122,7 +162,7 @@ describe("StoryStudioScreen", () => {
   it("will not create anything until the person confirms the text is theirs or permitted", async () => {
     const fetchMock = mockServer({ "POST /long-projects": { project: makeLongProject() } });
     const onCreated = vi.fn();
-    render(<StoryStudioScreen onCreated={onCreated} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={onCreated} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     fill("story-title", "t");
     fill("story-logline", "l");
     fill("story-text", "본문");
@@ -137,7 +177,7 @@ describe("StoryStudioScreen", () => {
 
   it("refuses a text over the limit and shows the count", async () => {
     const fetchMock = mockServer();
-    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     fill("story-title", "t");
     fill("story-logline", "l");
     fill("story-text", "가".repeat(STORY_TEXT_LIMIT + 1));
@@ -152,7 +192,7 @@ describe("StoryStudioScreen", () => {
     const project = makeLongProject();
     const fetchMock = mockServer({ "POST /long-projects": { project } });
     const onCreated = vi.fn();
-    render(<StoryStudioScreen onCreated={onCreated} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={onCreated} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     await screen.findByTestId("story-title");
     fill("story-title", "달빛 문");
     fill("story-logline", "평범한 직장인이 낯선 문을 발견한다");
@@ -182,7 +222,7 @@ describe("StoryStudioScreen", () => {
   it("keeps what was typed and shows the server's message when creation fails", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({ "GET /assets?assetType=character": { assets: [] } }, { "POST /long-projects": { status: 400, body: { code: "LONG_PROJECT_ALREADY_EXISTS", message: "raw" } } }));
     const onCreated = vi.fn();
-    render(<StoryStudioScreen onCreated={onCreated} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={onCreated} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     fill("story-title", "t");
     fill("story-logline", "l");
     fill("story-text", "본문");
@@ -195,7 +235,7 @@ describe("StoryStudioScreen", () => {
 
   it("still works when the library cannot be read", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({}, { "GET /assets?assetType=character": { status: 500, body: { code: "X", message: "boom" } } }));
-    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onOpenSettings={() => {}} />);
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
     fireEvent.click(screen.getByTestId("story-add-character"));
     await waitFor(() => expect(screen.getByText("보관함 캐릭터 목록을 불러오지 못했습니다. 짝짓기 없이 적을 수 있습니다.")).toBeTruthy());
     expect(screen.getByTestId("story-character-asset-0")).toBeTruthy();

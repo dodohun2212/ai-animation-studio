@@ -16,6 +16,7 @@ import { NewsReelScreen } from "./components/NewsReelScreen.js";
 import { NewsReelListScreen } from "./components/NewsReelListScreen.js";
 import { MemeTrendsScreen } from "./components/MemeTrendsScreen.js";
 import { StoryStudioScreen } from "./components/StoryStudioScreen.js";
+import { LongProjectStartChooser } from "./components/LongProjectStartChooser.js";
 import { NewsReelCreateScreen, type NewsReelDraft } from "./components/NewsReelCreateScreen.js";
 import { AudioLibraryScreen } from "./components/AudioLibraryScreen.js";
 import { InstagramPostScreen } from "./components/InstagramPostScreen.js";
@@ -93,6 +94,7 @@ type Screen =
   | { name: "archive" }
   | { name: "workflowGuide" }
   | { name: "longList" }
+  | { name: "longStart" }
   | { name: "longCreate" }
   | { name: "longDetail"; projectId: string }
   | { name: "longSettings"; projectId: string }
@@ -126,7 +128,7 @@ const SCREEN_PARAMS: Record<Screen["name"], readonly ScreenParam[]> = {
   list: [], create: [], providerSettings: [], videoLibrary: [], audioLibrary: [], instagramPost: ["initialProjectId", "initialEpisodeNumber"], photoCard: [], photoCardCreate: [], newsReel: [], newsReelWrite: [], newsReelCreate: [],
   memeTrends: ["trendId"],
   storyStudio: [],
-  archive: [], workflowGuide: [], longList: [], longCreate: [],
+  archive: [], workflowGuide: [], longList: [], longStart: [], longCreate: [],
   assets: ["initialQuery"],
   detail: ["projectId"], mappingReview: ["projectId"], settings: ["projectId"], storyPrompt: ["projectId"],
   imageGeneration: ["projectId"], narrationReview: ["projectId"], sceneEdit: ["projectId"],
@@ -319,7 +321,7 @@ function NavIcon({ name }: { name: NavIconName }) {
   }
 }
 
-type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "newsReel" | "memeTrends" | "storyStudio" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
+type NavSection = "short" | "long" | "assets" | "videoLibrary" | "audioLibrary" | "photoCard" | "newsReel" | "memeTrends" | "instagramPost" | "archive" | "workflowGuide" | "providerSettings";
 
 /**
  * 어느 화면에서 **왼쪽 어느 항목이 켜지는가.**
@@ -336,7 +338,6 @@ export function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "photoCard") return "photoCard";
   if (name === "newsReel" || name === "newsReelWrite" || name === "newsReelCreate") return "newsReel";
   if (name === "memeTrends") return "memeTrends";
-  if (name === "storyStudio") return "storyStudio";
   // 🔴 만들기 화면은 **어디서 왔느냐**로 갈립니다 — 뉴스 릴에서 왔으면 왼쪽도 뉴스 릴에 남습니다.
   // 여기서 「명언 카드」로 옮겨 버리면 사람이 하던 일에서 **쫓겨난 것처럼** 보입니다.
   if (name === "photoCardCreate") return "photoCard";
@@ -344,7 +345,7 @@ export function navSectionFor(name: Screen["name"]): NavSection | null {
   if (name === "archive") return "archive";
   if (name === "workflowGuide") return "workflowGuide";
   if (name === "providerSettings") return "providerSettings";
-  if (LONG_PROJECT_SCREEN_NAMES.has(name) || name === "longList" || name === "longCreate") return "long";
+  if (LONG_PROJECT_SCREEN_NAMES.has(name) || name === "longList" || name === "longStart" || name === "longCreate" || name === "storyStudio") return "long";
   if (SHORT_PROJECT_SCREEN_NAMES.has(name)) return "short";
   return null;
 }
@@ -389,7 +390,6 @@ const NAV_GROUPS: { title: string; index: string; items: NavItem[] }[] = [
       // 🟠 만들기 묶음의 끝 — 아직 「이 밈으로 만들기」가 없어서 **고르는 곳**까지만입니다. 그 버튼은 초안 연결
       // 계약이 생기는 다음 단계에 붙습니다(막아 둔 버튼을 먼저 그려 두면 그건 약속이 아니라 거짓말입니다).
       { key: "memeTrends", icon: "trend", label: "밈 트렌드", target: { name: "memeTrends" } },
-      { key: "storyStudio", icon: "story", label: "이야기 만들기", target: { name: "storyStudio" } },
     ],
   },
   {
@@ -744,6 +744,26 @@ function Sidebar({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: 
   );
 }
 
+/**
+ * 이야기 만들기로 방금 만든 작품의 **도착 안내** — 한 번만, 무슨 일이 일어났고 돌아가면 어디인지를 말합니다(CLI 1326·1327).
+ * 「분석 없이 만들기」(원문이 개요에 그대로 저장, AI 분석 없음)와 「분석을 확인·수정해 만들기」(개요·인물이 이미 채워짐)를 갈라 말합니다.
+ */
+export function StoryArrivalNotice({ kind, onWorkOverview, onDismiss, atOverview }: { kind: "story-raw" | "story-analysis"; onWorkOverview: () => void; onDismiss: () => void; atOverview: boolean }) {
+  return (
+    <div role="status" data-testid="story-arrival-notice" data-arrival-kind={kind} className="mb-5 flex flex-wrap items-start gap-3 rounded-lg border border-violet-400/40 bg-violet-500/10 px-4 py-3 text-xs text-bone-dim">
+      <p className="min-w-0 flex-1 leading-relaxed">
+        {kind === "story-raw"
+          ? <><strong className="font-medium text-bone">이야기 만들기로 작품을 만들었습니다.</strong> 프로젝트는 이미 만들어졌고, 붙여넣은 원문은 「작품 기본 설정」의 개요에 그대로 저장돼 있으며 <strong className="font-medium text-bone">아직 AI 분석은 하지 않았습니다.</strong> 여기서 돌아가면 이 작품의 화면입니다.</>
+          : <><strong className="font-medium text-bone">소설 분석을 확인·수정해 작품을 만들었습니다.</strong> 회차 개요와 인물이 이미 채워져 있어 「회차 나누기(AI)」 없이 회차 작업으로 이어집니다. 「작품 기본 설정」은 이 작품의 수정 화면입니다.</>}
+      </p>
+      <div className="flex gap-2">
+        {!atOverview && <button type="button" data-testid="story-arrival-overview" className="rounded border border-line px-2.5 py-1 text-bone hover:border-bone-faint/60" onClick={onWorkOverview}>작품 한눈에 보기</button>}
+        <button type="button" data-testid="story-arrival-dismiss" className="rounded border border-line px-2.5 py-1 text-bone-dim hover:border-bone-faint/60" onClick={onDismiss}>닫기</button>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   /**
    * Screen position, kept in the address bar so a reload lands where the person was.
@@ -793,6 +813,12 @@ export function App() {
     && "projectId" in screen;
   const [listRefreshToken, setListRefreshToken] = useState(0);
   const [longListRefreshToken, setLongListRefreshToken] = useState(0);
+  /** 이야기 만들기로 방금 만든 작품 — 도착한 화면에서 「무슨 일이 일어났고 돌아가면 어디인가」를 한 번 말하는 데 씁니다. */
+  const [arrival, setArrival] = useState<{ projectId: string; kind: "story-raw" | "story-analysis" } | null>(null);
+  useEffect(() => {
+    // 그 작품을 떠나면(다른 작품·다른 화면) 도착 안내는 끝입니다.
+    if (arrival && !(LONG_PROJECT_SCREEN_NAMES.has(screen.name) && "projectId" in screen && screen.projectId === arrival.projectId)) setArrival(null);
+  }, [screen, arrival]);
 
   /**
    * Routes a resumeTarget to its screen. The same mapping ProjectDetail applies to its own 「이어서 진행하기」
@@ -859,10 +885,21 @@ export function App() {
     setScreen({ name: "longDetail", projectId: project.id });
   }
 
-  /** 이야기 만들기는 만든 뒤 곧바로 「회차 나누기(AI)」(개요 미리보기)로 이어집니다 — 소설을 회차로 푸는 다음 일이 거기라서. */
+  /**
+   * 이야기 만들기(분석 없이 원문 그대로)는 만든 뒤 곧바로 「회차 나누기(AI)」(개요 미리보기)로 이어집니다 — 소설을 회차로 푸는
+   * 다음 일이 거기라서. 이미 프로젝트가 만들어졌고 원문은 설정의 개요에 있으며 아직 AI 분석은 하지 않았다는 사실을 화면이 말합니다.
+   */
   function handleStoryCreated(project: LongProject): void {
     setLongListRefreshToken((token) => token + 1);
+    setArrival({ projectId: project.id, kind: "story-raw" });
     setScreen({ name: "longOutline", projectId: project.id });
+  }
+
+  /** AI 분석을 확인·수정해 확정한 작품(M2) — 회차 개요·인물이 이미 채워져 있어 작품 화면으로 이어집니다. */
+  function handleStoryAnalysisCreated(project: LongProject): void {
+    setLongListRefreshToken((token) => token + 1);
+    setArrival({ projectId: project.id, kind: "story-analysis" });
+    setScreen({ name: "longDetail", projectId: project.id });
   }
 
   /*
@@ -910,6 +947,14 @@ export function App() {
           {/* 🔴 `pt-24` 가 여기 있었습니다 — 위 hero 그림을 피하려고 목록을 96px 아래로 민 것. 그림이 없으니
               밀 이유도 없습니다. 목록 화면만 다른 여백을 갖던 분기도 같이 사라집니다. */}
           <div className={isEntryScreen ? "" : "mt-8"}>
+            {arrival && LONG_PROJECT_SCREEN_NAMES.has(screen.name) && "projectId" in screen && screen.projectId === arrival.projectId && (
+              <StoryArrivalNotice
+                kind={arrival.kind}
+                atOverview={screen.name === "longDetail"}
+                onWorkOverview={() => setScreen({ name: "longDetail", projectId: arrival.projectId })}
+                onDismiss={() => setArrival(null)}
+              />
+            )}
             {screen.name === "list" && (
               <ProjectList
                 refreshToken={listRefreshToken}
@@ -921,11 +966,22 @@ export function App() {
               <LongProjectList
                 refreshToken={longListRefreshToken}
                 onOpenProject={(projectId) => setScreen({ name: "longDetail", projectId })}
-                onCreateNew={() => setScreen({ name: "longCreate" })}
+                onCreateNew={() => setScreen({ name: "longStart" })}
+              />
+            )}
+            {screen.name === "longStart" && (
+              <LongProjectStartChooser
+                onStartDirect={() => setScreen({ name: "longCreate" })}
+                onStartFromStory={() => setScreen({ name: "storyStudio" })}
+                onBack={() => setScreen({ name: "longList" })}
               />
             )}
             {screen.name === "longCreate" && (
-              <CreateLongProjectForm onCreated={handleLongCreated} onCancel={() => setScreen({ name: "longList" })} />
+              <CreateLongProjectForm
+                onCreated={handleLongCreated}
+                onCancel={() => setScreen({ name: "longStart" })}
+                onStartFromStory={() => setScreen({ name: "storyStudio" })}
+              />
             )}
             {screen.name === "longDetail" && (
               <LongProjectDetail
@@ -1105,7 +1161,7 @@ export function App() {
                 onProjectCreated={handleCreated}
               />
             )}
-            {screen.name === "storyStudio" && <StoryStudioScreen onCreated={handleStoryCreated} onProjectFromAnalysis={handleLongCreated} onOpenSettings={() => setScreen({ name: "providerSettings" })} />}
+            {screen.name === "storyStudio" && <StoryStudioScreen onCreated={handleStoryCreated} onProjectFromAnalysis={handleStoryAnalysisCreated} onBack={() => setScreen({ name: "longStart" })} onStartDirect={() => setScreen({ name: "longCreate" })} onOpenSettings={() => setScreen({ name: "providerSettings" })} />}
             {screen.name === "newsReelWrite" && (
               <NewsReelScreen
                 onBack={() => setScreen({ name: "newsReel" })}

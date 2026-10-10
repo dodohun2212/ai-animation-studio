@@ -126,7 +126,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
           onClick={onCreateNew}
         >
           <PlusIcon />
-          새 장기 프로젝트
+          새 작품 만들기
         </button>
       </header>
       <div className="mt-6 border-b border-line" />
@@ -144,7 +144,7 @@ export function LongProjectList({ refreshToken, onOpenProject, onCreateNew }: Lo
           <p className="text-bone-dim">아직 생성된 장기 프로젝트가 없습니다.</p>
           {/* CLI Round 1206: 빈 목록에서 다음에 할 일을 말합니다. 버튼을 하나 더 두지 않고 위의 버튼을 가리킵니다 — 같은 일을
               하는 버튼 두 개는 「둘이 다른가?」를 묻게 만듭니다. */}
-          <p className="mt-1 text-sm text-slate-500">오른쪽 위 「새 장기 프로젝트」로 시작하세요. 회차 여러 개를 하나의 세계관 아래 이어 만드는 곳입니다.</p>
+          <p className="mt-1 text-sm text-slate-500">오른쪽 위 「새 작품 만들기」로 시작하세요(직접 설정으로 시작하거나 소설에서 시작할 수 있습니다). 회차 여러 개를 하나의 세계관 아래 이어 만드는 곳입니다.</p>
         </div>
       )}
       {state.projects !== null && state.projects.length > 0 && (

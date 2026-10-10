@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MAX_SCENE_COUNT,
   MIN_SCENE_COUNT,
@@ -23,6 +23,10 @@ interface Props {
   onCreated: (project: LongProject) => void;
   /** AI 분석 결과를 확정해 만든 프로젝트(M2) — 회차 개요가 이미 채워져 있어 프로젝트 화면으로 이어집니다. */
   onProjectFromAnalysis: (project: LongProject) => void;
+  /** 새 작품 만들기(시작 방법 고르기)로 돌아갑니다. */
+  onBack: () => void;
+  /** 소설 없이 「직접 설정」으로 시작하는 화면으로 바꿉니다. */
+  onStartDirect: () => void;
   /** 키·예산이 막을 때 갈 곳 — OpenAI 키와 월 한도는 API 설정에 있습니다. */
   onOpenSettings: () => void;
 }
@@ -75,11 +79,11 @@ export function buildStoryNotes(source: string, characters: { name: string; desc
  *
  * 🔴 **지금 되는 것과 아직 안 되는 것을 갈라서 말합니다.** 되는 것: 글 붙여넣기 → 인물을 적고(보관함 캐릭터와 짝지을 수 있음)
  * → 장기 프로젝트 만들기(기존 API). 이후 회차 개요·대본은 장기 프로젝트의 기존 흐름이고, 유료 요청은 거기서 승인해야 나갑니다.
- * 아직 안 되는 것(Reddit 주소로 가져오기·글에서 인물 자동 추출과 이미지 등록·긴 글 자동 요약)은 **버튼으로 그리지 않고**
+ * 아직 안 되는 것(Reddit 주소로 가져오기·긴 글 자동 요약)은 **버튼으로 그리지 않고**
  * 글로만 알립니다 — 눌러도 아무 일도 없는 버튼은 약속이 아니라 거짓말이기 때문입니다.
  * 이 화면은 OpenAI·Runway 를 부르지 않습니다.
  */
-export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onOpenSettings }: Props) {
+export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, onStartDirect, onOpenSettings }: Props) {
   const [title, setTitle] = useState("");
   const [logline, setLogline] = useState("");
   const [text, setText] = useState("");
@@ -129,8 +133,8 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onOpenSett
     setCharacters((old) => old.filter((item) => item.key !== key));
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  /** 「분석 없이 만들기」 버튼을 **직접 눌렀을 때만** 호출됩니다 — 입력칸의 Enter 로는 만들어지지 않습니다(CLI 1326). */
+  async function submit(): Promise<void> {
     if (busy.current) return;
     const trimmedTitle = title.trim();
     const trimmedLogline = logline.trim();
@@ -180,12 +184,17 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onOpenSett
   return (
     <section className="space-y-6">
       <ScreenHeader
-        title="이야기 만들기"
-        eyebrow="Forge"
-        description="소설이나 이야기를 붙여넣으면 장기 프로젝트(회차)로 풀어 갑니다. 만든 뒤 바로 「회차 나누기(AI)」로 이어집니다."
+        title="이야기 만들기 — 소설에서 시작"
+        eyebrow="장기 프로젝트 · 새 작품"
+        description="소설이나 이야기를 붙여넣어 장기 프로젝트(회차로 이어지는 작품)를 시작합니다. 아래 2번 AI 분석으로 줄거리·인물·회차를 정리한 뒤 확정하거나, 분석 없이 4번으로 바로 만들 수 있습니다. 어느 쪽이든 만들어진 것은 같은 장기 프로젝트입니다."
+        backLabel="새 작품 만들기로"
+        onBack={onBack}
+        actions={<button type="button" data-testid="story-start-direct" className={smallOutlineButton} onClick={onStartDirect}>소설 없이 직접 설정으로 시작</button>}
+        className="mt-8"
       />
 
-      <form data-testid="story-studio-form" onSubmit={(event) => void submit(event)} className="space-y-6" noValidate>
+      {/* 🔴 Enter 로는 아무것도 만들어지지 않습니다 — 이 form 에는 submit 버튼이 없고, 유료 분석도 분석 없이 만들기도 각자의 버튼을 눌러야 합니다. */}
+      <form data-testid="story-studio-form" onSubmit={(event) => event.preventDefault()} className="space-y-6" noValidate>
         {/* ── 1. 이야기 ── */}
         <div className="space-y-3 rounded-lg border border-line bg-ground-raised p-5">
           <h2 className="text-base font-semibold text-bone">1. 이야기</h2>
@@ -239,14 +248,14 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onOpenSett
           <StoryAnalysisPanel input={analysisInput} onOpenSettings={onOpenSettings} onProjectCreated={onProjectFromAnalysis} />
         </div>
 
-        {/* ── 3. 등장인물 — 선택. 소설을 AI가 읽고 인물을 뽑아 주는 기능(설계 docs/08 M1~M2)이 생기면 이 칸은 그 결과로 채워집니다. ── */}
+        {/* ── 3. 등장인물 — 선택, **분석 없이** 만들 때만. AI 분석(2번)을 거치면 인물은 그 결과 화면에서 정리·수정하고 이미지까지 만듭니다. ── */}
         <div className="space-y-3 rounded-lg border border-line bg-ground-raised p-5">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-bone">3. 등장인물 (선택)</h2>
+            <h2 className="text-base font-semibold text-bone">3. 등장인물 (선택 · 분석 없이 만들 때)</h2>
             <button type="button" data-testid="story-add-character" className={`${smallOutlineButton} ml-auto`} onClick={addCharacter} disabled={submitting}>인물 직접 적기</button>
           </div>
           <p className="text-xs text-bone-dim">
-            지금은 직접 적습니다 — 적어 두면 대본 AI가 회차마다 같은 인물로 읽고, 이미지 보관함의 캐릭터와 짝지을 수 있습니다. 소설에서 인물을 자동으로 뽑는 기능은 준비 중입니다.
+            2번 AI 분석을 쓰면 인물이 자동으로 정리되고, 결과 화면에서 고치고 캐릭터 이미지까지 만들 수 있습니다. 이 칸은 분석 없이 4번으로 만들 때만 씁니다 — 직접 적어 두면 대본 AI가 회차마다 같은 인물로 읽고, 이미지 보관함의 캐릭터와 짝지을 수 있습니다.
           </p>
           {characters.length === 0 && <p data-testid="story-characters-empty" className="text-xs text-bone-faint">아직 적은 인물이 없습니다. 건너뛰어도 됩니다.</p>}
           {libraryFailed && <p role="status" className="text-xs text-amber-300">보관함 캐릭터 목록을 불러오지 못했습니다. 짝짓기 없이 적을 수 있습니다.</p>}
@@ -286,14 +295,14 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onOpenSett
         <div className="space-y-3 rounded-lg border border-line bg-ground-raised p-5">
           <h2 className="text-base font-semibold text-bone">4. 분석 없이 바로 장기 프로젝트로 만들기</h2>
           <p data-testid="story-m0-notice" className="border-l-2 border-amber-400/40 pl-3 text-xs leading-relaxed text-slate-400">
-            지금 단계의 실제 동작: 붙여넣은 글은 프로젝트 개요에 <strong className="font-medium text-bone-dim">그대로 저장</strong>되고, 회차를 나누는 AI가 그 글을 읽습니다.
-            메모에 재창작 지시를 넣지만 원문이 그대로 쓰이지 않게 구조적으로 막지는 못합니다. 소설을 먼저 AI가 읽어 인물·회차 구조로 정리한 뒤 그 구조만 쓰는 단계는 준비 중입니다.
+            분석 없이 만들면 붙여넣은 글은 프로젝트 개요에 <strong className="font-medium text-bone-dim">그대로 저장</strong>되고, 회차를 나누는 AI가 그 글을 읽습니다. 이 단계에서는 AI 분석을 하지 않습니다.
+            메모에 재창작 지시를 넣지만 원문이 그대로 쓰이지 않게 구조적으로 막지는 못합니다. 원문 대신 AI가 정리한 구조만 쓰려면 위 2번 AI 분석을 거치세요.
           </p>
           <p className="text-xs text-bone-dim">
-            장기 프로젝트가 만들어지고 바로 「회차 나누기(AI)」 화면으로 이어집니다. 회차 수·장면 수는 기본값(3회차·6장면)으로 시작하며, 바꾸려면 장기 프로젝트 설정에서 고칩니다. 그다음 대본 → 그림 → 영상은 장기 프로젝트의 기존 흐름이고, 유료 요청은 승인해야만 나갑니다. 이 단계는 AI를 부르지 않습니다.
+            장기 프로젝트가 만들어지고 바로 그 작품의 「회차 나누기(AI)」 화면으로 이어지며, 거기서 돌아가면 만들어진 작품 화면입니다. 회차 수·장면 수는 기본값(3회차·6장면)으로 시작하며, 바꾸려면 장기 프로젝트 설정에서 고칩니다. 그다음 대본 → 그림 → 영상은 장기 프로젝트의 기존 흐름이고, 유료 요청은 승인해야만 나갑니다. 이 단계는 AI를 부르지 않습니다.
           </p>
           {error && <p role="alert" data-testid="story-error" className="text-sm text-rose-400">{error}</p>}
-          <button type="submit" data-testid="story-submit" className={primaryButton} disabled={submitting}>{submitting ? "만드는 중…" : "장기 프로젝트로 만들기"}</button>
+          <button type="button" data-testid="story-submit" className={primaryButton} onClick={() => void submit()} disabled={submitting}>{submitting ? "만드는 중…" : "분석 없이 장기 프로젝트로 만들기"}</button>
         </div>
       </form>
 
@@ -302,7 +311,6 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onOpenSett
         <h2 className="text-sm font-medium text-bone-dim">아직 안 되는 것 (준비 중)</h2>
         <ul className="list-inside list-disc space-y-1 text-xs text-bone-faint">
           <li>Reddit 주소만 넣어 글 가져오기 — Reddit의 사전 승인과 이용 조건이 필요해 만들지 않습니다. 직접 쓴 글이나 허락받은 글을 붙여넣어 주세요.</li>
-          <li>글에서 등장인물을 자동으로 뽑고 캐릭터 이미지를 만들어 보관함에 등록하기 — 지금은 인물을 직접 적고, 이미지는 보관함에서 짝지어 주세요.</li>
           <li>긴 소설 자동 요약·회차 나누기 — 지금은 {STORY_TEXT_LIMIT.toLocaleString("ko-KR")}자까지 붙입니다.</li>
         </ul>
       </section>

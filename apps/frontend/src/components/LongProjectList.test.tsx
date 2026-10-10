@@ -89,7 +89,7 @@ describe("LongProjectList", () => {
     const onCreateNew = vi.fn();
     render(<LongProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={onCreateNew} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "새 장기 프로젝트" }));
+    fireEvent.click(screen.getByRole("button", { name: "새 작품 만들기" }));
 
     expect(onCreateNew).toHaveBeenCalledTimes(1);
   });
@@ -98,7 +98,7 @@ describe("LongProjectList", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { projects: [] })));
     render(<LongProjectList refreshToken={0} onOpenProject={() => {}} onCreateNew={() => {}} />);
     const empty = await screen.findByTestId("long-project-empty");
-    expect(empty.textContent).toContain("「새 장기 프로젝트」로 시작하세요");
-    expect(screen.getAllByRole("button", { name: /새 장기 프로젝트/ })).toHaveLength(1);
+    expect(empty.textContent).toContain("「새 작품 만들기」로 시작하세요");
+    expect(screen.getAllByRole("button", { name: /새 작품 만들기/ })).toHaveLength(1);
   });
 });

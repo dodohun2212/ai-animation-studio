@@ -360,7 +360,7 @@ describe("LongProjectSettingsScreen", () => {
 
     fireEvent.change(screen.getByDisplayValue("우주 방랑자"), { target: { value: "새 제목" } });
     expect(screen.getByTestId("long-settings-unsaved-warning")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "돌아가기" }));
+    fireEvent.click(screen.getByRole("button", { name: "작품으로 돌아가기" }));
     expect(onBack).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "설정 저장" }));
