@@ -64,7 +64,7 @@ describe("StoryStudioScreen", () => {
   it("opens the analysis preview only for a complete form and sends the form values", async () => {
     const fetchMock = mockServer({
       "POST /story-analysis/preview": {
-        preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", model: "gpt-5.6-luna", sourceCharacterCount: 4, estimatedCostUsd: 0.05, providerAvailable: true },
+        preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", prompts: ["프롬프트"], sourceChunkCount: 1, providerCallCount: 1, model: "gpt-5.6-luna", sourceCharacterCount: 4, estimatedCostUsd: 0.05, providerAvailable: true },
       },
     });
     render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
@@ -90,7 +90,7 @@ describe("StoryStudioScreen", () => {
   it("sends the source note to the analysis only when one was written", async () => {
     const fetchMock = mockServer({
       "POST /story-analysis/preview": {
-        preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", model: "gpt-5.6-luna", sourceCharacterCount: 4, estimatedCostUsd: 0.05, providerAvailable: true },
+        preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", prompts: ["프롬프트"], sourceChunkCount: 1, providerCallCount: 1, model: "gpt-5.6-luna", sourceCharacterCount: 4, estimatedCostUsd: 0.05, providerAvailable: true },
       },
     });
     render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
@@ -181,10 +181,29 @@ describe("StoryStudioScreen", () => {
     fill("story-title", "t");
     fill("story-logline", "l");
     fill("story-text", "가".repeat(STORY_TEXT_LIMIT + 1));
-    expect(screen.getByTestId("story-text-count").textContent).toContain("줄여서 붙여 주세요");
+    // M4(CLI 1334): 6,000자를 넘으면 「분석 없이 만들기」만 막히고(버튼이 꺼진다), AI 분석으로는 진행할 수 있다고 말한다.
+    expect(screen.getByTestId("story-text-count").textContent).toContain("AI 분석으로만 진행할 수 있습니다");
+    expect((screen.getByTestId("story-submit") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("story-submit"));
-    expect(screen.getByTestId("story-error").textContent).toContain("넘었습니다");
     expect(sent(fetchMock)).toEqual([]);
+  });
+
+  /** CLI 1334: 경로별 한도 — 6,000자를 넘어도 AI 분석은 120,000자까지 미리보기로 갈 수 있고, 그보다 길면 둘 다 막힌다. */
+  it("lets a long text go to the AI analysis but not to the direct creation, and stops both past the analysis limit", async () => {
+    mockServer();
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
+    await screen.findByTestId("story-title");
+    fill("story-title", "t");
+    fill("story-logline", "l");
+    fireEvent.click(screen.getByTestId("story-rights"));
+    fill("story-text", "가".repeat(90_000));
+    expect((screen.getByTestId("story-preview-run") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByTestId("story-submit") as HTMLButtonElement).disabled).toBe(true);
+
+    fill("story-text", "가".repeat(120_001));
+    expect((screen.getByTestId("story-preview-run") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("story-submit") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("story-text-count").textContent).toContain("너무 깁니다");
   });
 
   /** 🔴 보내는 것은 장기 프로젝트 생성 한 번뿐 — OpenAI·Runway·이미지 생성 요청은 없다. */

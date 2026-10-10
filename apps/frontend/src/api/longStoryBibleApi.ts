@@ -23,6 +23,8 @@ import {
   type UpdateLongStoryBibleProtagonistAssetLinkResponse,
   type UpdateLongStoryBibleStyleAssetLinkRequest,
   type UpdateLongStoryBibleStyleAssetLinkResponse,
+  type UpdateLongStoryBibleSupportingCharacterAssetLinksRequest,
+  type UpdateLongStoryBibleSupportingCharacterAssetLinksResponse,
 } from "@ai-animation-studio/shared";
 import { INTERNAL_ERROR, SERVER_UNAVAILABLE_ERROR, isServerUnavailable } from "./httpError.js";
 
@@ -101,12 +103,17 @@ function isStoryBible(value: unknown): value is LongStoryBible {
   if (!isRecord(value) || !isRecord(value.basic) || !isRecord(value.world) || !isString(value.updatedAt)) return false;
   return (value.styleAssetLink === undefined || isStyleAssetLink(value.styleAssetLink))
     && (value.protagonistAssetLink === undefined || isProtagonistAssetLink(value.protagonistAssetLink))
+    // M4: 조연 ↔ 보관함 캐릭터 폴더. 인물 ID 와 폴더 ID 둘 다 글자여야 합니다.
+    && (value.supportingCharacterAssetLinks === undefined
+      || (Array.isArray(value.supportingCharacterAssetLinks)
+        && value.supportingCharacterAssetLinks.every((link) => isRecord(link) && isString(link.characterId) && isString(link.assetId))))
     && COLLECTIONS.every((collection) => Array.isArray(value[collection]) && value[collection].every(isItem));
 }
 
 const isGetResponse = (value: unknown): value is GetLongProjectStoryBibleResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isWorldResponse = (value: unknown): value is UpdateLongStoryBibleWorldResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isStyleAssetLinkResponse = (value: unknown): value is UpdateLongStoryBibleStyleAssetLinkResponse => isRecord(value) && isStoryBible(value.storyBible);
+const isSupportingLinksResponse = (value: unknown): value is UpdateLongStoryBibleSupportingCharacterAssetLinksResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isProtagonistAssetLinkResponse = (value: unknown): value is UpdateLongStoryBibleProtagonistAssetLinkResponse => isRecord(value) && isStoryBible(value.storyBible);
 const isCreateResponse = (value: unknown): value is CreateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
 const isUpdateResponse = (value: unknown): value is UpdateLongStoryBibleItemResponse => isRecord(value) && isItem(value.item) && isStoryBible(value.storyBible);
@@ -153,6 +160,14 @@ export function updateLongStoryBibleStyleAssetLink(projectId: string, body: Upda
  */
 export function updateLongStoryBibleProtagonistAssetLink(projectId: string, body: UpdateLongStoryBibleProtagonistAssetLinkRequest): Promise<UpdateLongStoryBibleProtagonistAssetLinkResponse> {
   return request(API_ROUTES.longProjectStoryBibleProtagonistAssetLink(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isProtagonistAssetLinkResponse);
+}
+
+/**
+ * 조연 ↔ 보관함 캐릭터 폴더 연결을 **통째로 바꿉니다**(M4) — 빈 목록은 모두 해제. Provider 를 부르지 않는 저장 요청입니다.
+ * 연결된 폴더는 아직 그림을 만들지 않은 회차의 참고 이미지에 자동으로 들어가고, 사람이 고른 연결·제외·그림이 있는 회차는 서버가 건드리지 않습니다.
+ */
+export function updateLongStoryBibleSupportingCharacterAssetLinks(projectId: string, body: UpdateLongStoryBibleSupportingCharacterAssetLinksRequest): Promise<UpdateLongStoryBibleSupportingCharacterAssetLinksResponse> {
+  return request(API_ROUTES.longProjectStoryBibleSupportingCharacterAssetLinks(projectId), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, isSupportingLinksResponse);
 }
 
 export function createLongStoryBibleItem(projectId: string, collection: LongStoryBibleCollection, body: CreateLongStoryBibleItemRequest): Promise<CreateLongStoryBibleItemResponse> {

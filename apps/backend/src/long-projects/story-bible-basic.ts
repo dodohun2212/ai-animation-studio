@@ -25,7 +25,7 @@ const OWNED_BY_SETTINGS = new Set([
  * the link points at — the protagonist's name is added to project_overview by the caller — so the links
  * themselves are removed here.
  */
-const PLUMBING = new Set(["style_asset_link", "protagonist_asset_link"]);
+const PLUMBING = new Set(["style_asset_link", "protagonist_asset_link", "supporting_character_asset_links"]);
 
 export function storyBibleBasicForPrompt(basic: unknown): Record<string, unknown> {
   if (typeof basic !== "object" || basic === null || Array.isArray(basic)) return {};

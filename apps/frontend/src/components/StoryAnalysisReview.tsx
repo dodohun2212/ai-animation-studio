@@ -83,6 +83,11 @@ export function StoryAnalysisReview({ response, stale, onCreated, onOpenSettings
   const [assetId, setAssetId] = useState("");
   /** 방금 만든 그림을 주인공 이미지로 쓰기로 한 경우, 그 그림을 만든 인물 — 주인공이 바뀌면 이 연결은 풀립니다. */
   const [assetFromCharacterKey, setAssetFromCharacterKey] = useState<string | null>(null);
+  /**
+   * 조연마다 고른 보관함 캐릭터 폴더(M4) — 인물 카드 key → 폴더. `fromImage` 는 이 화면에서 만든 그림을 고른 경우라,
+   * 그 인물의 설명이 바뀌면 바뀌기 전 설명의 그림이 되어 연결을 풉니다(주인공과 같은 규칙).
+   */
+  const [supportingLinks, setSupportingLinks] = useState<Record<string, { assetId: string; fromImage: boolean }>>({});
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const busy = useRef(false);
@@ -113,18 +118,34 @@ export function StoryAnalysisReview({ response, stale, onCreated, onOpenSettings
     + characters.filter((character) => character.appearance.trim().length === 0).length
     + characters.filter((character) => character.personality.trim().length === 0).length
     + episodes.reduce((sum, episode) => sum + [episode.title, episode.summary, episode.mainEvent, episode.conflict, episode.cliffhanger, episode.nextEpisodeHook].filter((value) => value.trim().length === 0).length, 0);
-  const canCreate = !creating && !stale && emptyCount === 0 && characters.length >= 1 && episodes.length >= REVIEW_LIMITS.episodesMin;
+  /** 서버는 같은 폴더를 두 조연에 연결하지 못하게 합니다 — 화면이 먼저 말합니다. */
+  const supportingPairs = characters
+    .filter((character) => character.role === "supporting" && supportingLinks[character.key]?.assetId)
+    .map((character) => ({ characterId: character.id, assetId: supportingLinks[character.key]!.assetId }));
+  const duplicateSupportingFolder = new Set(supportingPairs.map((pair) => pair.assetId)).size !== supportingPairs.length;
+  const canCreate = !creating && !stale && emptyCount === 0 && !duplicateSupportingFolder && characters.length >= 1 && episodes.length >= REVIEW_LIMITS.episodesMin;
 
   function updateCharacter(key: string, patch: Partial<CharacterDraft>): void {
     setCharacters((old) => old.map((character) => (character.key === key ? { ...character, ...patch } : character)));
     // 그 인물의 설명(이름·외모·성격)이 바뀌면, 바뀌기 전 설명으로 만들어 고른 주인공 이미지는 더 이상 그 설명의 그림이 아니라서 연결을 풉니다(CLI 1322).
-    if (assetFromCharacterKey === key && ("name" in patch || "appearance" in patch || "personality" in patch)) {
+    const describes = "name" in patch || "appearance" in patch || "personality" in patch;
+    if (assetFromCharacterKey === key && describes) {
       setAssetId("");
       setAssetFromCharacterKey(null);
     }
+    if (describes && supportingLinks[key]?.fromImage) setSupportingLink(key, null);
+  }
+  function setSupportingLink(key: string, link: { assetId: string; fromImage: boolean } | null): void {
+    setSupportingLinks((old) => {
+      const next = { ...old };
+      if (link && link.assetId) next[key] = link; else delete next[key];
+      return next;
+    });
   }
   function chooseProtagonist(key: string): void {
     setCharacters((old) => old.map((character) => ({ ...character, role: character.key === key ? "protagonist" : "supporting" })));
+    // 주인공이 된 인물의 조연 연결은 이제 맞지 않습니다(주인공 폴더는 따로 고릅니다).
+    setSupportingLink(key, null);
     // 다른 인물의 그림으로 골라 둔 주인공 이미지는 새 주인공의 것이 아니므로 풉니다.
     if (assetFromCharacterKey !== null && assetFromCharacterKey !== key) {
       setAssetId("");
@@ -141,6 +162,7 @@ export function StoryAnalysisReview({ response, stale, onCreated, onOpenSettings
   }
   function removeCharacter(key: string): void {
     setCharacters((old) => old.filter((character) => character.key !== key));
+    setSupportingLink(key, null);
   }
 
   function updateEpisode(key: string, patch: Partial<EpisodeDraft>): void {
@@ -205,6 +227,7 @@ export function StoryAnalysisReview({ response, stale, onCreated, onOpenSettings
       source,
       analysis: reviewed,
       ...(assetId ? { protagonistAssetId: assetId } : {}),
+      ...(supportingPairs.length > 0 ? { supportingCharacterAssetLinks: supportingPairs } : {}),
     };
     try {
       const created = await createNovelStoryProject(body);
@@ -294,10 +317,29 @@ export function StoryAnalysisReview({ response, stale, onCreated, onOpenSettings
                 isProtagonist={character.role === "protagonist"}
                 onOpenSettings={onOpenSettings}
                 onGenerated={() => void loadLibrary()}
-                onUseAsProtagonist={(folderAssetId) => { setAssetId(folderAssetId); setAssetFromCharacterKey(character.key); }}
-                usedAsProtagonistFolderId={assetFromCharacterKey === character.key ? assetId : ""}
+                onUseImage={(folderAssetId) => {
+                  if (character.role === "protagonist") { setAssetId(folderAssetId); setAssetFromCharacterKey(character.key); }
+                  else setSupportingLink(character.key, { assetId: folderAssetId, fromImage: true });
+                }}
+                usedFolderId={character.role === "protagonist" ? (assetFromCharacterKey === character.key ? assetId : "") : (supportingLinks[character.key]?.assetId ?? "")}
                 disabled={creating}
               />
+              {character.role === "supporting" && (
+                <label className="block text-[11px] text-bone-dim">
+                  이 조연의 이미지 (이미지 보관함의 캐릭터 폴더, 선택)
+                  <select
+                    data-testid={`review-supporting-asset-${index}`}
+                    className={inputClass}
+                    value={supportingLinks[character.key]?.assetId ?? ""}
+                    onChange={(event) => setSupportingLink(character.key, event.target.value ? { assetId: event.target.value, fromImage: false } : null)}
+                    disabled={creating || library === null}
+                  >
+                    <option value="">연결하지 않음</option>
+                    {(library ?? []).map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.displayName}</option>)}
+                  </select>
+                  <span className="mt-0.5 block text-bone-faint">연결하면 아직 그림을 만들지 않은 회차의 참고 이미지에 자동으로 들어갑니다. 나중에 작품 기본 설정에서 바꿀 수 있습니다.</span>
+                </label>
+              )}
             </li>
           ))}
         </ul>
@@ -366,6 +408,7 @@ export function StoryAnalysisReview({ response, stale, onCreated, onOpenSettings
       {/* ── 확정 ── */}
       <div className="space-y-2 border-t border-line pt-3">
         {emptyCount > 0 && <p data-testid="review-empty-summary" className="text-xs text-bone-faint">비어 있는 칸 {emptyCount}개를 채워야 확정할 수 있습니다.</p>}
+        {duplicateSupportingFolder && <p role="status" data-testid="review-supporting-duplicate" className="text-xs text-amber-300">같은 캐릭터 폴더를 두 조연에 연결할 수 없습니다. 한 폴더는 한 조연에만 연결해 주세요.</p>}
         {error && (
           <div role="alert" data-testid="review-create-error" data-error-code={error.code} className="rounded-lg border border-rose-400/30 bg-rose-500/15 p-3">
             <p className="text-sm text-rose-400">{error.message}</p>

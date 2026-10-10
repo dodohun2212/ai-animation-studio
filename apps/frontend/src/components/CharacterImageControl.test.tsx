@@ -39,10 +39,10 @@ const posts = (fetchMock: ReturnType<typeof vi.fn>) =>
 function renderControl(props: Partial<Parameters<typeof CharacterImageControl>[0]> = {}) {
   const onOpenSettings = vi.fn();
   const onGenerated = vi.fn();
-  const onUseAsProtagonist = vi.fn();
-  const full = { ...base, isProtagonist: true, onOpenSettings, onGenerated, onUseAsProtagonist, usedAsProtagonistFolderId: "", ...props };
+  const onUseImage = vi.fn();
+  const full = { ...base, isProtagonist: true, onOpenSettings, onGenerated, onUseImage, usedFolderId: "", ...props };
   const view = render(<CharacterImageControl {...full} />);
-  return { onOpenSettings, onGenerated, onUseAsProtagonist, rerender: (next: Partial<typeof full>) => view.rerender(<CharacterImageControl {...full} {...next} />) };
+  return { onOpenSettings, onGenerated, onUseImage, rerender: (next: Partial<typeof full>) => view.rerender(<CharacterImageControl {...full} {...next} />) };
 }
 
 async function makePreview() {
@@ -96,22 +96,28 @@ describe("CharacterImageControl (M3)", () => {
     await makePreview();
     fireEvent.click(screen.getByTestId("character-image-approve-c1"));
     await screen.findByTestId("character-image-result-c1");
-    expect(lead.onUseAsProtagonist).not.toHaveBeenCalled();
+    expect(lead.onUseImage).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("character-image-use-c1"));
-    expect(lead.onUseAsProtagonist).toHaveBeenCalledWith("ASSET-CHAR-NEW");
-    lead.rerender({ usedAsProtagonistFolderId: "ASSET-CHAR-NEW" });
+    expect(lead.onUseImage).toHaveBeenCalledWith("ASSET-CHAR-NEW");
+    lead.rerender({ usedFolderId: "ASSET-CHAR-NEW" });
     expect(screen.getByTestId("character-image-linked-c1").textContent).toContain("프로젝트를 확정하면 연결됩니다");
     expect(screen.queryByTestId("character-image-use-c1")).toBeNull();
   });
 
-  it("says a supporting character's picture is only kept in the library", async () => {
+  /** M4: 조연 연결이 생겼다 — 조연 그림도 사람이 따로 눌러야 그 조연의 폴더로 골라진다(예전 「보관함에만 저장」 단언을 바꿈). */
+  it("offers a supporting character its own explicit link after the picture", async () => {
     mockServer({ [PREVIEW]: previewResponse(), [GENERATE]: GENERATED });
-    renderControl({ isProtagonist: false });
+    const view = renderControl({ isProtagonist: false });
     await makePreview();
     fireEvent.click(screen.getByTestId("character-image-approve-c1"));
-    const result = await screen.findByTestId("character-image-result-c1");
-    expect(screen.queryByTestId("character-image-use-c1")).toBeNull();
-    expect(result.textContent).toContain("조연 연결은 아직 없어");
+    await screen.findByTestId("character-image-result-c1");
+    expect(view.onUseImage).not.toHaveBeenCalled();
+    const use = screen.getByTestId("character-image-use-c1");
+    expect(use.textContent).toBe("이 그림을 이 조연의 이미지로 쓰기");
+    fireEvent.click(use);
+    expect(view.onUseImage).toHaveBeenCalledWith("ASSET-CHAR-NEW");
+    view.rerender({ usedFolderId: "ASSET-CHAR-NEW" });
+    expect(screen.getByTestId("character-image-linked-c1").textContent).toContain("이 조연의 이미지로 연결되도록");
   });
 
   /** 🔴 미리보기 뒤 인물 칸이 바뀌면 승인할 수 없다(서버도 해시가 다르면 거절). */

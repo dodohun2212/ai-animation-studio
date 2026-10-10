@@ -11,6 +11,9 @@ import type {
   UpdateLongStoryBibleWorldRequest,
   UpdateLongStoryBibleWorldResponse,
   UpdateLongStoryBibleProtagonistAssetLinkRequest, UpdateLongStoryBibleProtagonistAssetLinkResponse,
+  UpdateLongStoryBibleSupportingCharacterAssetLinksRequest,
+  UpdateLongStoryBibleSupportingCharacterAssetLinksResponse,
+  LongStoryBibleCharacterAssetLink,
   UpdateLongStoryBibleStyleAssetLinkRequest,
   UpdateLongStoryBibleStyleAssetLinkResponse,
   SearchLongStoryBibleItemsResponse,
@@ -125,6 +128,7 @@ export class StoryBibleService {
     const basic = asObject(bible.basic);
     if (basic.style_asset_link !== undefined) this.styleAssetLink(basic.style_asset_link);
     if (basic.protagonist_asset_link !== undefined) this.protagonistLink(basic.protagonist_asset_link);
+    if (basic.supporting_character_asset_links !== undefined) this.supportingCharacterLinks(basic.supporting_character_asset_links);
     const retired: Record<string, unknown> = {};
     for (const gone of ["characters", "locations", "props"]) if (bible[gone] !== undefined) retired[gone] = bible[gone];
     const result: StoredBible = { basic, world: asObject(bible.world), secrets: [], foreshadowing: [], summaries: asObject(bible.summaries), updated_at: asText(bible.updated_at), retired };
@@ -142,6 +146,20 @@ export class StoryBibleService {
     if (link.version_policy === "pinned_version" && (!Number.isInteger(link.pinned_version) || Number(link.pinned_version) < 1)) throw error();
     if (link.version_policy === "follow_latest" && link.pinned_version !== null) throw error();
     return { asset_id: asText(link.asset_id, error), version_policy: link.version_policy, pinned_version: link.pinned_version };
+  }
+
+  private supportingCharacterLinks(value: unknown, error = longInvalidData): LongStoryBibleCharacterAssetLink[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.length > 39) throw error();
+    const characterIds = new Set<string>(); const assetIds = new Set<string>();
+    return value.map((entry) => {
+      const link = asObject(entry, error);
+      if (Object.keys(link).length !== 2 || typeof link.character_id !== "string" || typeof link.asset_id !== "string") throw error();
+      const characterId = asText(link.character_id, error); const assetId = asText(link.asset_id, error);
+      if (!safeItemId.test(characterId) || !assetId || characterIds.has(characterId) || assetIds.has(assetId)) throw error();
+      characterIds.add(characterId); assetIds.add(assetId);
+      return { characterId, assetId };
+    });
   }
 
   private styleAssetLink(value: unknown, error = longInvalidData): Record<string, unknown> {
@@ -204,10 +222,11 @@ export class StoryBibleService {
   }
 
   private toApi(bible: StoredBible): LongStoryBible {
-    const { style_asset_link: storedStyle, protagonist_asset_link: storedProtagonist, ...basic } = bible.basic;
+    const { style_asset_link: storedStyle, protagonist_asset_link: storedProtagonist, supporting_character_asset_links: storedSupporting, ...basic } = bible.basic;
     const style = storedStyle === undefined ? undefined : this.styleAssetLink(storedStyle);
     const protagonist = storedProtagonist === undefined ? undefined : this.protagonistLink(storedProtagonist);
-    return { basic, world: bible.world, ...(style ? { styleAssetLink: { assetId: style.asset_id as string, versionPolicy: style.version_policy as LongStoryBibleStyleLinkPolicy, pinnedVersion: style.pinned_version as number } } : {}), ...(protagonist ? { protagonistAssetLink: { assetId: protagonist.asset_id as string, versionPolicy: protagonist.version_policy as LongStoryBibleProtagonistLinkPolicy, pinnedVersion: protagonist.pinned_version as number | null } } : {}), secrets: bible.secrets.map((item) => this.toApiItem("secrets", item)), foreshadowing: bible.foreshadowing.map((item) => this.toApiItem("foreshadowing", item)), updatedAt: bible.updated_at };
+    const supportingCharacterAssetLinks = this.supportingCharacterLinks(storedSupporting);
+    return { basic, world: bible.world, ...(style ? { styleAssetLink: { assetId: style.asset_id as string, versionPolicy: style.version_policy as LongStoryBibleStyleLinkPolicy, pinnedVersion: style.pinned_version as number } } : {}), ...(protagonist ? { protagonistAssetLink: { assetId: protagonist.asset_id as string, versionPolicy: protagonist.version_policy as LongStoryBibleProtagonistLinkPolicy, pinnedVersion: protagonist.pinned_version as number | null } } : {}), ...(supportingCharacterAssetLinks.length ? { supportingCharacterAssetLinks } : {}), secrets: bible.secrets.map((item) => this.toApiItem("secrets", item)), foreshadowing: bible.foreshadowing.map((item) => this.toApiItem("foreshadowing", item)), updatedAt: bible.updated_at };
   }
 
   private async save(projectId: string, bible: StoredBible): Promise<void> {
@@ -271,6 +290,33 @@ export class StoryBibleService {
       if (link.version_policy === "pinned_version" && !asset.versions.some((version) => version.version === link.pinned_version)) throw longInvalidRequest("Story Bible protagonist Asset link version is unavailable.");
       bible.basic.protagonist_asset_link = link;
     }
+    await this.save(id, bible);
+    await this.pushLinksToEpisodes(id, bible);
+    return { storyBible: this.toApi(bible) };
+  }
+
+  async updateSupportingCharacterAssetLinks(projectId: string, request: UpdateLongStoryBibleSupportingCharacterAssetLinksRequest): Promise<UpdateLongStoryBibleSupportingCharacterAssetLinksResponse> {
+    if (!request || typeof request !== "object" || Object.keys(request).length !== 1 || !Array.isArray(request.links)) throw longInvalidRequest("Supporting character Asset links are invalid.");
+    const id = projectId.trim(); const bible = await this.read(id);
+    const cards = Array.isArray(bible.basic.characterCards) ? bible.basic.characterCards : [];
+    const supportingIds = new Set(cards.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry) && (entry as Record<string, unknown>).role === "supporting")
+      .map((entry) => (entry as Record<string, unknown>).id).filter((value): value is string => typeof value === "string"));
+    const links = request.links.map((entry) => {
+      if (!entry || typeof entry !== "object" || Object.keys(entry).length !== 2 || !["characterId", "assetId"].every((key) => key in entry)) throw longInvalidRequest("Supporting character Asset link is invalid.");
+      const characterId = typeof entry.characterId === "string" ? entry.characterId.trim() : "";
+      const assetId = typeof entry.assetId === "string" ? entry.assetId.trim() : "";
+      if (!safeItemId.test(characterId) || !assetId || !supportingIds.has(characterId)) throw longInvalidRequest("Choose a supporting character from this project's Story Bible.");
+      return { character_id: characterId, asset_id: assetId };
+    });
+    const characterIds = new Set(links.map((link) => link.character_id)); const assetIds = new Set(links.map((link) => link.asset_id));
+    if (characterIds.size !== links.length || assetIds.size !== links.length || links.length > 39) throw longInvalidRequest("Each supporting character and Asset Folder can be linked only once.");
+    const protagonistAssetId = (bible.basic.protagonist_asset_link as { asset_id?: unknown } | undefined)?.asset_id;
+    if (typeof protagonistAssetId === "string" && assetIds.has(protagonistAssetId)) throw longInvalidRequest("The protagonist Folder is already linked separately.");
+    for (const link of links) {
+      let asset; try { asset = await this.assets.get(link.asset_id); } catch { throw longInvalidRequest("The selected supporting character Folder is unavailable."); }
+      if (asset.asset_type !== "character" || !asset.is_folder || !asset.enabled) throw longInvalidRequest("The selected supporting character Folder is unavailable.");
+    }
+    bible.basic.supporting_character_asset_links = links;
     await this.save(id, bible);
     await this.pushLinksToEpisodes(id, bible);
     return { storyBible: this.toApi(bible) };

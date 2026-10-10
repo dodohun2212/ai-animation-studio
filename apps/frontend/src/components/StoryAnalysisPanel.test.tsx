@@ -16,7 +16,7 @@ const INPUT: NovelStoryAnalysisInput = {
 
 function previewResponse(overrides: Partial<NovelStoryAnalysisPreviewResponse["preview"]> = {}, budget: NovelStoryAnalysisPreviewResponse["budget"] | null = { monthlyLimitUsd: 20, spentUsd: 1.5, remainingUsd: 18.5, estimatedRequestCostUsd: 0.05, canSpend: true }): NovelStoryAnalysisPreviewResponse {
   return {
-    preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "【이야기 분석】 원문: 어느 날 밤…", model: "gpt-5.6-luna", sourceCharacterCount: 31, estimatedCostUsd: 0.05, providerAvailable: true, ...overrides },
+    preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "【이야기 분석】 원문: 어느 날 밤…", prompts: ["【이야기 분석】 원문: 어느 날 밤…"], sourceChunkCount: 1, providerCallCount: 1, model: "gpt-5.6-luna", sourceCharacterCount: 31, estimatedCostUsd: 0.05, providerAvailable: true, ...overrides },
     ...(budget ? { budget } : {}),
   };
 }
@@ -135,6 +135,43 @@ describe("StoryAnalysisPanel", () => {
     fireEvent.click(screen.getByTestId("story-preview-run"));
     await waitFor(() => expect(screen.queryByTestId("story-preview-stale")).toBeNull());
     expect((screen.getByTestId("story-approve") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  /** M4-3: 긴 글은 조각마다 요약한 뒤 합친다 — 호출 수·비용·보낼 글 전부를 순서대로 보여 주고, 승인은 여전히 한 번의 별도 버튼. */
+  it("shows the call plan for a long text — chunks, calls, total estimate and every prompt in order", async () => {
+    const fetchMock = mockServer({
+      [PREVIEW]: previewResponse({
+        sourceCharacterCount: 90_000,
+        sourceChunkCount: 2,
+        providerCallCount: 3,
+        estimatedCostUsd: 0.15,
+        prompt: "합성 프롬프트",
+        prompts: ["1번 조각 요약 프롬프트", "2번 조각 요약 프롬프트", "합성 프롬프트 — 【승인 뒤 요약이 들어갈 자리】"],
+      }),
+      [APPROVE]: approveResponse(),
+    });
+    renderPanel();
+    await makePreview();
+
+    expect(screen.getByTestId("story-preview-calls").textContent).toContain("3회");
+    expect(screen.getByTestId("story-preview-calls").textContent).toContain("2조각");
+    expect(screen.getByTestId("story-preview-cost").textContent).toContain("$0.15");
+    expect(screen.getByTestId("story-preview-cost").textContent).toContain("호출 3회");
+    expect((screen.getByTestId("story-preview-prompt-1") as HTMLTextAreaElement).value).toBe("1번 조각 요약 프롬프트");
+    expect((screen.getByTestId("story-preview-prompt-3") as HTMLTextAreaElement).value).toContain("승인 뒤 요약이 들어갈 자리");
+    expect(screen.getByTestId("story-approve").textContent).toContain("호출 3회");
+
+    fireEvent.click(screen.getByTestId("story-approve"));
+    await screen.findByTestId("story-result");
+    // 호출이 여러 번이어도 화면이 보내는 승인 요청은 하나 — 나눠 보내는 건 서버가 승인한 계획대로 한다.
+    expect(posts(fetchMock).filter((call) => call.url === "/story-analysis")).toHaveLength(1);
+  });
+
+  it("refuses a preview whose prompt list does not match its call count", async () => {
+    mockServer({ [PREVIEW]: previewResponse({ providerCallCount: 3, prompts: ["하나뿐"] }) });
+    renderPanel();
+    fireEvent.click(screen.getByTestId("story-preview-run"));
+    expect((await screen.findByTestId("story-analysis-error")).getAttribute("data-error-code")).toBe("CLIENT_MALFORMED_RESPONSE");
   });
 
   it("refuses to approve without a connected OpenAI key and offers the settings screen", async () => {

@@ -35,6 +35,7 @@ const FOLDER = makeAssetFolder({ assetId: "ASSET-CHAR-FOLDER", assetType: "chara
 const CHILD = makeAsset({ assetId: "ASSET-CHAR-CHILD", assetType: "character", displayName: "토리 웃는 얼굴", parentFolderId: "ASSET-CHAR-FOLDER" });
 const OFF = makeAssetFolder({ assetId: "ASSET-CHAR-OFF", assetType: "character", displayName: "꺼 둔 폴더", enabled: false });
 const NEW_FOLDER = makeAssetFolder({ assetId: "ASSET-CHAR-NEW", assetType: "character", displayName: "새봄" });
+const GATE_FOLDER = makeAssetFolder({ assetId: "ASSET-CHAR-GATE", assetType: "character", displayName: "문지기" });
 
 function mockServer(routes: Record<string, unknown> = {}, errors: Record<string, { status: number; body: unknown }> = {}) {
   const fetchMock = stubFetchByRoute({ "GET /assets?assetType=character": { assets: [FOLDER, CHILD, OFF] }, ...routes }, errors);
@@ -255,6 +256,83 @@ describe("StoryAnalysisReview (M2)", () => {
 
     fireEvent.click(screen.getByTestId("review-protagonist-1"));
     expect((screen.getByTestId("review-protagonist-asset") as HTMLSelectElement).value).toBe("");
+  });
+
+  /** M4-1: 조연마다 보관함 캐릭터 폴더를 고르면 확정 요청에 `supportingCharacterAssetLinks` 로 실린다(주인공은 따로). */
+  it("sends the chosen supporting folders as supportingCharacterAssetLinks, and leaves it out when none is chosen", async () => {
+    const fetchMock = mockServer({ "GET /assets?assetType=character": { assets: [FOLDER, GATE_FOLDER] }, [CREATE]: { project: makeLongProject() } });
+    renderReview();
+    // 주인공 카드(0)에는 조연 칸이 없고, 조연 카드(1)에만 있다.
+    await waitFor(() => expect(screen.getByTestId("review-supporting-asset-1")).toBeTruthy());
+    expect(screen.queryByTestId("review-supporting-asset-0")).toBeNull();
+    fireEvent.change(screen.getByTestId("review-supporting-asset-1"), { target: { value: "ASSET-CHAR-GATE" } });
+    fireEvent.click(screen.getByTestId("review-create"));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body.supportingCharacterAssetLinks).toEqual([{ characterId: "c2", assetId: "ASSET-CHAR-GATE" }]);
+  });
+
+  it("omits supportingCharacterAssetLinks when no supporting folder is chosen", async () => {
+    const fetchMock = mockServer({ [CREATE]: { project: makeLongProject() } });
+    renderReview();
+    fireEvent.click(screen.getByTestId("review-create"));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect("supportingCharacterAssetLinks" in posts(fetchMock)[0]!.body).toBe(false);
+  });
+
+  it("blocks the confirm when two supporting characters share a folder", async () => {
+    mockServer({ "GET /assets?assetType=character": { assets: [FOLDER, GATE_FOLDER] } });
+    renderReview();
+    fireEvent.click(screen.getByTestId("review-add-character"));
+    change("review-character-name-2", "행인");
+    change("review-character-appearance-2", "우산을 든 사람");
+    change("review-character-personality-2", "말이 없다");
+    await waitFor(() => expect(screen.getByTestId("review-supporting-asset-2")).toBeTruthy());
+    fireEvent.change(screen.getByTestId("review-supporting-asset-1"), { target: { value: "ASSET-CHAR-GATE" } });
+    fireEvent.change(screen.getByTestId("review-supporting-asset-2"), { target: { value: "ASSET-CHAR-GATE" } });
+    expect(screen.getByTestId("review-supporting-duplicate").textContent).toContain("두 조연에 연결할 수 없습니다");
+    expect((screen.getByTestId("review-create") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId("review-supporting-asset-2"), { target: { value: "ASSET-CHAR-FOLDER" } });
+    expect(screen.queryByTestId("review-supporting-duplicate")).toBeNull();
+    expect((screen.getByTestId("review-create") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("drops a supporting link when that character becomes the lead or is removed", async () => {
+    const fetchMock = mockServer({ "GET /assets?assetType=character": { assets: [FOLDER, GATE_FOLDER] }, [CREATE]: { project: makeLongProject() } });
+    renderReview();
+    await waitFor(() => expect(screen.getByTestId("review-supporting-asset-1")).toBeTruthy());
+    fireEvent.change(screen.getByTestId("review-supporting-asset-1"), { target: { value: "ASSET-CHAR-GATE" } });
+    fireEvent.click(screen.getByTestId("review-protagonist-1"));
+    expect(screen.queryByTestId("review-supporting-asset-1")).toBeNull();
+    fireEvent.click(screen.getByTestId("review-protagonist-0"));
+    expect((screen.getByTestId("review-supporting-asset-1") as HTMLSelectElement).value).toBe("");
+    fireEvent.click(screen.getByTestId("review-create"));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect("supportingCharacterAssetLinks" in posts(fetchMock)[0]!.body).toBe(false);
+  });
+
+  it("links a supporting character's freshly made picture only when the person chooses, and unlinks it if the description changes", async () => {
+    const fetchMock = mockServer({
+      "GET /assets?assetType=character": { assets: [FOLDER, NEW_FOLDER] },
+      "POST /story-analysis/character-image/preview": {
+        preview: { inputSha256: "c".repeat(64), promptSha256: "d".repeat(64), prompt: "프롬프트", model: "gpt-image-2", size: "1024x1536", estimatedCostUsd: 0.1, providerAvailable: true },
+      },
+      "POST /story-analysis/character-image": { folderAssetId: "ASSET-CHAR-NEW", imageAssetId: "ASSET-IMG-NEW", reused: false },
+      [CREATE]: { project: makeLongProject() },
+    });
+    renderReview();
+    fireEvent.click(screen.getByTestId("character-image-preview-c2"));
+    await screen.findByTestId("character-image-card-c2");
+    fireEvent.click(screen.getByTestId("character-image-approve-c2"));
+    await screen.findByTestId("character-image-result-c2");
+    expect((screen.getByTestId("review-supporting-asset-1") as HTMLSelectElement).value).toBe("");
+    fireEvent.click(screen.getByTestId("character-image-use-c2"));
+    await waitFor(() => expect((screen.getByTestId("review-supporting-asset-1") as HTMLSelectElement).value).toBe("ASSET-CHAR-NEW"));
+
+    change("review-character-personality-1", "말이 많아졌다");
+    expect((screen.getByTestId("review-supporting-asset-1") as HTMLSelectElement).value).toBe("");
+    fireEvent.click(screen.getByTestId("review-create"));
+    await waitFor(() => expect(posts(fetchMock).some((call) => call.url === "/long-projects/from-story-analysis")).toBe(true));
+    expect("supportingCharacterAssetLinks" in posts(fetchMock).find((call) => call.url === "/long-projects/from-story-analysis")!.body).toBe(false);
   });
 
   it("stops adding episodes at the shared maximum", () => {

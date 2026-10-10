@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AppModule } from "../app.module.js";
 import { LongProjectsService } from "./long-projects.service.js";
 import { StoryBibleService } from "./story-bible.service.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 
 /**
  * The two Story Bible routes no screen reaches yet, driven over HTTP at the exact URL the client builds.
@@ -102,5 +103,21 @@ describe.sequential("the Story Bible over HTTP", () => {
     const body = await response.json() as { item: { id: string; name: string } };
     expect(body.item.id).not.toBe(keptId);
     expect(body.item.name).toContain("붉은 편지");
+  });
+
+  it("updates supporting character links at the shared route the client builds", async () => {
+    const { base } = await bootWithSecrets();
+    const bibleFile = path.join(root!, "projects", "long", "long_story", "story_bible.json");
+    const stored = JSON.parse(await fs.readFile(bibleFile, "utf8"));
+    stored.basic.characterCards = [{ id: "character-2", role: "supporting", name: "Joon" }];
+    await fs.writeFile(bibleFile, JSON.stringify(stored), "utf8");
+    const folder = await new LocalAssetsRepository(root!).createFolder({ assetType: "character", displayName: "Joon" });
+
+    const response = await fetch(base + API_ROUTES.longProjectStoryBibleSupportingCharacterAssetLinks("long"), {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ links: [{ characterId: "character-2", assetId: folder.asset_id }] }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ storyBible: { supportingCharacterAssetLinks: [{ characterId: "character-2", assetId: folder.asset_id }] } });
   });
 });

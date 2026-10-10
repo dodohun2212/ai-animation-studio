@@ -243,8 +243,14 @@ describe("real OpenAI Long Episode script generation", () => {
     const { subject, projectsRoot, root: testRoot } = await setupWithConnectedOpenAi();
     const assets = new LocalAssetsRepository(testRoot);
     const folder = await assets.createFolder({ assetType: "character", displayName: "이배드" });
+    const supportingFolder = await assets.createFolder({ assetType: "character", displayName: "Joon" });
     const bibleService = new StoryBibleService(projectsRoot, assets);
     await bibleService.updateProtagonistAssetLink("long", { assetLink: { assetId: folder.asset_id, versionPolicy: "follow_latest", pinnedVersion: null } });
+    const bibleFile = path.join(projectsRoot, "long", "long_story", "story_bible.json");
+    const bible = JSON.parse(await fs.readFile(bibleFile, "utf8"));
+    bible.basic.characterCards = [{ id: "character-2", role: "supporting", name: "Joon", appearance: "Round glasses", personality: "Curious" }];
+    await fs.writeFile(bibleFile, JSON.stringify(bible), "utf8");
+    await bibleService.updateSupportingCharacterAssetLinks("long", { links: [{ characterId: "character-2", assetId: supportingFolder.asset_id }] });
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, responsesBody(aiStory(6))));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -256,6 +262,8 @@ describe("real OpenAI Long Episode script generation", () => {
     // An Asset ID and a version policy mean nothing to a model writing a script. The style link had been going
     // into the prompt as a raw blob; both links are plumbing and neither belongs there.
     expect(body.input).not.toContain(folder.asset_id);
+    expect(body.input).not.toContain(supportingFolder.asset_id);
+    expect(body.input).not.toContain("supporting_character_asset_links");
     expect(body.input).not.toContain("follow_latest");
   });
 

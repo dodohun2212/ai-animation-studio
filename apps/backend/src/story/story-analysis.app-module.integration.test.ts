@@ -1,11 +1,10 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { NestFactory } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
 import { API_ROUTES, type ApproveNovelStoryAnalysisResponse } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AppModule } from "../app.module.js";
+import { createBackendApp } from "../create-backend-app.js";
 
 let app: INestApplication | undefined;
 let root: string | undefined;
@@ -35,7 +34,7 @@ describe.sequential("Story analysis AppModule HTTP flow", () => {
     await fs.mkdir(promptRoot, { recursive: true });
     await fs.writeFile(path.join(promptRoot, "story_generation.txt"), "topic=$topic", "utf8");
 
-    app = await NestFactory.create(AppModule, { logger: false });
+    app = await createBackendApp({ logger: false });
     await app.listen(0, "127.0.0.1");
     const base = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
     const realFetch = globalThis.fetch;
@@ -48,6 +47,11 @@ describe.sequential("Story analysis AppModule HTTP flow", () => {
       }
       if (String(url) === "https://api.openai.com/v1/responses") {
         providerCalls.push(String(url));
+        const request = JSON.parse(String(init?.body)) as { text?: { format?: { name?: string } } };
+        if (request.text?.format?.name === "novel_story_chunk_summary") {
+          const summary = { themes: ["희망"], characterNotes: ["익명의 주인공은 집을 떠난다."], events: ["길을 떠난다."], unresolvedQuestions: ["어디로 향할까?"] };
+          return new Response(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(summary) }] }] }), { status: 200 });
+        }
         const response = {
           title: "새 항구", logline: "새로운 시작", genre: "모험", tone: "따뜻함", theme: "용기",
           characters: [{ name: "나린", role: "protagonist", appearance: "짧은 은발", personality: "침착함" }],
@@ -71,6 +75,15 @@ describe.sequential("Story analysis AppModule HTTP flow", () => {
     const preview = await previewResponse.json() as { preview: { inputSha256: string; promptSha256: string; providerAvailable: boolean } };
     expect(previewResponse.status).toBe(201);
     expect(preview.preview.providerAvailable).toBe(true);
+    expect(providerCalls).toHaveLength(0);
+
+    const longInput = { ...input, sourceText: "나".repeat(60_001) };
+    const longPreviewResponse = await fetch(`${base}${API_ROUTES.novelStoryAnalysisPreview}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(longInput),
+    });
+    expect(longPreviewResponse.status).toBe(201);
+    const longPreview = await longPreviewResponse.json() as { preview: { inputSha256: string; promptSha256: string; providerCallCount: number; estimatedCostUsd: number } };
+    expect(longPreview.preview).toMatchObject({ providerCallCount: 3, estimatedCostUsd: 0.15 });
     expect(providerCalls).toHaveLength(0);
 
     const approveResponse = await fetch(`${base}${API_ROUTES.novelStoryAnalysis}`, {
@@ -130,5 +143,16 @@ describe.sequential("Story analysis AppModule HTTP flow", () => {
     expect(project.project.episodes.every((episode) => episode.status === "outline_ready")).toBe(true);
     const bible = JSON.parse(await fs.readFile(path.join(root, "learning_data", "projects", "novel_m3_integration", "long_story", "story_bible.json"), "utf8")) as { basic: { protagonist_asset_link: { asset_id: string } } };
     expect(bible.basic.protagonist_asset_link.asset_id).toBe(created.folderAssetId);
+
+    const longApprove = await fetch(`${base}${API_ROUTES.novelStoryAnalysis}`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...longInput, inputSha256: longPreview.preview.inputSha256, promptSha256: longPreview.preview.promptSha256, approved: true }),
+    });
+    expect(longApprove.status).toBe(201);
+    const longAnalysis = await longApprove.json() as ApproveNovelStoryAnalysisResponse;
+    expect(longAnalysis).toMatchObject({ analysis: { title: "새 항구" }, reused: false, saved: true });
+    expect(providerCalls).toHaveLength(5);
+    const totalLedger = JSON.parse(await fs.readFile(path.join(root, "learning_data", "api_budget_usage.json"), "utf8")) as unknown[];
+    expect(totalLedger).toHaveLength(5);
   });
 });

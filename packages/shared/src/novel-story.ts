@@ -1,5 +1,9 @@
-/** Story Studio M1 input bound. Count follows JavaScript string length, matching the existing text area. */
-export const NOVEL_SOURCE_MAX_CHARS = 6_000;
+/** Story analysis accepts up to two source blocks; count follows JavaScript string length. */
+export const NOVEL_SOURCE_MAX_CHARS = 120_000;
+/** Long source text is analyzed in blocks capped at 60,000 JavaScript characters. */
+export const NOVEL_ANALYSIS_CHUNK_MAX_CHARS = 60_000;
+/** M0 stores the pasted text directly in the project overview and keeps its original bound. */
+export const NOVEL_DIRECT_SOURCE_MAX_CHARS = 6_000;
 export const NOVEL_ANALYSIS_MIN_EPISODES = 1;
 export const NOVEL_ANALYSIS_MAX_EPISODES = 20;
 /** Fixed safe preflight estimate used with the existing monthly OpenAI ledger. */
@@ -51,6 +55,10 @@ export interface NovelStoryAnalysisPreviewResponse {
     prompt: string;
     model: string;
     sourceCharacterCount: number;
+    sourceChunkCount: number;
+    providerCallCount: number;
+    /** Exact prompts sent after approval, in call order. */
+    prompts: string[];
     estimatedCostUsd: number;
     providerAvailable: boolean;
   };
@@ -97,6 +105,13 @@ export interface CreateNovelStoryProjectRequest {
   analysis: NovelStoryAnalysis;
   /** Optional existing character Folder selected for the protagonist. */
   protagonistAssetId?: string;
+  /** Optional character Folders selected for supporting cast, keyed by the reviewed character ID. */
+  supportingCharacterAssetLinks?: NovelStoryCharacterAssetLink[];
+}
+
+export interface NovelStoryCharacterAssetLink {
+  characterId: string;
+  assetId: string;
 }
 
 /** One reviewed character image. The source hash keeps identical names in different stories separate. */

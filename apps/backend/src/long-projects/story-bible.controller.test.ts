@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { LongProjectsService } from "./long-projects.service.js";
 import { StoryBibleController } from "./story-bible.controller.js";
 import { StoryBibleService } from "./story-bible.service.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 
 let root: string | undefined;
 const settings = { title: "Long project", logline: "A local story", overview: "", genre: "", tone: "", theme: "", episodeCount: 1, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false };
@@ -29,6 +30,23 @@ describe("StoryBibleController", () => {
     // The world save above left `basic` alone, and clearing the style link leaves the world notes alone.
     await expect(controller.updateStyleAssetLink("long_bible", { assetLink: null })).resolves.toMatchObject({ storyBible: { world: { era: "future" } } });
     await expect(controller.updateWorld("long_bible", { world: {}, extra: true } as never)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+  });
+
+  it("exposes replacement of supporting character Asset links", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "story-bible-controller-")); const projectsRoot = path.join(root, "projects");
+    await new LongProjectsService(projectsRoot).create({ projectId: "long_bible", settings });
+    const bibleFile = path.join(projectsRoot, "long_bible", "long_story", "story_bible.json");
+    const stored = JSON.parse(await fs.readFile(bibleFile, "utf8"));
+    stored.basic.characterCards = [{ id: "character-2", role: "supporting", name: "Joon" }];
+    await fs.writeFile(bibleFile, JSON.stringify(stored), "utf8");
+    const assets = new LocalAssetsRepository(root);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "Joon" });
+    const controller = new StoryBibleController(new StoryBibleService(projectsRoot, assets));
+
+    await expect(controller.updateSupportingCharacterAssetLinks("long_bible", { links: [{ characterId: "character-2", assetId: folder.asset_id }] }))
+      .resolves.toMatchObject({ storyBible: { supportingCharacterAssetLinks: [{ characterId: "character-2", assetId: folder.asset_id }] } });
+    const cleared = await controller.updateSupportingCharacterAssetLinks("long_bible", { links: [] });
+    expect(cleared.storyBible).not.toHaveProperty("supportingCharacterAssetLinks");
   });
 
   it("exposes the Story Bible search and duplicate routes", async () => {

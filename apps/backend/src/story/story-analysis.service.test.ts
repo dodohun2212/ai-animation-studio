@@ -14,15 +14,16 @@ const output: NovelStoryAnalysis = {
   episodes: [{ episodeNumber: 1, title: "첫걸음", summary: "낯선 문을 연다", mainEvent: "길을 발견한다", conflict: "문이 닫힌다", cliffhanger: "빛이 보인다", nextEpisodeHook: "누가 기다릴까" }],
   warnings: [],
 };
+const chunkSummary = { themes: ["새 출발"], characterNotes: ["익명의 주인공은 집을 떠난다."], events: ["길을 떠난다."], unresolvedQuestions: ["어디로 향할까?"] };
 
 let root: string;
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); vi.restoreAllMocks(); });
 
-async function setup(analyze = vi.fn(async () => output)) {
+async function setup(analyze = vi.fn(async () => output), analyzeChunk = vi.fn(async () => chunkSummary)) {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "story-analysis-"));
   const providerSettings = { rawCredentialIfConnected: vi.fn(async (): Promise<string | null> => "test-key") };
   const budget = new OpenAiBudget(root, 2);
-  const service = new StoryAnalysisService(root, providerSettings as never, budget, analyze as never);
+  const service = new StoryAnalysisService(root, providerSettings as never, budget, analyze as never, undefined, analyzeChunk as never);
   const preview = await service.preview(input);
   const approve = {
     ...input,
@@ -30,7 +31,7 @@ async function setup(analyze = vi.fn(async () => output)) {
     promptSha256: preview.preview.promptSha256,
     approved: true as const,
   };
-  return { service, preview, approve, analyze, providerSettings, budget };
+  return { service, preview, approve, analyze, analyzeChunk, providerSettings, budget };
 }
 
 describe("StoryAnalysisService", () => {
@@ -108,5 +109,75 @@ describe("StoryAnalysisService", () => {
     await expect(service.approve(approve)).rejects.toMatchObject({ status: 409 });
     expect(analyze).not.toHaveBeenCalled();
     await expect(fs.stat(path.join(root, "story_sources"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("uses one prompt through 60,000 characters and rejects text above 120,000", async () => {
+    const { service, analyze } = await setup();
+    const single = await service.preview({ ...input, sourceText: "가".repeat(60_000) });
+    expect(single.preview).toMatchObject({ sourceCharacterCount: 60_000, sourceChunkCount: 1, providerCallCount: 1, estimatedCostUsd: 0.05 });
+    expect(single.preview.prompts).toHaveLength(1);
+    expect(analyze).not.toHaveBeenCalled();
+    await expect(service.preview({ ...input, sourceText: "가".repeat(120_001) })).rejects.toMatchObject({ status: 400 });
+    await expect(service.preview({ ...input, sourceText: "가".repeat(120_000) })).resolves.toMatchObject({ preview: { sourceChunkCount: 2, providerCallCount: 3 } });
+  });
+
+  it("does not split a UTF-16 surrogate pair across chunk prompts", async () => {
+    const { service } = await setup();
+    const sourceText = `${"가".repeat(59_999)}😀${"나".repeat(59_999)}`;
+    const preview = await service.preview({ ...input, sourceText });
+    expect(preview.preview.sourceChunkCount).toBe(3);
+    expect(preview.preview.prompts[0]).toContain(`${"가".repeat(59_999)}\n\n자료 끝.`);
+    expect(preview.preview.prompts[1]).toContain(`😀${"나".repeat(59_998)}`);
+  });
+
+  it("splits 60,001–120,000 characters into 60,000-character blocks plus one synthesis call", async () => {
+    const analyze = vi.fn(async () => output);
+    const analyzeChunk = vi.fn(async () => chunkSummary);
+    const { service, budget } = await setup(analyze, analyzeChunk);
+    const longInput = { ...input, sourceText: "가".repeat(60_001) };
+    const preview = await service.preview(longInput);
+    expect(preview.preview).toMatchObject({ sourceCharacterCount: 60_001, sourceChunkCount: 2, providerCallCount: 3, estimatedCostUsd: 0.15 });
+    expect(preview.preview.prompts).toHaveLength(3);
+    expect(preview.preview.prompts[0]).toContain("자료 순서: 1/2");
+    expect(preview.preview.prompts[1]).toContain("자료 순서: 2/2");
+    expect(preview.preview.prompts[2]).toContain("승인 후 각 본문 부분");
+    expect(analyzeChunk).not.toHaveBeenCalled();
+    const approved = await service.approve({ ...longInput, inputSha256: preview.preview.inputSha256, promptSha256: preview.preview.promptSha256, approved: true });
+    expect(approved.analysis).toEqual(output);
+    expect(analyzeChunk).toHaveBeenCalledTimes(2);
+    expect(analyze).toHaveBeenCalledTimes(1);
+    expect(await budget.spentThisMonth()).toBeCloseTo(0.15);
+    const stored = await fs.readFile(path.join(root, "story_sources", `${preview.preview.inputSha256}.json`), "utf8");
+    expect(stored).not.toContain("가가가");
+    expect(stored).not.toContain("sourceText");
+  });
+
+  it("preflights the full chunk cost before a claim or provider call", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "story-analysis-long-budget-"));
+    const analyze = vi.fn(async () => output);
+    const analyzeChunk = vi.fn(async () => chunkSummary);
+    const providerSettings = { rawCredentialIfConnected: vi.fn(async (): Promise<string | null> => "test-key") };
+    const service = new StoryAnalysisService(root, providerSettings as never, new OpenAiBudget(root, 0.1), analyze as never, undefined, analyzeChunk as never);
+    const longInput = { ...input, sourceText: "가".repeat(60_001) };
+    const preview = await service.preview(longInput);
+    await expect(service.approve({ ...longInput, inputSha256: preview.preview.inputSha256, promptSha256: preview.preview.promptSha256, approved: true })).rejects.toMatchObject({ status: 409 });
+    expect(analyzeChunk).not.toHaveBeenCalled();
+    expect(analyze).not.toHaveBeenCalled();
+    await expect(fs.stat(path.join(root, "story_sources"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps a partially failed multi-call analysis claimed and records attempted spend", async () => {
+    const analyzeChunk = vi.fn().mockResolvedValueOnce(chunkSummary).mockRejectedValueOnce(new Error("unknown network outcome"));
+    const analyze = vi.fn(async () => output);
+    const { service, budget } = await setup(analyze, analyzeChunk);
+    const longInput = { ...input, sourceText: "가".repeat(60_001) };
+    const preview = await service.preview(longInput);
+    const approval = { ...longInput, inputSha256: preview.preview.inputSha256, promptSha256: preview.preview.promptSha256, approved: true };
+    await expect(service.approve(approval)).rejects.toMatchObject({ status: 500 });
+    expect(analyzeChunk).toHaveBeenCalledTimes(2);
+    expect(analyze).not.toHaveBeenCalled();
+    expect(await budget.spentThisMonth()).toBe(0.1);
+    await expect(service.approve(approval)).rejects.toMatchObject({ status: 409 });
+    expect(analyzeChunk).toHaveBeenCalledTimes(2);
   });
 });

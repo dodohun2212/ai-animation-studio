@@ -1488,6 +1488,12 @@ export interface LongStoryBibleProtagonistLink {
   pinnedVersion: number | null;
 }
 
+/** A supporting character's project-wide identity linked to its Asset Library character Folder. */
+export interface LongStoryBibleCharacterAssetLink {
+  characterId: string;
+  assetId: string;
+}
+
 /** Project-wide visual style reference stored as `basic.style_asset_link`. */
 export interface LongStoryBibleStyleAssetLink {
   assetId: string;
@@ -1502,6 +1508,7 @@ export interface LongStoryBible {
   world: Record<string, unknown>;
   styleAssetLink?: LongStoryBibleStyleAssetLink;
   protagonistAssetLink?: LongStoryBibleProtagonistLink;
+  supportingCharacterAssetLinks?: LongStoryBibleCharacterAssetLink[];
   secrets: LongStoryBibleItem[];
   foreshadowing: LongStoryBibleItem[];
   updatedAt: string;
@@ -1524,6 +1531,9 @@ export interface UpdateLongStoryBibleStyleAssetLinkResponse { storyBible: LongSt
 /** `null` explicitly removes the protagonist link. */
 export interface UpdateLongStoryBibleProtagonistAssetLinkRequest { assetLink: LongStoryBibleProtagonistLink | null; }
 export interface UpdateLongStoryBibleProtagonistAssetLinkResponse { storyBible: LongStoryBible; }
+/** Replaces the project's supporting character to Folder links; an empty list removes them. */
+export interface UpdateLongStoryBibleSupportingCharacterAssetLinksRequest { links: LongStoryBibleCharacterAssetLink[]; }
+export interface UpdateLongStoryBibleSupportingCharacterAssetLinksResponse { storyBible: LongStoryBible; }
 export interface CreateLongStoryBibleItemRequest { item: LongStoryBibleItemInput; }
 export interface CreateLongStoryBibleItemResponse { item: LongStoryBibleItem; storyBible: LongStoryBible; }
 export interface UpdateLongStoryBibleItemRequest { item: LongStoryBibleItemInput; }
@@ -3736,6 +3746,8 @@ export const API_ROUTES = {
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/style-asset-link`,
   longProjectStoryBibleProtagonistAssetLink: (projectId: string) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/protagonist-asset-link`,
+  longProjectStoryBibleSupportingCharacterAssetLinks: (projectId: string) =>
+    `/long-projects/${encodeURIComponent(projectId)}/story-bible/supporting-character-asset-links`,
   longProjectStoryBibleCollection: (projectId: string, collection: LongStoryBibleCollection) =>
     `/long-projects/${encodeURIComponent(projectId)}/story-bible/${collection}`,
   longProjectStoryBibleItem: (projectId: string, collection: LongStoryBibleCollection, itemId: string) =>

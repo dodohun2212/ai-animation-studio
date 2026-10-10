@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LongProjectsService } from "./long-projects.service.js";
+import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { ACQUIRE_TIMEOUT_MS } from "../videos/project-lock.js";
 
 let root: string | undefined;
@@ -39,6 +40,25 @@ describe("LongProjectsService", () => {
     expect(JSON.parse(sourceFile)).toEqual(novelRequest.source);
     expect(sourceFile).not.toContain("sourceText");
     expect(await fs.readdir(path.join(root!, "projects"))).toEqual(["novel_created"]);
+  });
+
+  it("stores approved supporting character Folder links with the reviewed project", async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "long-project-"));
+    const assets = new LocalAssetsRepository(root);
+    const folder = await assets.createFolder({ assetType: "character", displayName: "Joon" });
+    const subject = new LongProjectsService(path.join(root, "projects"), undefined, undefined, undefined, undefined, undefined, assets);
+    const request = { ...novelRequest, supportingCharacterAssetLinks: [{ characterId: "character-2", assetId: folder.asset_id }] };
+
+    await subject.createFromNovelStory(request);
+    const bible = JSON.parse(await fs.readFile(path.join(root, "projects", "novel_created", "long_story", "story_bible.json"), "utf8"));
+    expect(bible.basic.supporting_character_asset_links).toEqual([{ character_id: "character-2", asset_id: folder.asset_id }]);
+
+    await expect(subject.createFromNovelStory({ ...novelRequest, projectId: "invalid_supporting_role", supportingCharacterAssetLinks: [{ characterId: "character-1", assetId: folder.asset_id }] }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(subject.createFromNovelStory({ ...novelRequest, projectId: "invalid_supporting_asset", supportingCharacterAssetLinks: [{ characterId: "character-2", assetId: "missing-folder" }] }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(fs.stat(path.join(root, "projects", "invalid_supporting_role"))).rejects.toBeTruthy();
+    await expect(fs.stat(path.join(root, "projects", "invalid_supporting_asset"))).rejects.toBeTruthy();
   });
 
   it("preserves the original analyzed episode count when the review changes the final project count", async () => {

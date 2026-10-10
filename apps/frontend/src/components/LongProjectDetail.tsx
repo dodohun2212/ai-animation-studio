@@ -3,6 +3,7 @@ import type { ArchivedLongEpisodeSummary, LongEpisodeStatus, LongProject } from 
 
 import { addLongEpisode, archiveLongEpisode, archiveLongProject, duplicateLongEpisode, getLongProject, listLongEpisodeArchives, restoreLongEpisode, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { longEpisodeOutlineStatusLabel, longEpisodeStatusesAtOrAfter, longEpisodeStatusLabel } from "../utils/longEpisodeLabels.js";
+import { EpisodeStageBoard, type BoardStage } from "./EpisodeStageBoard.js";
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog.js";
 import { Spinner } from "./Spinner.js";
 import { MetaGrid } from "./ui/MetaGrid.js";
@@ -184,6 +185,17 @@ export function LongProjectDetail({
   const narrationInUse = state.status === "success" && (state.project.settings.narrationEnabled || state.project.settings.subtitlesEnabled);
   const filteredEpisodes = useMemo(() => { if (state.status !== "success") return []; const needle = query.trim().toLocaleLowerCase(); return state.project.episodes.filter((episode) => (statusFilter === "all" || episode.status === statusFilter) && (!needle || `${episode.episodeNumber} ${episode.title} ${episode.summary}`.toLocaleLowerCase().includes(needle))); }, [query, state, statusFilter]);
   async function updateTimeline(action: () => Promise<{ project: LongProject }>, select?: number): Promise<void> { if (timelinePending) return; setTimelinePending(true); setTimelineError(null); try { const result = await action(); setState({ status: "success", project: result.project }); setSelectedEpisodeNumber(select ?? null); setRemoveConfirmationOpen(false); setRemoveConfirmation(""); } catch (error: unknown) { setTimelineError(toLongProjectDisplayError(error)); } finally { setTimelinePending(false); } }
+  /** 보드의 칸 — 그 회차의 그 단계 화면으로 **이동만** 합니다(새 생성·유료 요청 없음). 이미지 단계는 연결 검토 전이면 그 화면으로. */
+  function openStage(stage: BoardStage, episode: { episodeNumber: number; status: LongEpisodeStatus }): void {
+    const n = episode.episodeNumber;
+    if (stage === "outline") onOpenEpisodeOutline?.(projectId, n);
+    else if (stage === "script") onOpenEpisodeScript?.(projectId, n);
+    else if (stage === "images") {
+      if (episode.status === "script_approved" || episode.status === "waiting_for_asset_mapping_review") onOpenMappingReview(projectId, n);
+      else onOpenImageGeneration(projectId, n);
+    } else if (stage === "video") onOpenVideoWorkflow(projectId, n);
+    else onOpenVideoMerge(projectId, n);
+  }
   function resumeEpisode(target: EpisodeResumeTarget, episodeNumber: number): void {
     if (target.screen === "script") onOpenEpisodeScript?.(projectId, episodeNumber);
     else if (target.screen === "mappingReview") onOpenMappingReview(projectId, episodeNumber);
@@ -310,6 +322,15 @@ export function LongProjectDetail({
               </div>
             ))}
           </dl>
+          {/* M4-2 회차 × 단계 보드 — 위 누계는 「몇 회차가 어디까지」, 이 보드는 「어느 회차의 어느 단계가 어떤 상태」. 아래 타임라인(검색·필터·편집·보관)은 그대로. */}
+          <section aria-label="회차 단계 보드" data-testid="episode-board-section" className="space-y-3 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
+            <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
+              <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />
+              회차 × 단계
+            </h3>
+            <p className="text-xs text-slate-400">칸을 누르면 그 회차의 그 단계 화면으로 이동합니다. 이동만 하고, 생성이나 유료 요청은 그 화면에서 직접 승인해야 시작됩니다.</p>
+            <EpisodeStageBoard episodes={state.project.episodes} onOpenStage={openStage} />
+          </section>
           <div data-testid="episode-list" className="space-y-3 rounded-lg border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-900/55 p-6">
             <h3 className="flex items-center gap-2.5 text-sm font-semibold text-slate-100">
               <span aria-hidden="true" className="h-3 w-1 flex-shrink-0 rounded-full bg-gradient-to-b from-violet-400 to-fuchsia-400" />

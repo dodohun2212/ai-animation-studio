@@ -117,3 +117,56 @@ export async function callOpenAiStoryAnalysisApi(
   try { parsed = JSON.parse(text); } catch { throw new OpenAiAdapterError("invalid_response", "이야기 분석 JSON을 읽지 못했습니다."); }
   return validateAnalysis(parsed, episodeCount);
 }
+
+export interface NovelStoryChunkSummary {
+  themes: string[];
+  characterNotes: string[];
+  events: string[];
+  unresolvedQuestions: string[];
+}
+
+const chunkSummarySchema = {
+  type: "object", additionalProperties: false,
+  required: ["themes", "characterNotes", "events", "unresolvedQuestions"],
+  properties: {
+    themes: { type: "array", maxItems: 12, items: { type: "string", maxLength: 300 } },
+    characterNotes: { type: "array", maxItems: 30, items: { type: "string", maxLength: 500 } },
+    events: { type: "array", maxItems: 60, items: { type: "string", maxLength: 500 } },
+    unresolvedQuestions: { type: "array", maxItems: 12, items: { type: "string", maxLength: 300 } },
+  },
+} as const;
+
+export async function callOpenAiStoryChunkAnalysisApi(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<NovelStoryChunkSummary> {
+  assertRealNetworkCallAllowed("OpenAI", fetchImpl);
+  let response: Response;
+  try {
+    response = await fetchImpl("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, store: false, input: prompt, max_output_tokens: 8_000,
+        text: { format: { type: "json_schema", name: "novel_story_chunk_summary", strict: true, schema: chunkSummarySchema } } }),
+    });
+  } catch { throw new OpenAiAdapterError("network", OPENAI_KOREAN_MESSAGES.network); }
+  if (!response.ok) {
+    const failure = await describeOpenAiHttpError(response);
+    throw new OpenAiAdapterError(failure.category, OPENAI_KOREAN_MESSAGES[failure.category], failure);
+  }
+  const text = extractOutputText(await response.json().catch(() => null));
+  if (!text) throw new OpenAiAdapterError("empty_response", "긴 글 일부 분석 응답이 비어 있습니다.");
+  let value: unknown;
+  try { value = JSON.parse(text); } catch { throw new OpenAiAdapterError("invalid_response", "긴 글 일부 분석 JSON을 읽지 못했습니다."); }
+  if (!isObject(value) || !Array.isArray(value.themes) || !Array.isArray(value.characterNotes)
+    || !Array.isArray(value.events) || !Array.isArray(value.unresolvedQuestions)
+    || !value.themes.every((item) => typeof item === "string" && item.length <= 300)
+    || !value.characterNotes.every((item) => typeof item === "string" && item.length <= 500)
+    || !value.events.every((item) => typeof item === "string" && item.length <= 500)
+    || !value.unresolvedQuestions.every((item) => typeof item === "string" && item.length <= 300)) {
+    throw new OpenAiAdapterError("invalid_response", "긴 글 일부 분석 응답의 형식이 올바르지 않습니다.");
+  }
+  return value as unknown as NovelStoryChunkSummary;
+}

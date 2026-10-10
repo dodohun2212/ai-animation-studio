@@ -7,14 +7,15 @@ import { episodeDirectoryName, longStoryRoot } from "./long-project-paths.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-/** The style and protagonist links, as the two auto tags they become. */
+/** The Story Bible Asset links, as the auto tags they become. */
 export interface StoryBibleLinks {
   readonly styleAssetId?: string;
   readonly protagonistAssetId?: string;
+  readonly supportingCharacterAssetIds?: readonly string[];
 }
 
 /**
- * The two links, read out of a Story Bible however it was loaded.
+ * Asset links, read out of a Story Bible however it was loaded.
  *
  * One rule in one place: the bible stores each link as an object with an `asset_id`, and two callers needed to
  * know that — the save that pushes links into Episodes, and the Episode folder that appears later and has to
@@ -24,9 +25,14 @@ export function linksFromBible(bible: unknown): StoryBibleLinks {
   const basic = (bible as { basic?: Record<string, unknown> } | undefined)?.basic;
   const style = basic?.style_asset_link as { asset_id?: unknown } | undefined;
   const protagonist = basic?.protagonist_asset_link as { asset_id?: unknown } | undefined;
+  const supporting = Array.isArray(basic?.supporting_character_asset_links) ? basic.supporting_character_asset_links : [];
+  const supportingCharacterAssetIds = supporting
+    .map((entry) => entry && typeof entry === "object" && !Array.isArray(entry) ? (entry as { asset_id?: unknown }).asset_id : undefined)
+    .filter((assetId): assetId is string => typeof assetId === "string");
   return {
     ...(typeof style?.asset_id === "string" ? { styleAssetId: style.asset_id } : {}),
     ...(typeof protagonist?.asset_id === "string" ? { protagonistAssetId: protagonist.asset_id } : {}),
+    ...(supportingCharacterAssetIds.length ? { supportingCharacterAssetIds } : {}),
   };
 }
 
@@ -38,7 +44,7 @@ export async function readStoryBibleLinks(projectsRoot: string, projectId: strin
 }
 
 /**
- * Pushes the Story Bible's two Asset links into every Episode that has not generated pictures yet.
+ * Pushes the Story Bible's Asset links into every Episode that has not generated pictures yet.
  *
  * Chosen once for the whole story and used by every Episode is exactly what the short project's Settings do,
  * and `syncAutoMappings` already carries every rule that makes that safe — one tag at a time, never touching a
@@ -76,6 +82,7 @@ export async function syncStoryBibleMappings(
       const owner = await owners.get({ projectId, episodeNumber });
       await syncAutoMappings(mappings, assets, owner, "auto_style", links.styleAssetId ? [{ assetId: links.styleAssetId, usageRole: "style" }] : []);
       await syncAutoMappings(mappings, assets, owner, "auto_protagonist", links.protagonistAssetId ? [{ assetId: links.protagonistAssetId, usageRole: "character" }] : []);
+      await syncAutoMappings(mappings, assets, owner, "auto_supporting_cast", (links.supportingCharacterAssetIds ?? []).map((assetId) => ({ assetId, usageRole: "character" })));
     } catch { continue; }
   }
 }

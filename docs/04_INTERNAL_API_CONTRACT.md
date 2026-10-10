@@ -52,9 +52,9 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 ## 소설 분석 — M1
 
-`POST /story-analysis/preview`는 `NovelStoryAnalysisInput`을 검증하고 OpenAI로 보낼 정확한 프롬프트, 입력·프롬프트 SHA-256, 모델, 글자 수, 고정 예상 비용을 돌려준다. Provider 호출·저장은 없다. 원문 상한은 JavaScript 문자열 길이 6,000이며 제목 120자, 한 줄 설명 500자, 출처 메모 500자, 회차 1–20, 회차당 장면 2–12를 받는다. `rightsConfirmed: true`가 필수다. 저장된 OpenAI 키가 없을 때도 프롬프트는 미리 볼 수 있지만 `providerAvailable`은 `false`다.
+`POST /story-analysis/preview`는 `NovelStoryAnalysisInput`을 검증하고 OpenAI 요청 프롬프트(순서대로 `prompts[]`), 입력·프롬프트 SHA-256, 모델, 글자 수·분할 수·Provider 호출 수, 예상 비용을 돌려준다. Provider 호출·저장은 없다. 원문 상한은 JavaScript 문자열 길이 120,000이며 60,000자 이하에는 기존 단일 분석 호출을, 초과 입력에는 최대 60,000자 단위의 추상 부분 분석과 최종 합성 호출을 쓴다. 긴 입력을 받을 수 있도록 JSON 본문 상한은 1 MB다. 제목 120자, 한 줄 설명 500자, 출처 메모 500자, 회차 1–20, 회차당 장면 2–12를 받는다. `rightsConfirmed: true`가 필수다. 저장된 OpenAI 키가 없을 때도 프롬프트는 미리 볼 수 있지만 `providerAvailable`은 `false`다.
 
-`POST /story-analysis`는 같은 입력과 미리보기의 해시, `approved: true`를 요구한다. 서버가 입력과 프롬프트를 다시 만들어 해시가 다르면 거절하고, OpenAI 월 예산 장부를 통과한 뒤에만 한 번 호출한다. 모델은 `gpt-5.6-luna`이며 추상 이야기 구조(줄거리·장르·분위기·주제·인물 카드·회차 구성·주의 표지)를 strict JSON Schema로 돌려준다. 현재 예상 비용은 호출당 `$0.05`로 보수적으로 잡는다. OpenAI Responses 요청은 `store: false`를 사용한다.
+`POST /story-analysis`는 같은 입력과 미리보기의 해시, `approved: true`를 요구한다. 서버가 입력과 프롬프트 계획을 다시 만들어 해시가 다르면 거절하고, 전체 예상 비용을 월 예산 장부에서 선검사한 뒤에만 호출한다. 60,000자 이하에는 기존 단일 분석 요청을 보낸다. 더 긴 입력은 60,000자 이하 조각마다 요약 요청을 보내고, 조각 요약들을 합성해 최종 추상 이야기 구조(줄거리·장르·분위기·주제·인물 카드·회차 구성·주의 표지)를 만든다. 프리뷰의 마지막 합성 프롬프트는 승인 뒤 생성되는 추상 요약이 들어갈 위치를 표시한다. 모델은 `gpt-5.6-luna`, 응답은 strict JSON Schema이며 모든 Responses 요청은 `store: false`다. 호출당 비용은 `$0.05`로 보수적으로 추정하고, 호출 수에 맞춰 미리보기·예산 검사·월 장부에 반영한다.
 
 원문 본문은 `learning_data/story_sources/`나 예산 장부에 쓰지 않는다. 입력 해시를 파일명으로 사용하며, 저장값은 해시·프롬프트 해시·제목·선택 출처 메모·권리 확인 시각·모델·회차/장면 수·분석 결과뿐이다. 같은 입력의 성공 결과는 다시 돌려주고 Provider를 재호출하지 않는다. 분석 시도 직전 `.claimed` 파일을 독점 생성하므로 응답이 모호하게 끊겨도 같은 입력은 다시 보내지 않는다. 이 기능의 오류 코드는 `STORY_ANALYSIS_INVALID_REQUEST`, `STORY_ANALYSIS_PROMPT_STALE`, `STORY_ANALYSIS_KEY_MISSING`, `STORY_ANALYSIS_BUDGET_EXCEEDED`, `STORY_ANALYSIS_ALREADY_ATTEMPTED`, `STORY_ANALYSIS_STORAGE_ERROR`, `STORY_ANALYSIS_PROVIDER_ERROR`다.
 
@@ -71,6 +71,14 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 `POST /story-analysis/character-image`는 같은 다섯 필드와 미리보기의 두 해시, `approved: true`가 필수다. 서버는 해시·OpenAI 키·월 예산을 다시 확인한 뒤 `gpt-image-2`로 1024×1536 PNG를 한 번만 요청한다. `learning_data/novel_character_images/`에 입력 해시별 독점 claim을 먼저 쓰고, 성공한 PNG를 저장한 뒤 보관함의 캐릭터 폴더와 정면 이미지를 한 번의 인덱스 쓰기로 등록한다. 응답은 `{ folderAssetId, imageAssetId, reused, spendUnrecorded? }`다. 같은 입력은 폴더를 재사용하며, 유료 이미지 저장 뒤 보관함 등록에 실패해도 다음 요청은 저장된 PNG로 등록을 재개하고 Provider를 다시 부르지 않는다. 전송 여부가 모호하고 PNG도 없으면 claim을 유지해 재전송을 거절한다. PNG 자체를 디스크에 쓸 수 없는 드문 실패는 `NOVEL_CHARACTER_IMAGE_STORAGE_ERROR.details.recoveryImageBase64`로 이미 치른 결과 바이트를 돌려준다.
 
 새 폴더와 이미지는 `approved:false`로 등록한다. 사람은 생성된 이미지를 확인해 사용할 폴더를 M2의 `protagonistAssetId`로 고른다. 기존 장기 프로젝트 생성 경로가 해당 폴더를 Story Bible에 연결한다. 이 경로의 오류 코드는 `NOVEL_CHARACTER_IMAGE_INVALID_REQUEST`, `NOVEL_CHARACTER_IMAGE_PROMPT_STALE`, `NOVEL_CHARACTER_IMAGE_KEY_MISSING`, `NOVEL_CHARACTER_IMAGE_BUDGET_EXCEEDED`, `NOVEL_CHARACTER_IMAGE_ALREADY_ATTEMPTED`, `NOVEL_CHARACTER_IMAGE_STORAGE_ERROR`, `NOVEL_CHARACTER_IMAGE_PROVIDER_ERROR`, `BUDGET_LEDGER_UNREADABLE`이다.
+
+## 소설 조연과 보관함 캐릭터 폴더 연결 — M4
+
+`CreateNovelStoryProjectRequest.supportingCharacterAssetLinks?`는 검토된 `supporting` 인물의 `{ characterId, assetId }` 목록이다. 주인공·존재하지 않는 인물은 이 목록에 넣을 수 없고, 인물 ID와 Asset 폴더 ID는 각각 중복될 수 없다. 각 Asset은 사용 가능한 `character` 폴더여야 한다. 빈 목록은 기존 M2 요청과 같다.
+
+장기 프로젝트 생성은 이를 `story_bible.json`의 `basic.supporting_character_asset_links`에 `{ character_id, asset_id }`로 저장한다. `GET /long-projects/:projectId/story-bible`은 camelCase `supportingCharacterAssetLinks`로 노출한다. `PATCH /long-projects/:projectId/story-bible/supporting-character-asset-links`는 `{ links }` 전체를 교체하며, 빈 배열은 연결을 해제한다. 입력은 프로젝트 Story Bible에 이미 있는 조연 ID만 받을 수 있다.
+
+연결된 조연 폴더는 기존 Asset Mapping 규칙을 따라 `auto_supporting_cast`로 이미지가 없는 회차에 자동 등록된다. 해당 Asset을 사용자가 제외했거나 이미 수동 연결했으면 자동 경로가 덮어쓰지 않는다. 이미지가 있는 회차의 매핑은 바꾸지 않는다. 이 연결은 프로젝트 설정 데이터만 바꾸며 Provider를 호출하지 않는다.
 
 
 ## 밈 관찰 카드에서 단기 프로젝트 초안으로

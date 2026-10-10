@@ -4,6 +4,7 @@ import {
   MIN_SCENE_COUNT,
   NOVEL_ANALYSIS_MAX_EPISODES,
   NOVEL_ANALYSIS_MIN_EPISODES,
+  NOVEL_DIRECT_SOURCE_MAX_CHARS,
   NOVEL_SOURCE_MAX_CHARS,
   type Asset,
   type LongProject,
@@ -32,7 +33,8 @@ interface Props {
 }
 
 /** 붙여넣을 수 있는 글자 수 — 단기 초안 칸의 한도(6,000자)와 같은 선입니다. 더 긴 글은 줄여서 붙입니다. */
-export const STORY_TEXT_LIMIT = 6000;
+/** 「분석 없이 만들기」(M0)의 한도 — 원문을 프로젝트 개요에 그대로 저장하므로 짧게 둡니다. AI 분석(M1)은 `NOVEL_SOURCE_MAX_CHARS`(긴 글은 조각으로 나눠 분석). */
+export const STORY_TEXT_LIMIT = NOVEL_DIRECT_SOURCE_MAX_CHARS;
 /**
  * 회차 수·장면 수의 처음 값. M0 에서는 화면에서 뺐지만, AI 분석(M1)이 **회차 구성의 개수**를 입력으로 받아서 다시 칸이 생겼습니다.
  * 분석 없이 바로 만드는 길에서도 같은 값을 씁니다. 만든 뒤 바꾸려면 **장기 프로젝트 설정**에서 고칩니다(「회차 나누기(AI)」 화면은 보여 줄 뿐 조절 UI가 없습니다 — CLI 1310).
@@ -108,6 +110,7 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
   }, []);
 
   const overLimit = text.length > STORY_TEXT_LIMIT;
+  const overAnalysisLimit = text.length > NOVEL_SOURCE_MAX_CHARS;
   const episodesValid = Number.isInteger(episodeCount) && episodeCount >= NOVEL_ANALYSIS_MIN_EPISODES && episodeCount <= NOVEL_ANALYSIS_MAX_EPISODES;
   /** AI 분석 입력 — 조건을 모두 채웠을 때만 만들어지고(아니면 null), 비어 있는 출처 메모는 보내지 않습니다. */
   const analysisInput: NovelStoryAnalysisInput | null =
@@ -141,7 +144,7 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
     if (!trimmedTitle) { setError("제목을 입력하세요."); return; }
     if (!trimmedLogline) { setError("한 줄 줄거리를 입력하세요."); return; }
     if (!text.trim()) { setError("이야기 본문을 붙여넣어 주세요."); return; }
-    if (overLimit) { setError(`본문이 ${STORY_TEXT_LIMIT.toLocaleString("ko-KR")}자를 넘었습니다. 줄여서 붙여 주세요.`); return; }
+    if (overLimit) { setError(`본문이 ${STORY_TEXT_LIMIT.toLocaleString("ko-KR")}자를 넘어 분석 없이 만들 수 없습니다. 위 2번 AI 분석으로 진행하거나, 줄여서 붙여 주세요.`); return; }
     if (!rightsConfirmed) { setError("붙여넣은 글이 직접 쓴 글이거나 이용 허락을 받은 글인지 확인해 주세요."); return; }
     if (!episodesValid) { setError(`회차 수는 ${NOVEL_ANALYSIS_MIN_EPISODES}–${NOVEL_ANALYSIS_MAX_EPISODES} 사이의 정수입니다.`); return; }
 
@@ -214,11 +217,12 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
               onChange={(event) => setText(event.target.value)}
               disabled={submitting}
               placeholder="소설이나 이야기를 여기에 붙여넣으세요."
-              aria-invalid={overLimit}
+              aria-invalid={overAnalysisLimit}
             />
           </label>
-          <p data-testid="story-text-count" className={`text-xs tabular-nums ${overLimit ? "text-rose-400" : "text-bone-faint"}`}>
-            {text.length.toLocaleString("ko-KR")} / {STORY_TEXT_LIMIT.toLocaleString("ko-KR")}자{overLimit ? " — 줄여서 붙여 주세요." : ""}
+          <p data-testid="story-text-count" className={`text-xs tabular-nums ${overAnalysisLimit ? "text-rose-400" : overLimit ? "text-amber-300" : "text-bone-faint"}`}>
+            {text.length.toLocaleString("ko-KR")}자 · AI 분석은 {NOVEL_SOURCE_MAX_CHARS.toLocaleString("ko-KR")}자까지(긴 글은 나눠서 분석), 분석 없이 만들기는 {STORY_TEXT_LIMIT.toLocaleString("ko-KR")}자까지
+            {overAnalysisLimit ? " — 너무 깁니다. 줄여서 붙여 주세요." : overLimit ? ` — ${STORY_TEXT_LIMIT.toLocaleString("ko-KR")}자를 넘어 「분석 없이 만들기」는 쓸 수 없고 AI 분석으로만 진행할 수 있습니다.` : ""}
           </p>
           <label className="block text-xs text-bone-dim">출처 메모 (선택)
             <input data-testid="story-source" className={inputClass} value={source} onChange={(event) => setSource(event.target.value)} disabled={submitting} maxLength={300} placeholder="예: Reddit 글 주소, 작가 이름" />
@@ -302,7 +306,7 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
             장기 프로젝트가 만들어지고 바로 그 작품의 「회차 나누기(AI)」 화면으로 이어지며, 거기서 돌아가면 만들어진 작품 화면입니다. 회차 수·장면 수는 기본값(3회차·6장면)으로 시작하며, 바꾸려면 장기 프로젝트 설정에서 고칩니다. 그다음 대본 → 그림 → 영상은 장기 프로젝트의 기존 흐름이고, 유료 요청은 승인해야만 나갑니다. 이 단계는 AI를 부르지 않습니다.
           </p>
           {error && <p role="alert" data-testid="story-error" className="text-sm text-rose-400">{error}</p>}
-          <button type="button" data-testid="story-submit" className={primaryButton} onClick={() => void submit()} disabled={submitting}>{submitting ? "만드는 중…" : "분석 없이 장기 프로젝트로 만들기"}</button>
+          <button type="button" data-testid="story-submit" className={primaryButton} onClick={() => void submit()} disabled={submitting || overLimit}>{submitting ? "만드는 중…" : "분석 없이 장기 프로젝트로 만들기"}</button>
         </div>
       </form>
 
@@ -311,7 +315,7 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
         <h2 className="text-sm font-medium text-bone-dim">아직 안 되는 것 (준비 중)</h2>
         <ul className="list-inside list-disc space-y-1 text-xs text-bone-faint">
           <li>Reddit 주소만 넣어 글 가져오기 — Reddit의 사전 승인과 이용 조건이 필요해 만들지 않습니다. 직접 쓴 글이나 허락받은 글을 붙여넣어 주세요.</li>
-          <li>긴 소설 자동 요약·회차 나누기 — 지금은 {STORY_TEXT_LIMIT.toLocaleString("ko-KR")}자까지 붙입니다.</li>
+          <li>{NOVEL_SOURCE_MAX_CHARS.toLocaleString("ko-KR")}자보다 긴 글 — 지금은 그 길이까지 나눠서 분석합니다. 더 긴 글은 앞부분만 붙이거나 나눠서 작품을 만들어 주세요.</li>
         </ul>
       </section>
     </section>

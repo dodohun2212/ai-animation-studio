@@ -64,6 +64,25 @@ describe("Story Bible links reaching Episode mappings", () => {
     expect(await mappings.load(episodeLocation(projectsRoot, 2))).toEqual([]);
   });
 
+  it("seeds linked supporting characters only into Episodes that have not made pictures", async () => {
+    const { bible, assets, mappings, projectsRoot } = await setup();
+    const bibleFile = path.join(projectsRoot, "long_sync", "long_story", "story_bible.json");
+    const stored = JSON.parse(await fs.readFile(bibleFile, "utf8"));
+    stored.basic.characterCards = [
+      { id: "character-1", role: "protagonist", name: "Mina" },
+      { id: "character-2", role: "supporting", name: "Joon" },
+    ];
+    await fs.writeFile(bibleFile, JSON.stringify(stored), "utf8");
+    const folder = await assets.createFolder({ assetType: "character", displayName: "Joon" });
+
+    await bible.updateSupportingCharacterAssetLinks("long_sync", { links: [{ characterId: "character-2", assetId: folder.asset_id }] });
+
+    const first = await mappings.load(episodeLocation(projectsRoot, 1));
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ asset_id: folder.asset_id, usage_role: "character", assignment_source: "auto", match_reason: "auto_supporting_cast", status: "confirmed", user_confirmed: true });
+    expect(await mappings.load(episodeLocation(projectsRoot, 2))).toEqual([]);
+  });
+
   /**
    * The order a person actually uses, which is the order the screen tells them to use.
    *

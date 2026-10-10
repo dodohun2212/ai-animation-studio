@@ -112,9 +112,18 @@ export function StoryAnalysisPanel({ input, onOpenSettings, onProjectCreated }: 
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
             <dt className="text-bone-faint">모델</dt><dd className="text-bone-dim" data-testid="story-preview-model">{info.model}</dd>
             <dt className="text-bone-faint">본문 글자 수</dt><dd className="tabular-nums text-bone-dim">{info.sourceCharacterCount.toLocaleString("ko-KR")}자</dd>
+            <dt className="text-bone-faint">OpenAI 호출</dt>
+            <dd className="text-bone-dim" data-testid="story-preview-calls">
+              {info.providerCallCount}회
+              <span className="text-bone-faint">
+                {info.sourceChunkCount > 1
+                  ? ` (긴 글이라 ${info.sourceChunkCount}조각으로 나눠 조각마다 요약한 뒤, 마지막에 1회 합칩니다)`
+                  : " (한 번에 분석합니다)"}
+              </span>
+            </dd>
             <dt className="text-bone-faint">예상 비용</dt>
             <dd className="text-bone-dim" data-testid="story-preview-cost">
-              {usd(info.estimatedCostUsd)} <span className="text-bone-faint">(1회 고정 견적{info.estimatedCostUsd === NOVEL_ANALYSIS_ESTIMATED_COST_USD ? "" : " — 서버가 알려 준 값"}, 실제 청구와 다를 수 있습니다)</span>
+              {usd(info.estimatedCostUsd)} <span className="text-bone-faint">(호출 {info.providerCallCount}회 × 1회당 {usd(NOVEL_ANALYSIS_ESTIMATED_COST_USD)} 고정 견적, 실제 청구와 다를 수 있습니다)</span>
             </dd>
             {budget && (
               <>
@@ -126,8 +135,21 @@ export function StoryAnalysisPanel({ input, onOpenSettings, onProjectCreated }: 
             )}
           </dl>
           <details>
-            <summary className="cursor-pointer text-xs text-bone-dim hover:text-bone">OpenAI로 보낼 글 전체 보기</summary>
-            <textarea readOnly rows={8} value={info.prompt} aria-label="OpenAI로 보낼 글" data-testid="story-preview-prompt" className="mt-2 w-full rounded border border-line bg-slate-900/70 p-2 font-mono text-[11px] text-bone" />
+            <summary className="cursor-pointer text-xs text-bone-dim hover:text-bone">OpenAI로 보낼 글 전체 보기{info.prompts.length > 1 ? ` (${info.prompts.length}개, 보내는 순서대로)` : ""}</summary>
+            {info.prompts.length > 1 ? (
+              <ol className="mt-2 space-y-2" data-testid="story-preview-prompts">
+                {info.prompts.map((prompt, index) => (
+                  <li key={index} className="space-y-1">
+                    <p className="text-[11px] text-bone-faint">
+                      {index + 1}번째 호출 — {index < info.prompts.length - 1 ? `${index + 1}번째 조각 요약` : "조각 요약을 합쳐 최종 분석(요약이 들어갈 자리는 승인 뒤 채워집니다)"}
+                    </p>
+                    <textarea readOnly rows={5} value={prompt} aria-label={`OpenAI로 보낼 글 ${index + 1}`} data-testid={`story-preview-prompt-${index + 1}`} className="w-full rounded border border-line bg-slate-900/70 p-2 font-mono text-[11px] text-bone" />
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <textarea readOnly rows={8} value={info.prompts[0] ?? info.prompt} aria-label="OpenAI로 보낼 글" data-testid="story-preview-prompt" className="mt-2 w-full rounded border border-line bg-slate-900/70 p-2 font-mono text-[11px] text-bone" />
+            )}
           </details>
 
           {previewStale && (
@@ -144,9 +166,9 @@ export function StoryAnalysisPanel({ input, onOpenSettings, onProjectCreated }: 
 
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" data-testid="story-approve" className={primaryButton} onClick={() => void approve()} disabled={!canApprove}>
-              {approving ? "분석 중… (OpenAI)" : `승인하고 분석 보내기 (유료 약 ${usd(info.estimatedCostUsd)})`}
+              {approving ? "분석 중… (OpenAI)" : `승인하고 분석 보내기 (유료 약 ${usd(info.estimatedCostUsd)}${info.providerCallCount > 1 ? ` · 호출 ${info.providerCallCount}회` : ""})`}
             </button>
-            <span className="text-xs text-bone-faint">누르면 위 글이 OpenAI로 한 번 전송되고 비용이 청구됩니다. 자동으로 다시 보내지 않습니다.</span>
+            <span className="text-xs text-bone-faint">누르면 위 글이 순서대로 OpenAI로 전송되고(호출 {info.providerCallCount}회) 비용이 청구됩니다. 자동으로 다시 보내지 않습니다.</span>
           </div>
         </div>
       )}

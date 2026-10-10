@@ -1,10 +1,9 @@
 import * as https from "node:https";
 
 import { Logger } from "@nestjs/common";
-import { NestFactory } from "@nestjs/core";
 import type { Express } from "express";
 
-import { AppModule } from "./app.module.js";
+import { createBackendApp } from "./create-backend-app.js";
 import { type CallbackTls, resolveCallbackTls } from "./instagram/instagram-callback-tls.js";
 import { serveFrontend } from "./static-frontend.js";
 
@@ -41,7 +40,7 @@ async function bootstrap(): Promise<void> {
   // Read before anything starts: a certificate that is half-configured or unreadable should stop the process
   // here, rather than after the app is up and has begun answering questions about which logins are possible.
   const tls = resolveCallbackTls(process.env);
-  const app = await NestFactory.create(AppModule);
+  const app = await createBackendApp();
   const httpHandler = app.getHttpAdapter().getInstance() as Express;
   const frontendDirectory = process.env.FRONTEND_STATIC_DIR;
   if (frontendDirectory) serveFrontend(httpHandler, frontendDirectory);

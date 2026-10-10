@@ -157,6 +157,45 @@ describe("StoryBibleService", () => {
     expect((await bible.updateProtagonistAssetLink("long_bible", { assetLink: null })).storyBible.protagonistAssetLink).toBeUndefined();
   });
 
+  it("links supporting Story Bible characters to unique character Folders", async () => {
+    const { bible, assets } = await services();
+    const file = path.join(root!, "projects", "long_bible", "long_story", "story_bible.json");
+    const stored = JSON.parse(await fs.readFile(file, "utf8"));
+    stored.basic.characterCards = [
+      { id: "character-1", role: "protagonist", name: "Mina" },
+      { id: "character-2", role: "supporting", name: "Joon" },
+      { id: "character-3", role: "supporting", name: "Ara" },
+    ];
+    await fs.writeFile(file, JSON.stringify(stored), "utf8");
+    const joon = await assets.createFolder({ assetType: "character", displayName: "Joon" });
+    const ara = await assets.createFolder({ assetType: "character", displayName: "Ara" });
+
+    const response = await bible.updateSupportingCharacterAssetLinks("long_bible", { links: [
+      { characterId: "character-2", assetId: joon.asset_id },
+      { characterId: "character-3", assetId: ara.asset_id },
+    ] });
+    expect(response.storyBible.supportingCharacterAssetLinks).toEqual([
+      { characterId: "character-2", assetId: joon.asset_id },
+      { characterId: "character-3", assetId: ara.asset_id },
+    ]);
+    expect(response.storyBible.basic).not.toHaveProperty("supporting_character_asset_links");
+    const saved = JSON.parse(await fs.readFile(file, "utf8"));
+    expect(saved.basic.supporting_character_asset_links).toEqual([
+      { character_id: "character-2", asset_id: joon.asset_id },
+      { character_id: "character-3", asset_id: ara.asset_id },
+    ]);
+
+    await expect(bible.updateSupportingCharacterAssetLinks("long_bible", { links: [{ characterId: "character-1", assetId: ara.asset_id }] }))
+      .rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(bible.updateSupportingCharacterAssetLinks("long_bible", { links: [
+      { characterId: "character-2", assetId: joon.asset_id }, { characterId: "character-3", assetId: joon.asset_id },
+    ] })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(bible.updateSupportingCharacterAssetLinks("long_bible", { links: [
+      { characterId: "character-2", assetId: joon.asset_id }, { characterId: "character-2", assetId: ara.asset_id },
+    ] })).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    expect((await bible.updateSupportingCharacterAssetLinks("long_bible", { links: [] })).storyBible.supportingCharacterAssetLinks).toBeUndefined();
+  });
+
   it("keeps the protagonist link when world notes are saved", async () => {
     // Saving world notes is the ordinary edit that used to travel through `basic` and could take the link with
     // it. Now it cannot reach `basic` at all.

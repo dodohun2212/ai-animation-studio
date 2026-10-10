@@ -95,9 +95,9 @@ function settings(value: unknown): LongProjectSettings {
     visualStyle: optionalText(data.visualStyle), color: optionalText(data.color), lighting: optionalText(data.lighting), avoid: optionalText(data.avoid),
   };
 }
-function novelStoryProjectInput(value: unknown): { projectId: string; settings: LongProjectSettings; source: NovelStorySourceMetadata; analysis: NovelStoryAnalysis; protagonistAssetId?: string } {
+function novelStoryProjectInput(value: unknown): { projectId: string; settings: LongProjectSettings; source: NovelStorySourceMetadata; analysis: NovelStoryAnalysis; protagonistAssetId?: string; supportingCharacterAssetLinks: { characterId: string; assetId: string }[] } {
   if (!isPlainObject(value)) throw longInvalidRequest();
-  if (Object.keys(value).some((key) => !["projectId", "settings", "source", "analysis", "protagonistAssetId"].includes(key))) throw longInvalidRequest();
+  if (Object.keys(value).some((key) => !["projectId", "settings", "source", "analysis", "protagonistAssetId", "supportingCharacterAssetLinks"].includes(key))) throw longInvalidRequest();
   const id = text(value.projectId, true);
   if (!isSafeProjectId(id)) throw longUnsafeId();
   const projectSettings = settings(value.settings);
@@ -127,7 +127,22 @@ function novelStoryProjectInput(value: unknown): { projectId: string; settings: 
       || !boundedText(item.appearance, 500) || !boundedText(item.personality, 500)) throw longInvalidRequest("A character in the edited story analysis is invalid.");
     return { id: item.id.trim(), name: item.name.trim(), role: item.role as "protagonist" | "supporting", appearance: item.appearance.trim(), personality: item.personality.trim(), order: index + 1 };
   });
-  if (characters.filter((item) => item.role === "protagonist").length !== 1) throw longInvalidRequest("Choose exactly one protagonist.");
+  if (characters.filter((item) => item.role === "protagonist").length !== 1 || new Set(characters.map((item) => item.id)).size !== characters.length) throw longInvalidRequest("Choose exactly one protagonist and use unique character IDs.");
+  const protagonistAssetId = value.protagonistAssetId;
+  if (protagonistAssetId !== undefined && !boundedText(protagonistAssetId, 160)) throw longInvalidRequest();
+  const rawSupportingLinks = value.supportingCharacterAssetLinks ?? [];
+  if (!Array.isArray(rawSupportingLinks) || rawSupportingLinks.length > 39) throw longInvalidRequest("Supporting character Asset links are invalid.");
+  const supportingCharacterAssetLinks = rawSupportingLinks.map((entry) => {
+    if (!isPlainObject(entry) || Object.keys(entry).length !== 2 || Object.keys(entry).some((key) => !["characterId", "assetId"].includes(key))) throw longInvalidRequest("Supporting character Asset link is invalid.");
+    const characterId = entry.characterId; const assetId = entry.assetId;
+    if (!boundedText(characterId, 80) || !boundedText(assetId, 160)) throw longInvalidRequest("Supporting character Asset link is invalid.");
+    const character = characters.find((item) => item.id === characterId.trim());
+    if (!character || character.role !== "supporting") throw longInvalidRequest("Only a reviewed supporting character can link a supporting Asset Folder.");
+    return { characterId: character.id, assetId: assetId.trim() };
+  });
+  if (new Set(supportingCharacterAssetLinks.map((link) => link.characterId)).size !== supportingCharacterAssetLinks.length
+    || new Set(supportingCharacterAssetLinks.map((link) => link.assetId)).size !== supportingCharacterAssetLinks.length
+    || (typeof protagonistAssetId === "string" && supportingCharacterAssetLinks.some((link) => link.assetId === protagonistAssetId.trim()))) throw longInvalidRequest("Each supporting character and Asset Folder can be linked only once.");
   const episodes = analysisValue.episodes.map((item, index) => {
     if (!isPlainObject(item) || Object.keys(item).some((key) => !["episodeNumber", "title", "summary", "mainEvent", "conflict", "cliffhanger", "nextEpisodeHook"].includes(key))
       || item.episodeNumber !== index + 1 || !boundedText(item.title, 120) || !boundedText(item.summary, 1200)
@@ -138,13 +153,12 @@ function novelStoryProjectInput(value: unknown): { projectId: string; settings: 
   if (projectSettings.title !== analysisValue.title.trim() || projectSettings.logline !== analysisValue.logline.trim()
     || projectSettings.genre !== analysisValue.genre.trim() || projectSettings.tone !== analysisValue.tone.trim()
     || projectSettings.theme !== analysisValue.theme.trim()) throw longInvalidRequest("Project settings must match the reviewed story analysis.");
-  const protagonistAssetId = value.protagonistAssetId;
-  if (protagonistAssetId !== undefined && !boundedText(protagonistAssetId, 160)) throw longInvalidRequest();
   return {
     projectId: id, settings: projectSettings,
     source: { inputSha256: sourceValue.inputSha256 as string, promptSha256: sourceValue.promptSha256 as string, title: sourceValue.title.trim(), ...(sourceValue.sourceNote !== undefined ? { sourceNote: (sourceValue.sourceNote as string).trim() } : {}), rightsConfirmedAt: sourceValue.rightsConfirmedAt, analyzedAt: sourceValue.analyzedAt, model: sourceValue.model.trim(), episodeCount: sourceValue.episodeCount as number, sceneCount: sourceValue.sceneCount as number },
     analysis: { title: analysisValue.title.trim(), logline: analysisValue.logline.trim(), genre: analysisValue.genre.trim(), tone: analysisValue.tone.trim(), theme: analysisValue.theme.trim(), characters, episodes, warnings: analysisValue.warnings as string[] },
     ...(typeof protagonistAssetId === "string" ? { protagonistAssetId: protagonistAssetId.trim() } : {}),
+    supportingCharacterAssetLinks,
   };
 }
 function toSettings(s: Stored): LongProjectSettings { return { title: s.title, logline: s.logline, overview: s.overview, genre: s.genre, tone: s.tone, theme: s.theme, episodeCount: s.episode_count, episodeDurationSeconds: s.scene_count * s.clip_duration_seconds, sceneCount: s.scene_count, clipDurationSeconds: s.clip_duration_seconds, aspectRatio: s.aspect_ratio, audience: s.audience, notes: s.notes, startingState: s.starting_state, midpoint: s.midpoint, endingDirection: s.ending_direction, storyFlowSummary: s.story_flow_summary, narrationEnabled: s.narration_enabled, subtitlesEnabled: s.subtitles_enabled, visualStyle: s.visual_style ?? "", color: s.color ?? "", lighting: s.lighting ?? "", avoid: s.avoid ?? "" }; }
@@ -208,11 +222,19 @@ export class LongProjectsService {
       try { asset = await this.assets.get(input.protagonistAssetId); } catch { throw longInvalidRequest("The selected protagonist character is unavailable."); }
       if (asset.asset_type !== "character" || !asset.is_folder || !asset.enabled) throw longInvalidRequest("The selected protagonist character is unavailable.");
     }
+    if (input.supportingCharacterAssetLinks.length > 0) {
+      if (!this.assets) throw longInvalidRequest("The selected supporting character Folder is unavailable.");
+      for (const link of input.supportingCharacterAssetLinks) {
+        let asset; try { asset = await this.assets.get(link.assetId); } catch { throw longInvalidRequest("The selected supporting character Folder is unavailable."); }
+        if (asset.asset_type !== "character" || !asset.is_folder || !asset.enabled) throw longInvalidRequest("The selected supporting character Folder is unavailable.");
+      }
+    }
 
     const now = new Date().toISOString();
     const stored = setStored(input.projectId, input.settings, now, now, "outline_ready");
     const basic: Record<string, unknown> = { characterCards: input.analysis.characters, warnings: input.analysis.warnings };
     if (input.protagonistAssetId) basic.protagonist_asset_link = { asset_id: input.protagonistAssetId, version_policy: "follow_latest", pinned_version: null };
+    if (input.supportingCharacterAssetLinks.length) basic.supporting_character_asset_links = input.supportingCharacterAssetLinks.map((link) => ({ character_id: link.characterId, asset_id: link.assetId }));
     const bible = { basic, world: {}, characters: [], locations: [], props: [], secrets: [], foreshadowing: [], summaries: {}, updated_at: now };
     const outlines = input.analysis.episodes.map((episode) => ({
       episode_number: episode.episodeNumber, title: episode.title.trim(), summary: episode.summary.trim(),

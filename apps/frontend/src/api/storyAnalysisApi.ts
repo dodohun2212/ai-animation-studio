@@ -83,6 +83,9 @@ export function isNovelStoryAnalysisPreviewResponse(value: unknown): value is No
   const preview = value.preview;
   if (!isString(preview.inputSha256) || !isString(preview.promptSha256) || !isString(preview.prompt) || !isString(preview.model)) return false;
   if (!isFiniteNumber(preview.sourceCharacterCount) || !isFiniteNumber(preview.estimatedCostUsd) || typeof preview.providerAvailable !== "boolean") return false;
+  // M4 긴 글: 조각 수·호출 수·호출 순서대로의 프롬프트. 호출 수와 프롬프트 수가 어긋나면 무엇을 승인하는지 말할 수 없어 거절합니다.
+  if (!isFiniteNumber(preview.sourceChunkCount) || preview.sourceChunkCount < 1 || !isFiniteNumber(preview.providerCallCount) || preview.providerCallCount < 1) return false;
+  if (!isStringArray(preview.prompts) || preview.prompts.length !== preview.providerCallCount) return false;
   if (value.budget === undefined) return true;
   const budget = value.budget;
   return isRecord(budget)

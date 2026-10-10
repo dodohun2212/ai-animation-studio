@@ -22,10 +22,10 @@ interface Props {
   onOpenSettings: () => void;
   /** 그림이 보관함에 등록된 뒤 — 부모가 보관함 목록을 새로 읽는다. */
   onGenerated: (result: GenerateNovelCharacterImageResponse) => void;
-  /** 사람이 그림을 본 뒤 「주인공 이미지로 쓰기」를 눌렀을 때만(주인공 카드에서만 나온다). */
-  onUseAsProtagonist: (folderAssetId: string) => void;
-  /** 이 폴더가 이미 주인공 이미지로 골라져 있는지. */
-  usedAsProtagonistFolderId: string;
+  /** 사람이 그림을 본 뒤 「이 그림을 … 이미지로 쓰기」를 눌렀을 때만 — 주인공이면 주인공 폴더, 조연이면 그 조연의 폴더로(M4). */
+  onUseImage: (folderAssetId: string) => void;
+  /** 이 인물에 이미 골라 둔 폴더(없으면 ""). */
+  usedFolderId: string;
   disabled?: boolean;
 }
 
@@ -36,12 +36,12 @@ const usd = (value: number) => `$${value.toFixed(2)}`;
  *
  * 🔴 화면을 열거나 미리보기를 만들거나 프로젝트를 확정하는 것만으로는 이미지 요청이 나가지 않습니다. 돈이 나가는 건
  * 「승인하고 이미지 만들기」 한 곳이고, 미리보기 뒤 인물 칸이 바뀌면 그 버튼이 꺼집니다(서버도 해시가 다르면 거절).
- * 🟠 주인공 폴더 연결은 **사람이 그림을 본 뒤 따로 누르는 선택**입니다. 조연은 보관함에 폴더로만 저장되고, 장기 프로젝트의
- * 조연 연결은 아직 없으므로(M4) 연결됐다고 말하지 않습니다.
+ * 🟠 폴더 연결은 **사람이 그림을 본 뒤 따로 누르는 선택**입니다 — 주인공이면 주인공 폴더, 조연이면 그 조연의 폴더(M4: 조연 연결이
+ * 생겨 조연도 프로젝트에 연결됩니다).
  */
 export function CharacterImageControl({
   storyInputSha256, characterId, name, appearance, personality, isProtagonist,
-  onOpenSettings, onGenerated, onUseAsProtagonist, usedAsProtagonistFolderId, disabled = false,
+  onOpenSettings, onGenerated, onUseImage, usedFolderId, disabled = false,
 }: Props) {
   const input: NovelCharacterImageInput = { storyInputSha256, characterId, name: name.trim(), appearance: appearance.trim(), personality: personality.trim() };
   const inputKey = JSON.stringify(input);
@@ -135,15 +135,11 @@ export function CharacterImageControl({
               그림은 만들어졌지만 이번 지출이 월 예산 장부에 기록되지 않았을 수 있습니다. 실제 청구는 OpenAI 사용량에서 확인해 주세요.
             </p>
           )}
-          {isProtagonist ? (
-            usedAsProtagonistFolderId === currentResult.folderAssetId
-              ? <p data-testid={`character-image-linked-${characterId}`} className="text-[11px] text-emerald-300">이 그림이 주인공 이미지로 연결되도록 골라져 있습니다. 프로젝트를 확정하면 연결됩니다.</p>
-              : <button type="button" data-testid={`character-image-use-${characterId}`} className={smallOutlineButton} onClick={() => onUseAsProtagonist(currentResult.folderAssetId)} disabled={disabled}>
-                  이 그림을 주인공 이미지로 쓰기
-                </button>
-          ) : (
-            <p className="text-[11px] text-bone-faint">보관함에 폴더로만 저장됩니다. 장기 프로젝트의 조연 연결은 아직 없어 이 프로젝트에는 연결되지 않습니다.</p>
-          )}
+          {usedFolderId === currentResult.folderAssetId
+            ? <p data-testid={`character-image-linked-${characterId}`} className="text-[11px] text-emerald-300">이 그림이 {isProtagonist ? "주인공" : "이 조연의"} 이미지로 연결되도록 골라져 있습니다. 프로젝트를 확정하면 연결됩니다.</p>
+            : <button type="button" data-testid={`character-image-use-${characterId}`} className={smallOutlineButton} onClick={() => onUseImage(currentResult.folderAssetId)} disabled={disabled}>
+                {isProtagonist ? "이 그림을 주인공 이미지로 쓰기" : "이 그림을 이 조연의 이미지로 쓰기"}
+              </button>}
         </div>
       )}
 

@@ -4,6 +4,7 @@ import { CLIP_DURATION_CHOICES, MAX_SCENE_COUNT, MIN_SCENE_COUNT, type LongProje
 import { getLongProjectSettings, toLongProjectDisplayError, updateLongProjectSettings } from "../api/longProjectsApi.js";
 import { GlobalStyleAssetCard } from "./GlobalStyleAssetCard.js";
 import { ProtagonistAssetCard } from "./ProtagonistAssetCard.js";
+import { SupportingCastCard } from "./SupportingCastCard.js";
 import { Spinner } from "./Spinner.js";
 import { StorySecretsCard } from "./StorySecretsCard.js";
 import { LONG_STORY_HINTS, filledCountLabel } from "./ui/longStoryHints.js";
@@ -396,6 +397,7 @@ export function LongProjectSettingsScreen({ projectId, onBack }: Props) {
           They sit outside the settings form because each saves through its own endpoint — one button per thing
           that is actually stored separately. Pictures first (one choice each), then the two lists. */}
       {state.settings && <ProtagonistAssetCard projectId={projectId} />}
+      {state.settings && <SupportingCastCard projectId={projectId} />}
       {state.settings && <GlobalStyleAssetCard projectId={projectId} />}
       {state.settings && <StoryWorldCard projectId={projectId} />}
       {state.settings && <StorySecretsCard projectId={projectId} />}
