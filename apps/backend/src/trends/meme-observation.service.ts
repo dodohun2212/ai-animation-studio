@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { HttpException, HttpStatus } from "@nestjs/common";
-import { isMemeTrendWorkspace, type AnalyzeMemeVideoRequest, type ApiError, type MemeTrendAnalysis, type MemeTrendWorkspace, type SaveMemeObservationCardsRequest } from "@ai-animation-studio/shared";
+import { isMemeTrendWorkspace, MEME_ANALYSIS_SOURCE_LIMIT, type AnalyzeMemeVideoRequest, type ApiError, type MemeTrendAnalysis, type MemeTrendWorkspace, type SaveMemeObservationCardsRequest } from "@ai-animation-studio/shared";
 
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { ProviderSettingsService } from "../settings/provider-settings.service.js";
@@ -23,6 +23,7 @@ export class MemeObservationService {
   private readonly filePath: string;
   private readonly quota: MemeAnalysisQuota;
   private pending: Promise<void> = Promise.resolve();
+  private analysisPending: Promise<void> = Promise.resolve();
 
   constructor(root: string, private readonly trends: MemeTrendsService, private readonly settings: ProviderSettingsService,
     private readonly fetchImpl: typeof fetch = globalThis.fetch, private readonly now: () => Date = () => new Date()) {
@@ -46,12 +47,20 @@ export class MemeObservationService {
     let parsed: unknown;
     try { parsed = JSON.parse(raw); } catch { throw apiError("MEME_WORKSPACE_STORE_UNREADABLE", `${STORE_FILENAME} 파일의 형식이 올바르지 않습니다.`, HttpStatus.INTERNAL_SERVER_ERROR); }
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw apiError("MEME_WORKSPACE_STORE_UNREADABLE", `${STORE_FILENAME} 파일의 형식이 올바르지 않습니다.`, HttpStatus.INTERNAL_SERVER_ERROR);
-    for (const [id, value] of Object.entries(parsed)) {
-      if (!isMemeTrendWorkspace({ ...(value as object), dailyCalls: null }) || (value as SavedWorkspace).trendId !== id) {
+    const workspaces = parsed as Record<string, unknown>;
+    for (const [id, value] of Object.entries(workspaces)) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
         throw apiError("MEME_WORKSPACE_STORE_UNREADABLE", `${STORE_FILENAME} 파일의 형식이 올바르지 않습니다.`, HttpStatus.INTERNAL_SERVER_ERROR);
       }
+      const legacy = value as Record<string, unknown>;
+      const analyses = Array.isArray(legacy.analyses) ? legacy.analyses : ("analysis" in legacy ? (legacy.analysis === null ? [] : [legacy.analysis]) : null);
+      const normalized = { trendId: legacy.trendId, analyses, cards: legacy.cards, cardsSavedAt: legacy.cardsSavedAt };
+      if (!isMemeTrendWorkspace({ ...normalized, dailyCalls: null }) || normalized.trendId !== id) {
+        throw apiError("MEME_WORKSPACE_STORE_UNREADABLE", `${STORE_FILENAME} 파일의 형식이 올바르지 않습니다.`, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+      workspaces[id] = normalized;
     }
-    return parsed as Record<string, SavedWorkspace>;
+    return workspaces as Record<string, SavedWorkspace>;
   }
 
   private async writeStore(store: Record<string, SavedWorkspace>): Promise<void> {
@@ -61,7 +70,7 @@ export class MemeObservationService {
     } catch { throw apiError("MEME_WORKSPACE_STORE_UNREADABLE", `${STORE_FILENAME} 파일을 쓸 수 없습니다.`, HttpStatus.INTERNAL_SERVER_ERROR); }
   }
 
-  private empty(trendId: string): SavedWorkspace { return { trendId, analysis: null, cards: [], cardsSavedAt: null }; }
+  private empty(trendId: string): SavedWorkspace { return { trendId, analyses: [], cards: [], cardsSavedAt: null }; }
   private async dailyCalls(): Promise<MemeTrendWorkspace["dailyCalls"]> {
     try { return await this.quota.dailyCalls(); } catch { return null; }
   }
@@ -93,7 +102,7 @@ export class MemeObservationService {
       if (saved.cardsSavedAt !== body.expectedCardsSavedAt) throw apiError("MEME_CARDS_CONFLICT", "다른 저장본이 있습니다. 목록을 다시 읽어 주세요.", HttpStatus.CONFLICT);
       // A saved source can age out of the refreshed feed; keep that user's card editable.
       const validVideoIds = new Set([...trend.videos.map((video) => video.videoId),
-        ...(saved.analysis ? [saved.analysis.sourceVideoId] : []),
+        ...saved.analyses.map((analysis) => analysis.sourceVideoId),
         ...saved.cards.flatMap((card) => card.sourceVideoId ? [card.sourceVideoId] : [])]);
       if (cards.some((card) => card.sourceVideoId && !validVideoIds.has(card.sourceVideoId))) {
         throw apiError("MEME_CARDS_INVALID", "카드의 출처 영상이 이 밈 후보에 없습니다.", HttpStatus.BAD_REQUEST);
@@ -106,12 +115,33 @@ export class MemeObservationService {
   }
 
   async analyze(trendId: string, body: AnalyzeMemeVideoRequest): Promise<MemeTrendWorkspace> {
+    const before = this.analysisPending;
+    let release!: () => void;
+    this.analysisPending = new Promise<void>((resolve) => { release = resolve; });
+    await before;
+    try { return await this.analyzeOnce(trendId, body); } finally { release(); }
+  }
+
+  private async analyzeOnce(trendId: string, body: AnalyzeMemeVideoRequest): Promise<MemeTrendWorkspace> {
     const trend = await this.trend(trendId);
     const videoId = body?.sourceVideoId;
-    if (typeof videoId !== "string" || !trend.videos.some((video) => video.videoId === videoId)) {
+    const sourceVideo = trend.videos.find((video) => video.videoId === videoId);
+    if (typeof videoId !== "string" || !sourceVideo) {
       throw apiError("MEME_ANALYSIS_VIDEO_NOT_IN_TREND", "선택한 영상이 이 밈 후보에 없습니다. 목록을 다시 읽어 주세요.", HttpStatus.BAD_REQUEST);
     }
-    await this.readStore();
+    const savedBeforeRequest = (await this.readStore())[trendId] ?? this.empty(trendId);
+    const sameVideo = savedBeforeRequest.analyses.find((item) => item.sourceVideoId === videoId);
+    const otherVideos = savedBeforeRequest.analyses.filter((item) => item.sourceVideoId !== videoId);
+    const knownSourceVideos = otherVideos.map((item) => trend.videos.find((video) => video.videoId === item.sourceVideoId));
+    if (!sameVideo && knownSourceVideos.some((video) => !video)) {
+      throw apiError("MEME_ANALYSIS_SOURCE_UNKNOWN", "이전에 분석한 영상이 현재 후보 목록에서 빠져 제작자를 확인할 수 없습니다. 저장된 제안을 사용하거나 후보를 다시 모아 주세요.", HttpStatus.CONFLICT);
+    }
+    if (knownSourceVideos.some((video) => video?.channelId === sourceVideo.channelId)) {
+      throw apiError("MEME_ANALYSIS_CHANNEL_ALREADY_USED", "이 제작자의 영상은 이미 분석했습니다. 다른 제작자의 대표 영상을 골라 주세요.", HttpStatus.CONFLICT);
+    }
+    if (!sameVideo && savedBeforeRequest.analyses.length >= MEME_ANALYSIS_SOURCE_LIMIT) {
+      throw apiError("MEME_ANALYSIS_SOURCE_LIMIT", "이 밈은 서로 다른 제작자 영상 3편까지 분석할 수 있습니다.", HttpStatus.CONFLICT);
+    }
     const key = await this.settings.rawCredentialIfConnected("gemini");
     if (!key) throw apiError("MEME_ANALYSIS_KEY_MISSING", "Gemini 키가 없습니다. API 설정에서 저장하거나 아래에서 직접 적을 수 있습니다.", HttpStatus.BAD_REQUEST);
     let dailyCalls: MemeTrendWorkspace["dailyCalls"];
@@ -130,7 +160,11 @@ export class MemeObservationService {
     }
     return this.mutate(async (store) => {
       const saved = store[trendId] ?? this.empty(trendId);
-      const next = { ...saved, analysis };
+      const previous = saved.analyses.findIndex((item) => item.sourceVideoId === videoId);
+      const analyses = [...saved.analyses];
+      if (previous >= 0) analyses[previous] = analysis;
+      else analyses.push(analysis);
+      const next = { ...saved, analyses };
       store[trendId] = next;
       await this.writeStore(store);
       return { ...next, dailyCalls };

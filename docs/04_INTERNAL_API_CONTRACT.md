@@ -46,9 +46,9 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 ## 밈 관찰 작업 공간
 
-`GET /trends/memes/:trendId/workspace`는 현재 피드에 있는 후보의 저장된 `MemeTrendWorkspace`만 읽는다. `POST /trends/memes/:trendId/analysis`는 그 후보의 `videos[]`에 속한 `sourceVideoId` 한 편을 명시적으로 Gemini에 보낸다. 성공하고 JSON을 검증한 경우에만 마지막 `analysis`를 교체하며, 사람이 저장한 `cards`는 바꾸지 않는다. `PUT /trends/memes/:trendId/cards`는 `expectedCardsSavedAt`으로 동시 편집을 확인하고 카드만 저장한다. 카드 추가·수정·조회에는 Provider 호출이 없다.
+`GET /trends/memes/:trendId/workspace`는 현재 피드에 있는 후보의 저장된 `MemeTrendWorkspace`만 읽는다. 응답 `analyses[]`는 서로 다른 제작자의 분석 제안을 최대 3건 보존하고, `sourceVideoId` 외 YouTube 제목·채널 메타데이터를 복사하지 않는다. `POST /trends/memes/:trendId/analysis`는 그 후보 `videos[]`의 `sourceVideoId` 한 편만 명시적으로 Gemini에 보낸다. 성공하고 JSON을 검증한 경우 같은 영상 분석만 교체하고 다른 출처 제안과 사람이 저장한 `cards`는 바꾸지 않는다. 저장된 영상이 현재 후보 피드에서 빠져 채널 중복 여부를 검증할 수 없으면 새 분석은 `MEME_ANALYSIS_SOURCE_UNKNOWN`으로 거절한다. 이미 분석한 제작자의 다른 영상은 `MEME_ANALYSIS_CHANNEL_ALREADY_USED`, 분석 3건 뒤 새 출처는 `MEME_ANALYSIS_SOURCE_LIMIT`으로 거절한다. 기존 단일 `analysis` 저장 형식은 읽을 때 `analyses[]`로 정규화한다. `PUT /trends/memes/:trendId/cards`는 `expectedCardsSavedAt`으로 동시 편집을 확인하고 카드만 저장한다. 카드 추가·수정·조회에는 Provider 호출이 없다.
 
-영상 분석은 별도 `meme_analysis_call_usage.json`에 요청 **전에** 1회를 기록한다. 하루 최대 3회이며 실제 전송 뒤 실패해도 1회를 쓴다. 실패 시 기존 분석과 카드는 남고 `MEME_ANALYSIS_FAILED`의 `details.dailyCalls`가 새 횟수를 알린다. 장부가 읽히지 않으면 전송하지 않는다. 키 누락, 현재 후보 밖 영상, 카드 형식·충돌, 작업 공간 저장 오류는 각각 `MEME_ANALYSIS_KEY_MISSING`, `MEME_ANALYSIS_VIDEO_NOT_IN_TREND`, `MEME_CARDS_INVALID`, `MEME_CARDS_CONFLICT`, `MEME_WORKSPACE_STORE_UNREADABLE`로 구분한다. 현재 피드에서 빠진 후보는 `MEME_TREND_UNKNOWN`이지만 사람이 적은 카드 파일을 지우지 않는다. 저장 파일에는 YouTube 조회수·제목 등의 메타데이터를 복사하지 않는다.
+영상 분석은 별도 `meme_analysis_call_usage.json`에 요청 **전에** 1회를 기록한다. 하루 최대 3회이며 실제 전송 뒤 실패해도 1회를 쓴다. 실패 시 기존 분석과 카드는 남고 `MEME_ANALYSIS_FAILED`의 `details.dailyCalls`가 새 횟수를 알린다. 장부가 읽히지 않으면 전송하지 않는다. 키 누락, 현재 후보 밖 영상, 출처 제작자 중복·확인 불가, 후보별 출처 한도, 카드 형식·충돌, 작업 공간 저장 오류는 각각 `MEME_ANALYSIS_KEY_MISSING`, `MEME_ANALYSIS_VIDEO_NOT_IN_TREND`, `MEME_ANALYSIS_CHANNEL_ALREADY_USED`/`MEME_ANALYSIS_SOURCE_UNKNOWN`, `MEME_ANALYSIS_SOURCE_LIMIT`, `MEME_CARDS_INVALID`, `MEME_CARDS_CONFLICT`, `MEME_WORKSPACE_STORE_UNREADABLE`로 구분한다. 현재 피드에서 빠진 후보는 `MEME_TREND_UNKNOWN`이지만 사람이 적은 카드 파일을 지우지 않는다. 저장 파일에는 YouTube 조회수·제목 등의 메타데이터를 복사하지 않는다.
 
 ## 소설 분석 — M1
 

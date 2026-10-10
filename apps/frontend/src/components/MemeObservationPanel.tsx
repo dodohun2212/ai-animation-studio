@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  MEME_ANALYSIS_SOURCE_LIMIT,
   MEME_OBSERVATION_KINDS,
   MEME_OBSERVATION_LIMITS,
   PROVIDER_KEY_NOTES,
+  memeVideoGrowth,
   type MemeAnalysisSuggestion,
   type MemeObservationCard,
   type MemeObservationKind,
   type MemeTrend,
+  type MemeTrendAnalysis,
+  type MemeTrendVideo,
   type MemeTrendWorkspace,
   type Project,
   type SaveMemeObservationCardsRequest,
@@ -31,6 +35,8 @@ interface Props {
   onProjectCreated: (project: Project) => void;
   /** 저장된 카드 수가 알려질 때마다 — 화면 위 단계 띠가 「지금 몇 단계인가」를 말하는 데 씁니다. 미저장 입력은 세지 않습니다. */
   onSavedCardCount?: (count: number) => void;
+  /** 저장된 카드의 저장 시각이 알려질 때마다 — 「이 밈으로 만들기」가 저장된 카드를 다시 읽는 데 씁니다. */
+  onCardsSavedAt?: (savedAt: string | null) => void;
 }
 
 type DisplayError = { code: string; message: string };
@@ -132,6 +138,47 @@ function rangeLabel(start: number | null, end: number | null): string | null {
   return start !== null ? `${timeLabel(start)}부터` : `${timeLabel(end!)}까지`;
 }
 
+/** 제안 하나를 가리키는 열쇠 — 제안 ID 는 분석마다 따로 매겨질 수 있어 출처 영상과 함께 씁니다. */
+const suggestionKey = (sourceVideoId: string | null, suggestionId: string | undefined) => `${sourceVideoId ?? ""}\u0000${suggestionId ?? ""}`;
+
+/**
+ * 근거별 대표 영상(CLI 1340) — 계산된 것만. 도달 규모 = 공개 조회수가 가장 큰 영상, 실측 증가 = `memeVideoGrowth()` 가
+ * 계산된 영상 중 하루 평균 증가가 가장 큰 영상, 내용 분석 = 분석이 성공해 저장된 출처. 계산되지 않은 역할은 null/빈 목록이고
+ * 화면은 그 줄을 그리지 않습니다 — 「공통 패턴」 같은 검증하지 않은 결론은 만들지 않습니다.
+ */
+export function memeVideoRoles(trend: MemeTrend, analyses: MemeTrendAnalysis[]): {
+  reach: MemeTrendVideo | null;
+  growth: { video: MemeTrendVideo; viewsPerDay: number } | null;
+  analyzed: string[];
+} {
+  let reach: MemeTrendVideo | null = null;
+  let growth: { video: MemeTrendVideo; viewsPerDay: number } | null = null;
+  for (const video of trend.videos) {
+    if (video.viewCount !== null && (reach === null || video.viewCount > reach.viewCount!)) reach = video;
+    const measured = memeVideoGrowth(video);
+    if (measured && (growth === null || measured.viewsPerDay > growth.viewsPerDay)) growth = { video, viewsPerDay: measured.viewsPerDay };
+  }
+  return { reach, growth, analyzed: analyses.map((analysis) => analysis.sourceVideoId) };
+}
+
+/**
+ * 이 영상을 지금 분석할 수 없는 이유 — 서버의 같은 검사(`MEME_ANALYSIS_*`)를 화면이 먼저 말합니다. 이미 분석한 영상은
+ * 다시 분석할 수 있습니다(성공하면 그 영상의 제안만 바뀜). 화면 판단이 어긋나도 서버 오류 코드가 막습니다.
+ */
+export function analysisBlockReason(trend: MemeTrend, analyses: MemeTrendAnalysis[], videoId: string): string | null {
+  const video = trend.videos.find((item) => item.videoId === videoId);
+  if (!video) return "고른 영상이 이 후보의 목록에 없습니다.";
+  if (analyses.some((analysis) => analysis.sourceVideoId === videoId)) return null;
+  const sources = analyses.map((analysis) => trend.videos.find((item) => item.videoId === analysis.sourceVideoId));
+  if (sources.some((source) => source === undefined)) return "전에 분석한 영상이 목록에서 빠져 제작자가 겹치는지 확인할 수 없습니다 — 새 영상은 분석하지 않습니다.";
+  if (sources.some((source) => source?.channelId === video.channelId)) return "이 제작자의 영상은 이미 분석했습니다 — 다른 제작자의 영상을 고르세요.";
+  if (analyses.length >= MEME_ANALYSIS_SOURCE_LIMIT) return `서로 다른 제작자의 영상 ${MEME_ANALYSIS_SOURCE_LIMIT}편을 이미 분석했습니다 — 이미 분석한 영상만 다시 분석할 수 있습니다.`;
+  return null;
+}
+
+const videoLabel = (video: MemeTrendVideo | undefined, sourceVideoId: string) =>
+  video ? `「${video.title}」 · ${video.channelTitle}` : `목록에서 빠진 영상 (${sourceVideoId})`;
+
 /** 가져온 뒤 고쳤는지 — 서버는 표시를 따로 두지 않고, 제안 원문과 비교합니다(CLI Round 1280 결정 4). */
 function editedFromSuggestion(card: DraftCard, suggestion: MemeAnalysisSuggestion | undefined): boolean {
   if (!suggestion) return false;
@@ -150,8 +197,11 @@ function editedFromSuggestion(card: DraftCard, suggestion: MemeAnalysisSuggestio
  * 🔴 **제안과 카드는 다른 것입니다.** 제안은 모델이 낸 것(읽기 전용)이고, 카드는 사람이 저장한 것입니다. 분석이
  * 성공해도 카드는 바뀌지 않고, 「카드로 가져오기」를 누른 것만 복사됩니다. 그래서 분석이 실패하거나 키가 없어도
  * 사람이 적어 둔 것은 그대로이고, **직접 적는 길이 언제나 열려 있습니다.**
+ *
+ * 🟠 **출처 비교(CLI 1340):** 한 후보에서 서로 다른 제작자의 영상 3편까지 한 편씩 분석해 제안을 출처별로 나란히 봅니다.
+ * 피드에서 빠진 영상의 분석도 지우지 않고 「목록에서 빠진 영상」으로 읽힙니다. 고른 제안만 카드가 되고, 저장은 사람이 누릅니다.
  */
-export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, onSavedCardCount }: Props) {
+export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, onSavedCardCount, onCardsSavedAt }: Props) {
   const [workspace, setWorkspace] = useState<MemeTrendWorkspace | null>(null);
   const [loadError, setLoadError] = useState<DisplayError | null>(null);
   const [drafts, setDrafts] = useState<DraftCard[]>([]);
@@ -196,19 +246,25 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
 
   const savedCardCount = workspace?.cards.length ?? null;
   useEffect(() => { if (savedCardCount !== null) onSavedCardCount?.(savedCardCount); }, [savedCardCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cardsSavedAt = workspace === null ? undefined : workspace.cardsSavedAt;
+  useEffect(() => { if (cardsSavedAt !== undefined) onCardsSavedAt?.(cardsSavedAt); }, [cardsSavedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const suggestionsById = useMemo(
-    () => new Map((workspace?.analysis?.suggestions ?? []).map((item) => [item.id, item])),
-    [workspace?.analysis],
+  const analyses = workspace?.analyses ?? [];
+  const suggestionsByKey = useMemo(
+    () => new Map((workspace?.analyses ?? []).flatMap((analysis) => analysis.suggestions.map((item) => [suggestionKey(analysis.sourceVideoId, item.id), item] as const))),
+    [workspace?.analyses],
   );
+  const analysesBySource = useMemo(() => new Map((workspace?.analyses ?? []).map((analysis) => [analysis.sourceVideoId, analysis])), [workspace?.analyses]);
+  const roles = memeVideoRoles(trend, analyses);
+  const blockReason = workspace ? analysisBlockReason(trend, analyses, videoId) : null;
+  const reanalysis = analyses.some((analysis) => analysis.sourceVideoId === videoId);
   const unsaved = draftSignature(drafts) !== savedSignature;
   const problems = drafts.map(draftProblem);
   const canSave = !saving && workspace !== null && problems.every((problem) => problem === null) && unsaved;
   const calls = workspace?.dailyCalls ?? null;
   const limitReached = calls !== null && calls.used >= calls.limit;
-  const canAnalyze = !analyzing && workspace !== null && calls !== null && !limitReached && trend.videos.some((video) => video.videoId === videoId);
+  const canAnalyze = !analyzing && workspace !== null && calls !== null && !limitReached && blockReason === null;
   const atCardLimit = drafts.length >= MEME_OBSERVATION_LIMITS.cardsMax;
-  const analysisVideo = workspace?.analysis ? trend.videos.find((video) => video.videoId === workspace.analysis!.sourceVideoId) : undefined;
 
   async function analyze(): Promise<void> {
     if (!canAnalyze) return;
@@ -216,8 +272,8 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
     setAnalyzeError(null);
     try {
       const next = await analyzeMemeVideo(trend.id, { sourceVideoId: videoId });
-      // 🔴 카드는 건드리지 않습니다 — 고치던 입력도 그대로. 제안과 횟수만 새 것으로.
-      setWorkspace((old) => (old ? { ...old, analysis: next.analysis, dailyCalls: next.dailyCalls } : next));
+      // 🔴 카드는 건드리지 않습니다 — 고치던 입력도 그대로. 분석 목록(다른 출처 포함 서버 기준)과 횟수만 새 것으로.
+      setWorkspace((old) => (old ? { ...old, analyses: next.analyses, dailyCalls: next.dailyCalls } : next));
     } catch (caught) {
       setAnalyzeError(toMemeTrendDisplayError(caught));
       const updated = dailyCallsFromError(caught);
@@ -261,10 +317,10 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
     setDrafts((old) => [...old, { key: nextKey(), kind: "line", text: "", start: "", end: "", origin: "manual", sourceVideoId: null }]);
   }
 
-  function importSuggestion(suggestion: MemeAnalysisSuggestion): void {
-    if (atCardLimit || !workspace?.analysis) return;
+  function importSuggestion(analysis: MemeTrendAnalysis, suggestion: MemeAnalysisSuggestion): void {
+    if (atCardLimit) return;
     setSavedNotice(false);
-    const sourceVideoId = workspace.analysis.sourceVideoId;
+    const sourceVideoId = analysis.sourceVideoId;
     setDrafts((old) => [...old, {
       key: nextKey(),
       kind: suggestion.kind,
@@ -283,8 +339,8 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
         <h2 className="text-base font-semibold text-bone">밈 관찰 카드</h2>
         <p className="text-xs text-bone-dim">이 밈이 어떤 밈인지 — 외치는 말, 따라 하는 동작, 맞추는 타이밍 — 을 한 줄씩 적어 두는 곳입니다. 다음 단계에서 이 내용으로 내 캐릭터 장면을 짭니다.</p>
         <ol data-testid="meme-observations-howto" className="list-inside list-decimal space-y-0.5 pt-1 text-xs text-bone-faint">
-          <li>위 영상 제목을 눌러 새 탭에서 보고, 기억할 말·동작을 아래 카드에 적습니다.</li>
-          <li>「카드 저장」을 누릅니다.</li>
+          <li>영상을 새 탭에서 보고 직접 적거나, 영상을 한 편씩 골라 분석해(선택) 출처별 제안을 비교합니다.</li>
+          <li>쓸 제안만 「카드로 가져오기」로 가져와 고친 뒤 「카드 저장」을 누릅니다 — 제안이 저절로 카드가 되지는 않습니다.</li>
           <li>저장하면 「이 카드로 애니메이션 초안 만들기」가 나옵니다.</li>
         </ol>
       </div>
@@ -302,7 +358,33 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
 
       {workspace && (
         <>
-          {/* ── 분석: 누를 때 한 번 ── */}
+          {/* ── 근거별 대표 영상: 계산된 역할만 ── */}
+          {(roles.reach || roles.growth || roles.analyzed.length > 0) && (
+            <dl data-testid="meme-video-roles" className="grid gap-x-3 gap-y-1 text-xs sm:grid-cols-[auto_1fr]">
+              {roles.reach && (
+                <>
+                  <dt className="text-bone-faint">도달 규모</dt>
+                  <dd data-testid="meme-role-reach" className="min-w-0 truncate text-bone-dim">{videoLabel(roles.reach, roles.reach.videoId)} · 공개 조회수 {roles.reach.viewCount!.toLocaleString("ko-KR")}회 (가장 큼)</dd>
+                </>
+              )}
+              {roles.growth && (
+                <>
+                  <dt className="text-bone-faint">실측 증가</dt>
+                  <dd data-testid="meme-role-growth" className="min-w-0 truncate text-bone-dim">{videoLabel(roles.growth.video, roles.growth.video.videoId)} · 지난 수집 이후 하루 평균 +{roles.growth.viewsPerDay.toLocaleString("ko-KR")}회 (가장 큼)</dd>
+                </>
+              )}
+              {roles.analyzed.length > 0 && (
+                <>
+                  <dt className="text-bone-faint">내용 분석</dt>
+                  <dd data-testid="meme-role-analyzed" className="min-w-0 text-bone-dim">
+                    {roles.analyzed.map((sourceVideoId) => videoLabel(trend.videos.find((video) => video.videoId === sourceVideoId), sourceVideoId)).join(" / ")}
+                  </dd>
+                </>
+              )}
+            </dl>
+          )}
+
+          {/* ── 분석: 누를 때 한 편씩 ── */}
           <div className="space-y-2" data-testid="meme-analysis">
             <div className="flex flex-wrap items-end gap-3">
               <label className="min-w-0 flex-1 space-y-1">
@@ -314,17 +396,25 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
                   disabled={analyzing}
                   className="w-full rounded border border-line bg-slate-900/70 px-2.5 py-1.5 text-sm text-bone"
                 >
-                  {trend.videos.map((video) => (
-                    <option key={video.videoId} value={video.videoId}>
-                      {video.title} · {video.channelTitle}{video.viewCount === null ? "" : ` · ${video.viewCount.toLocaleString("ko-KR")}회`}
-                    </option>
-                  ))}
+                  {trend.videos.map((video) => {
+                    const done = analysesBySource.has(video.videoId);
+                    const blocked = analysisBlockReason(trend, analyses, video.videoId) !== null;
+                    return (
+                      <option key={video.videoId} value={video.videoId} disabled={blocked && video.videoId !== videoId}>
+                        {video.channelTitle} · {video.title}{video.viewCount === null ? "" : ` · ${video.viewCount.toLocaleString("ko-KR")}회`}{done ? " · 분석함" : blocked ? " · 지금 분석 못 함" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
               <button type="button" data-testid="meme-analysis-run" className={outlineButton} onClick={() => void analyze()} disabled={!canAnalyze}>
-                {analyzing ? "분석하는 중…" : "이 영상 분석 (Gemini 1회)"}
+                {analyzing ? "분석하는 중…" : reanalysis ? "이 영상 다시 분석 (Gemini 1회 · 이 영상 제안만 바뀜)" : "이 영상 분석 (Gemini 1회)"}
               </button>
             </div>
+            {blockReason && <p role="status" data-testid="meme-analysis-blocked" className="text-xs text-amber-300">{blockReason}</p>}
+            <p className="text-xs text-bone-faint" data-testid="meme-analysis-sources">
+              한 밈에서 서로 다른 제작자의 영상 {MEME_ANALYSIS_SOURCE_LIMIT}편까지 한 편씩 분석해 비교할 수 있습니다(지금 {analyses.length}편). 자동으로 이어 분석하지 않습니다.
+            </p>
             <p className="text-xs text-bone-dim" data-testid="meme-analysis-calls">
               {calls === null
                 ? "분석 사용 기록을 읽지 못해 오늘 쓴 횟수를 모릅니다 — 확인하기 전에는 분석을 부르지 않습니다."
@@ -351,41 +441,53 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
             )}
           </div>
 
-          {/* ── 제안: 읽기 전용 ── */}
-          {workspace.analysis && (
+          {/* ── 제안: 읽기 전용, 출처별 비교 ── */}
+          {analyses.length > 0 && (
             <div className="space-y-2" data-testid="meme-suggestions">
               <h3 className="text-sm font-medium text-bone">
-                Gemini 제안 <span className="font-normal text-bone-faint">· 제안일 뿐입니다</span>
+                Gemini 제안 비교 <span className="font-normal text-bone-faint">· 제안일 뿐입니다 — 쓸 것만 골라 카드로 가져오세요</span>
               </h3>
-              <p className="text-[11px] text-bone-faint" data-testid="meme-suggestions-source">
-                {analysisVideo ? `「${analysisVideo.title}」` : "목록에서 빠진 영상"} · {formatDateTime(workspace.analysis.analyzedAt)} 분석 · {workspace.analysis.model}
-              </p>
-              {workspace.analysis.suggestions.length === 0 ? (
-                <p className="text-xs text-bone-dim" data-testid="meme-suggestions-none">이 영상에서 알아볼 만한 말·동작을 찾지 못했다는 결과입니다. 다른 영상을 분석하거나 직접 적어 주세요.</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {workspace.analysis.suggestions.map((suggestion) => {
-                    const imported = drafts.some((card) => card.suggestionId === suggestion.id);
-                    const range = rangeLabel(suggestion.startSeconds, suggestion.endSeconds);
-                    return (
-                      <li key={suggestion.id} data-testid={`meme-suggestion-${suggestion.id}`} className="flex items-start gap-2 rounded border border-line px-3 py-2">
-                        <span className="rounded border border-line px-1.5 py-0.5 text-[11px] text-bone-dim">{MEME_OBSERVATION_KIND_LABELS[suggestion.kind]}</span>
-                        {range && <span className="pt-0.5 text-[11px] tabular-nums text-bone-faint">{range}</span>}
-                        <span className="min-w-0 flex-1 text-sm text-bone">{suggestion.text}</span>
-                        <button
-                          type="button"
-                          data-testid={`meme-suggestion-import-${suggestion.id}`}
-                          className={smallOutlineButton}
-                          onClick={() => importSuggestion(suggestion)}
-                          disabled={imported || atCardLimit}
-                        >
-                          {imported ? "가져옴" : "카드로 가져오기"}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+              <div className={`grid gap-3 ${analyses.length > 1 ? "lg:grid-cols-2 xl:grid-cols-3" : ""}`}>
+                {analyses.map((analysis) => {
+                  const sourceVideo = trend.videos.find((video) => video.videoId === analysis.sourceVideoId);
+                  return (
+                    <section key={analysis.sourceVideoId} data-testid={`meme-analysis-source-${analysis.sourceVideoId}`} aria-label={`${videoLabel(sourceVideo, analysis.sourceVideoId)} 분석 제안`} className="min-w-0 space-y-2 rounded border border-line p-3">
+                      <p className="text-[11px] text-bone-faint" data-testid={`meme-suggestions-source-${analysis.sourceVideoId}`}>
+                        <span className="block truncate text-bone-dim">{videoLabel(sourceVideo, analysis.sourceVideoId)}</span>
+                        {formatDateTime(analysis.analyzedAt)} 분석 · {analysis.model}
+                      </p>
+                      {analysis.suggestions.length === 0 ? (
+                        <p className="text-xs text-bone-dim" data-testid={`meme-suggestions-none-${analysis.sourceVideoId}`}>이 영상에서 알아볼 만한 말·동작을 찾지 못했다는 결과입니다. 다른 영상을 분석하거나 직접 적어 주세요.</p>
+                      ) : (
+                        <ul className="space-y-1.5">
+                          {analysis.suggestions.map((suggestion) => {
+                            const key = suggestionKey(analysis.sourceVideoId, suggestion.id);
+                            const imported = drafts.some((card) => card.origin === "suggestion" && suggestionKey(card.sourceVideoId, card.suggestionId) === key);
+                            const range = rangeLabel(suggestion.startSeconds, suggestion.endSeconds);
+                            const testId = `${analysis.sourceVideoId}-${suggestion.id}`;
+                            return (
+                              <li key={suggestion.id} data-testid={`meme-suggestion-${testId}`} className="flex flex-wrap items-start gap-2 rounded border border-line px-3 py-2">
+                                <span className="rounded border border-line px-1.5 py-0.5 text-[11px] text-bone-dim">{MEME_OBSERVATION_KIND_LABELS[suggestion.kind]}</span>
+                                {range && <span className="pt-0.5 text-[11px] tabular-nums text-bone-faint">{range}</span>}
+                                <span className="min-w-0 flex-1 text-sm text-bone">{suggestion.text}</span>
+                                <button
+                                  type="button"
+                                  data-testid={`meme-suggestion-import-${testId}`}
+                                  className={smallOutlineButton}
+                                  onClick={() => importSuggestion(analysis, suggestion)}
+                                  disabled={imported || atCardLimit}
+                                >
+                                  {imported ? "가져옴" : "카드로 가져오기"}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -404,7 +506,8 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
             )}
             <ol className="space-y-3">
               {drafts.map((card, index) => {
-                const suggestion = card.suggestionId ? suggestionsById.get(card.suggestionId) : undefined;
+                const suggestion = card.origin === "suggestion" ? suggestionsByKey.get(suggestionKey(card.sourceVideoId, card.suggestionId)) : undefined;
+                const sourceAnalysis = card.origin === "suggestion" && card.sourceVideoId ? analysesBySource.get(card.sourceVideoId) : undefined;
                 const edited = card.origin === "suggestion" && editedFromSuggestion(card, suggestion);
                 const problem = problems[index];
                 // 「글자를 적어 주세요」는 방금 추가한 빈 카드의 할 일 안내이지 오류가 아니라서 붉게 칠하지 않습니다.
@@ -417,6 +520,12 @@ export function MemeObservationPanel({ trend, onOpenSettings, onProjectCreated, 
                         {card.origin === "suggestion" ? "Gemini 제안에서 가져옴" : "직접 적음"}
                         {edited ? " · 고침" : ""}
                       </span>
+                      {card.origin === "suggestion" && card.sourceVideoId && (
+                        <span data-testid={`meme-card-source-${index}`} className="min-w-0 truncate">
+                          {videoLabel(trend.videos.find((video) => video.videoId === card.sourceVideoId), card.sourceVideoId)}
+                          {sourceAnalysis ? ` · ${formatDateTime(sourceAnalysis.analyzedAt)} 분석` : ""}
+                        </span>
+                      )}
                       <button type="button" className={`${smallOutlineButton} ml-auto`} onClick={() => remove(card.key)} data-testid={`meme-card-remove-${index}`}>
                         카드 빼기
                       </button>

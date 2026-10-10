@@ -46,7 +46,7 @@ describe("observed meme video growth", () => {
 
 describe("meme observation workspace guard", () => {
   const workspace = {
-    trendId: "니코니코니", analysis: null, cardsSavedAt: observedAt,
+    trendId: "니코니코니", analyses: [], cardsSavedAt: observedAt,
     cards: [{ id: "card-1", kind: "gesture", text: "손을 든다", startSeconds: 2.5, endSeconds: 4, origin: "manual", sourceVideoId: null }],
     dailyCalls: { used: 1, limit: 3 },
   };
@@ -55,5 +55,12 @@ describe("meme observation workspace guard", () => {
     expect(isMemeTrendWorkspace(workspace)).toBe(true);
     expect(isMemeTrendWorkspace({ ...workspace, cards: [{ ...workspace.cards[0], endSeconds: 1 }] })).toBe(false);
     expect(isMemeTrendWorkspace({ ...workspace, dailyCalls: { used: "1", limit: 3 } })).toBe(false);
+  });
+
+  it("rejects repeated source videos", () => {
+    const analysis = { sourceVideoId: "aaaaaaaaaaa", provider: "gemini", model: "test", analyzedAt: observedAt, suggestions: [] };
+    expect(isMemeTrendWorkspace({ ...workspace, analyses: [analysis] })).toBe(true);
+    expect(isMemeTrendWorkspace({ ...workspace, analyses: [analysis, { ...analysis, sourceVideoId: "bbbbbbbbbbb" }] })).toBe(true);
+    expect(isMemeTrendWorkspace({ ...workspace, analyses: [analysis, { ...analysis }] })).toBe(false);
   });
 });

@@ -41,7 +41,7 @@ describe("memeTrendsApi", () => {
 
   /** CLI Round 1280: 작업 공간 읽기·분석·저장 — 같은 후보 id 를 인코딩해 세 길로. */
   it("reads, analyses and saves a candidate's workspace on its own routes", async () => {
-    const workspace = { trendId: "니코 니", analysis: null, cards: [], cardsSavedAt: null, dailyCalls: { used: 0, limit: 3 } };
+    const workspace = { trendId: "니코 니", analyses: [], cards: [], cardsSavedAt: null, dailyCalls: { used: 0, limit: 3 } };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, workspace));
     vi.stubGlobal("fetch", fetchMock);
     await getMemeTrendWorkspace("니코 니");
@@ -57,7 +57,7 @@ describe("memeTrendsApi", () => {
   });
 
   it("refuses a malformed workspace and reads the new count off a failed analysis", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { trendId: "x", analysis: null, cards: "nope", cardsSavedAt: null, dailyCalls: null })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { trendId: "x", analyses: [], cards: "nope", cardsSavedAt: null, dailyCalls: null })));
     expect(toMemeTrendDisplayError(await getMemeTrendWorkspace("x").catch((error: unknown) => error)).code).toBe("CLIENT_MALFORMED_RESPONSE");
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(502, { code: "MEME_ANALYSIS_FAILED", message: "raw", details: { dailyCalls: { used: 2, limit: 3 } } })));

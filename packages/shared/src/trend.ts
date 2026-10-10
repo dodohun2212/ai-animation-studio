@@ -3,6 +3,7 @@ export const MEME_TREND_MIN_VIDEOS = 3;
 export const MEME_TREND_MIN_CHANNELS = 3;
 export const MEME_GROWTH_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const MEME_GROWTH_MAX_INTERVAL_MS = 30 * MEME_GROWTH_MIN_INTERVAL_MS;
+export const MEME_ANALYSIS_SOURCE_LIMIT = 3;
 
 export interface MemeTrendVideo {
   videoId: string;
@@ -78,7 +79,7 @@ export interface MemeObservationCard extends MemeObservationBase {
 export interface MemeAnalysisDailyCalls { used: number; limit: number }
 export interface MemeTrendWorkspace {
   trendId: string;
-  analysis: MemeTrendAnalysis | null;
+  analyses: MemeTrendAnalysis[];
   cards: MemeObservationCard[];
   cardsSavedAt: string | null;
   dailyCalls: MemeAnalysisDailyCalls | null;
@@ -101,11 +102,13 @@ const observationBase = (value: unknown): value is MemeObservationBase => record
 
 export function isMemeTrendWorkspace(value: unknown): value is MemeTrendWorkspace {
   if (!record(value)) return false;
-  const analysis = value.analysis;
   return typeof value.trendId === "string"
-    && (analysis === null || (record(analysis) && typeof analysis.sourceVideoId === "string" && analysis.provider === "gemini" && typeof analysis.model === "string" && iso(analysis.analyzedAt)
+    && Array.isArray(value.analyses) && value.analyses.length <= MEME_ANALYSIS_SOURCE_LIMIT
+    && value.analyses.every((analysis: unknown) => record(analysis) && typeof analysis.sourceVideoId === "string"
+      && analysis.provider === "gemini" && typeof analysis.model === "string" && iso(analysis.analyzedAt)
       && Array.isArray(analysis.suggestions) && analysis.suggestions.length <= MEME_OBSERVATION_LIMITS.cardsMax
-      && analysis.suggestions.every((item: unknown) => record(item) && observationBase(item) && typeof item.id === "string")))
+      && analysis.suggestions.every((item: unknown) => record(item) && observationBase(item) && typeof item.id === "string"))
+    && new Set(value.analyses.map((analysis) => record(analysis) ? analysis.sourceVideoId : null)).size === value.analyses.length
     && Array.isArray(value.cards) && value.cards.length <= MEME_OBSERVATION_LIMITS.cardsMax
     && value.cards.every((item: unknown) => record(item) && observationBase(item) && typeof item.id === "string" && (item.origin === "manual" || item.origin === "suggestion")
       && (item.sourceVideoId === null || typeof item.sourceVideoId === "string") && (item.suggestionId === undefined || typeof item.suggestionId === "string"))

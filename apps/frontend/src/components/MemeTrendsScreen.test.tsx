@@ -200,7 +200,7 @@ describe("MemeTrendsScreen", () => {
   /** 단계 띠: 후보 고르기 전 → 후보를 고름(카드 없음) → 저장한 카드가 있음. 앞 단계는 끝남, 지금 단계는 한 곳. */
   describe("flow ribbon", () => {
     const states = () => ["pick", "observe", "draft", "make"].map((key) => screen.getByTestId(`step-ribbon-${key}`).getAttribute("data-step-state"));
-    const workspace = (cards: unknown[]) => ({ trendId: NIKO.id, analysis: null, cards, cardsSavedAt: cards.length ? OBSERVED : null, dailyCalls: { used: 0, limit: 3 } });
+    const workspace = (cards: unknown[]) => ({ trendId: NIKO.id, analyses: [], cards, cardsSavedAt: cards.length ? OBSERVED : null, dailyCalls: { used: 0, limit: 3 } });
 
     it("starts at picking a meme and says what to do next", async () => {
       vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed() }));
@@ -224,6 +224,16 @@ describe("MemeTrendsScreen", () => {
       renderScreen({ trendId: NIKO.id });
       await waitFor(() => expect(states()).toEqual(["done", "done", "current", "upcoming"]));
       expect(screen.queryByTestId("meme-flow-hint")).toBeNull();
+    });
+
+    /** CLI 1340: 카드가 없으면 「이 밈으로 만들기」가 관찰 카드 칸을 펼쳐 준다 — 분석·제안 고르기는 거기서 사람이 한다. */
+    it("opens the observation cards from 이 밈으로 만들기 when no cards are saved", async () => {
+      vi.stubGlobal("fetch", stubFetchByRoute({ "GET /trends/memes": feed(), [`GET /trends/memes/${NIKO.id}/workspace`]: workspace([]), "GET /assets?assetType=character": { assets: [] } }));
+      renderScreen({ trendId: NIKO.id });
+      const details = (await screen.findByTestId("meme-observations-details")) as HTMLDetailsElement;
+      expect(details.open).toBe(false);
+      fireEvent.click(await screen.findByTestId("meme-quick-open-cards"));
+      await waitFor(() => expect(details.open).toBe(true));
     });
 
     it("lets the first step clear the chosen candidate", async () => {

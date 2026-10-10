@@ -45,6 +45,10 @@ const SAFE_ERRORS: Record<string, string> = {
   MEME_ANALYSIS_LEDGER_UNREADABLE: "분석 사용 기록 파일을 읽을 수 없어 오늘 쓴 횟수를 확인하지 못했습니다. 확인하기 전에는 분석을 부르지 않습니다. meme_analysis_call_usage.json 을 확인해 주세요.",
   MEME_ANALYSIS_FAILED: "영상 분석 결과를 받지 못했습니다. 요청은 나갔으므로 오늘 횟수가 한 번 줄었습니다. 저장된 제안과 카드는 그대로이고, 아래에서 직접 적을 수 있습니다.",
   MEME_ANALYSIS_VIDEO_NOT_IN_TREND: "고른 영상이 이 후보의 목록에 없습니다. 목록을 다시 불러온 뒤 골라 주세요.",
+  // 출처 비교(CLI 1340) — 셋 다 서버가 Gemini 를 부르기 전에 막는 것이라 횟수는 줄지 않습니다.
+  MEME_ANALYSIS_CHANNEL_ALREADY_USED: "이 제작자의 영상은 이미 분석했습니다. 다른 제작자의 영상을 골라 주세요. 요청은 보내지 않았고 오늘 횟수도 그대로입니다.",
+  MEME_ANALYSIS_SOURCE_UNKNOWN: "전에 분석한 영상이 지금 후보 목록에서 빠져, 제작자가 겹치는지 확인할 수 없어 보내지 않았습니다. 저장된 제안은 그대로 쓸 수 있고 오늘 횟수도 그대로입니다.",
+  MEME_ANALYSIS_SOURCE_LIMIT: "이 밈은 서로 다른 제작자의 영상 3편까지 분석할 수 있어 새 영상은 보내지 않았습니다. 이미 분석한 영상을 다시 분석할 수는 있습니다. 오늘 횟수는 그대로입니다.",
   MEME_TREND_UNKNOWN: "이 밈 후보는 지금 목록에 없어 카드를 열 수 없습니다. 같은 후보가 다시 모이면 저장한 카드가 다시 열립니다.",
   MEME_CARDS_INVALID: "카드 내용이 저장 조건에 맞지 않습니다. 빈 글자, 너무 긴 글자, 시작보다 앞선 끝 시간을 확인해 주세요.",
   MEME_CARDS_CONFLICT: "그사이 카드가 다른 곳에서 저장됐습니다. 입력하신 내용은 그대로 있습니다 — 다시 읽은 뒤 저장하면 이 내용으로 덮어씁니다.",
@@ -109,7 +113,8 @@ export function getMemeTrendWorkspace(trendId: string): Promise<MemeTrendWorkspa
 
 /**
  * 고른 영상 한 편을 Gemini 로 분석합니다 — **오늘 분석 횟수를 한 번 씁니다**(요청이 나간 뒤에는 실패해도).
- * 성공했을 때만 서버가 제안을 바꾸고, 사람이 저장한 카드는 어떤 경우에도 건드리지 않습니다.
+ * 성공했을 때만 서버가 **그 영상의** 제안을 바꾸고(다른 출처의 분석은 그대로, 한 후보에 서로 다른 제작자 3편까지),
+ * 사람이 저장한 카드는 어떤 경우에도 건드리지 않습니다.
  */
 export function analyzeMemeVideo(trendId: string, request: AnalyzeMemeVideoRequest): Promise<MemeTrendWorkspace> {
   return requestJson(API_ROUTES.memeTrendAnalysis(trendId), {

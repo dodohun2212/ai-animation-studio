@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MEME_GROWTH_MIN_INTERVAL_MS,
   MEME_TREND_MIN_CHANNELS,
@@ -73,6 +73,11 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
   const [refreshError, setRefreshError] = useState<DisplayError | null>(null);
   /** 고른 후보의 저장된 카드 수 — 후보가 바뀌면 그 후보 것이 아니므로 trendId 와 함께 들고 있습니다. */
   const [savedCards, setSavedCards] = useState<{ trendId: string; count: number } | null>(null);
+  /** 고른 후보의 카드 저장 시각 — 「이 밈으로 만들기」가 저장된 카드를 다시 읽는 신호입니다. */
+  const [cardsSavedAt, setCardsSavedAt] = useState<{ trendId: string; savedAt: string | null } | null>(null);
+  /** 관찰 카드 접힘 — 「이 밈으로 만들기」의 「관찰 카드 열기」가 펼칩니다. */
+  const [cardsOpen, setCardsOpen] = useState(false);
+  const cardsRef = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,13 +232,28 @@ export function MemeTrendsScreen({ trendId, onSelect, onOpenSettings, onProjectC
         </ul>
       )}
 
-      {selected && feed?.collectedAt && <MemeQuickMake key={`quick-${selected.id}`} trend={selected} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} />}
+      {selected && feed?.collectedAt && (
+        <MemeQuickMake
+          key={`quick-${selected.id}`}
+          trend={selected}
+          onProjectCreated={onProjectCreated}
+          onOpenCards={() => { setCardsOpen(true); requestAnimationFrame(() => cardsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })); }}
+          cardsSavedAt={cardsSavedAt?.trendId === selected.id ? cardsSavedAt.savedAt : undefined}
+        />
+      )}
       {selected && feed?.collectedAt && <TrendDetail trend={selected} />}
       {/* ② 관찰 카드 — 후보마다 따로 저장되므로 후보가 바뀌면 새로 엽니다(key). 열 때는 저장본만 읽습니다. */}
       {selected && feed?.collectedAt && (
-        <details className="mt-6" data-testid="meme-observations-details">
-          <summary className="cursor-pointer text-xs text-bone-dim hover:text-bone">직접 관찰 카드 확인·고치기 (선택)</summary>
-          <MemeObservationPanel key={selected.id} trend={selected} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} onSavedCardCount={(count) => setSavedCards({ trendId: selected.id, count })} />
+        <details ref={cardsRef} className="mt-6" data-testid="meme-observations-details" open={cardsOpen} onToggle={(event) => setCardsOpen(event.currentTarget.open)}>
+          <summary className="cursor-pointer text-xs text-bone-dim hover:text-bone">관찰 카드 — 영상 분석·제안 비교·직접 적기</summary>
+          <MemeObservationPanel
+            key={selected.id}
+            trend={selected}
+            onOpenSettings={onOpenSettings}
+            onProjectCreated={onProjectCreated}
+            onSavedCardCount={(count) => setSavedCards({ trendId: selected.id, count })}
+            onCardsSavedAt={(savedAt) => setCardsSavedAt({ trendId: selected.id, savedAt })}
+          />
         </details>
       )}
 

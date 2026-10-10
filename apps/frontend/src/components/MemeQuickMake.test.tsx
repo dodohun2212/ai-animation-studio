@@ -27,15 +27,13 @@ const SUGGESTIONS = [
 ];
 
 function workspace(overrides: Partial<MemeTrendWorkspace> = {}): MemeTrendWorkspace {
-  return { trendId: "niko", analysis: null, cards: [], cardsSavedAt: null, dailyCalls: { used: 0, limit: 3 }, ...overrides };
+  return { trendId: "niko", analyses: [], cards: [], cardsSavedAt: null, dailyCalls: { used: 0, limit: 3 }, ...overrides };
 }
 
-const analyzed = workspace({
-  analysis: { sourceVideoId: "top", provider: "gemini" as const, analyzedAt: NOW, model: "gemini-test", suggestions: SUGGESTIONS },
-  dailyCalls: { used: 1, limit: 3 },
-});
+const ANALYSIS_TOP = { sourceVideoId: "top", provider: "gemini" as const, analyzedAt: NOW, model: "gemini-test", suggestions: SUGGESTIONS };
+const analyzed = workspace({ analyses: [ANALYSIS_TOP], dailyCalls: { used: 1, limit: 3 } });
 const savedCards = workspace({
-  analysis: analyzed.analysis,
+  analyses: [ANALYSIS_TOP],
   cardsSavedAt: NOW,
   cards: SUGGESTIONS.map((suggestion) => ({ id: `card-${suggestion.id}`, kind: suggestion.kind, text: suggestion.text, startSeconds: suggestion.startSeconds, endSeconds: suggestion.endSeconds, origin: "suggestion" as const, suggestionId: suggestion.id, sourceVideoId: "top" })),
   dailyCalls: { used: 1, limit: 3 },
@@ -48,8 +46,6 @@ const OFF = makeAsset({ assetId: "ASSET-CHAR-OFF", assetType: "character", displ
 const ASSETS = { assets: [FOLDER, SOLO, CHILD, OFF] };
 
 const WS = "GET /trends/memes/niko/workspace";
-const ANALYSIS = "POST /trends/memes/niko/analysis";
-const CARDS = "PUT /trends/memes/niko/cards";
 
 function mockServer(routes: Record<string, unknown>, errorRoutes: Record<string, { status: number; body: unknown }> = {}) {
   const fetchMock = stubFetchByRoute({ "GET /assets?assetType=character": ASSETS, ...routes }, errorRoutes);
@@ -66,9 +62,11 @@ const bodyOf = (fetchMock: ReturnType<typeof vi.fn>, key: string): any => {
 
 function renderQuick() {
   const onProjectCreated = vi.fn();
-  const onOpenSettings = vi.fn();
-  render(<MemeQuickMake trend={TREND} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} />);
-  return { onProjectCreated, onOpenSettings };
+  const onOpenCards = vi.fn();
+  const view = render(<MemeQuickMake trend={TREND} onProjectCreated={onProjectCreated} onOpenCards={onOpenCards} />);
+  const rerenderWith = (cardsSavedAt: string | null) =>
+    view.rerender(<MemeQuickMake trend={TREND} onProjectCreated={onProjectCreated} onOpenCards={onOpenCards} cardsSavedAt={cardsSavedAt} />);
+  return { onProjectCreated, onOpenCards, rerenderWith };
 }
 
 async function chooseCharacter(assetId = "ASSET-CHAR-FOLDER") {
@@ -91,27 +89,25 @@ describe("autoProjectId / pickableCharacters", () => {
 describe("MemeQuickMake", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it("lists library characters and keeps the button off until one is chosen", async () => {
-    mockServer({ [WS]: workspace() });
+  it("lists library characters and keeps the button off until one is chosen and saved cards exist", async () => {
+    mockServer({ [WS]: savedCards });
     renderQuick();
     await screen.findByTestId("meme-quick-characters");
     expect(screen.queryByTestId("meme-quick-character-ASSET-CHAR-CHILD")).toBeNull();
     expect(screen.queryByTestId("meme-quick-character-ASSET-CHAR-OFF")).toBeNull();
-    await waitFor(() => expect((screen.getByTestId("meme-quick-plan").textContent ?? "")).toContain("Gemini로 분석합니다"));
+    await waitFor(() => expect((screen.getByTestId("meme-quick-plan").textContent ?? "")).toContain("저장한 관찰 카드 2장으로 만듭니다"));
     expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(true);
     await chooseCharacter();
     expect(screen.getByTestId("meme-quick-character-ASSET-CHAR-FOLDER").getAttribute("aria-checked")).toBe("true");
     expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByTestId("meme-quick-run").textContent).toContain("분석 1회 사용");
+    expect(screen.getByTestId("meme-quick-run").textContent).toBe("이 밈으로 만들기");
   });
 
-  /** 🔴 분석 → 카드 저장 → 프로젝트 → 주인공 연결, 이 순서로만. OpenAI·Runway 로 가는 요청은 없다. */
-  it("analyses the top video, saves the cards, creates the project and links the character as lead", async () => {
+  /** 🔴 CLI 1340: 저장된 카드로 프로젝트 → 주인공 연결, 이 순서로만. 분석·카드 저장·OpenAI·Runway 요청은 없다. */
+  it("creates the project from the saved cards only and links the character as lead, without analysing or saving cards", async () => {
     const project = makeProject({ id: "created_project" });
     const fetchMock = mockServer({
-      [WS]: workspace(),
-      [ANALYSIS]: analyzed,
-      [CARDS]: savedCards,
+      [WS]: savedCards,
       "POST /projects": { project },
       "PUT /settings/cast": { cast: [castMember("ASSET-CHAR-FOLDER", { representative: true })] },
     });
@@ -123,16 +119,10 @@ describe("MemeQuickMake", () => {
     await waitFor(() => expect(onProjectCreated).toHaveBeenCalledWith(project));
     const sent = requests(fetchMock).filter((entry) => !entry.startsWith("GET"));
     expect(sent).toEqual([
-      "POST /trends/memes/niko/analysis",
-      "PUT /trends/memes/niko/cards",
       "POST /projects",
       "PUT /projects/created_project/settings/cast",
     ]);
-    expect(bodyOf(fetchMock, ANALYSIS)).toEqual({ sourceVideoId: "top" });
     expect(screen.queryByTestId("meme-quick-video")).toBeNull();
-    const cards = bodyOf(fetchMock, CARDS);
-    expect(cards.cards).toHaveLength(2);
-    expect(cards.cards[0]).toMatchObject({ kind: "line", origin: "suggestion", suggestionId: "s1", sourceVideoId: "top" });
     const created = bodyOf(fetchMock, "POST /projects");
     expect(created.projectId).toMatch(/^밈_니코니코니_\d{4}_\d{6}$/);
     expect(created.initialStoryDraft.character).toBe("토리");
@@ -143,26 +133,17 @@ describe("MemeQuickMake", () => {
     expect(requests(fetchMock).some((entry) => /generation|runway|openai/i.test(entry))).toBe(false);
   });
 
-  /** 14편 전부가 아니라 한 편 — 기본은 조회수가 가장 큰 영상이고, 바꿀 수 있고, 화면이 그렇게 말한다. */
-  it("analyses exactly one video, defaulting to the most viewed, and lets the person pick another", async () => {
-    const project = makeProject({ id: "pick_project" });
-    const fetchMock = mockServer({
-      [WS]: workspace(),
-      [ANALYSIS]: analyzed,
-      [CARDS]: savedCards,
-      "POST /projects": { project },
-      "PUT /settings/cast": { cast: [castMember("ASSET-CHAR-FOLDER", { representative: true })] },
-    });
-    renderQuick();
+  /** 예전의 「대표 영상 1편 자동 분석」은 없다 — 영상 선택도 분석 호출도 여기엔 없고, 고르기는 관찰 카드 칸에서 한다. */
+  it("has no video picker and no analysis call, and sends the person to the observation cards instead", async () => {
+    const fetchMock = mockServer({ [WS]: workspace() });
+    const { onOpenCards } = renderQuick();
     await chooseCharacter();
-    const select = (await screen.findByTestId("meme-quick-video")) as HTMLSelectElement;
-    expect(select.value).toBe("top");
-    expect(screen.getByTestId("meme-quick-plan").textContent).toContain("3편 전부가 아닙니다");
-    fireEvent.change(select, { target: { value: "mid" } });
-    fireEvent.click(screen.getByTestId("meme-quick-run"));
-    await waitFor(() => expect(requests(fetchMock)).toContain("POST /projects"));
-    expect(requests(fetchMock).filter((entry) => entry.includes("/analysis"))).toHaveLength(1);
-    expect(bodyOf(fetchMock, ANALYSIS)).toEqual({ sourceVideoId: "mid" });
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("아직 저장한 관찰 카드가 없습니다"));
+    expect(screen.queryByTestId("meme-quick-video")).toBeNull();
+    expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("meme-quick-open-cards"));
+    expect(onOpenCards).toHaveBeenCalledTimes(1);
+    expect(requests(fetchMock).some((entry) => entry.includes("/analysis"))).toBe(false);
   });
 
   it("reuses already saved cards instead of spending another analysis", async () => {
@@ -170,54 +151,49 @@ describe("MemeQuickMake", () => {
     const fetchMock = mockServer({ [WS]: savedCards, "POST /projects": { project }, "PUT /settings/cast": { cast: [castMember("ASSET-CHAR-SOLO", { representative: true })] } });
     const { onProjectCreated } = renderQuick();
     await chooseCharacter("ASSET-CHAR-SOLO");
-    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("이미 저장한 관찰 카드 2장"));
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("저장한 관찰 카드 2장"));
     expect(screen.getByTestId("meme-quick-run").textContent).toBe("이 밈으로 만들기");
+    expect(screen.queryByTestId("meme-quick-open-cards")).toBeNull();
     fireEvent.click(screen.getByTestId("meme-quick-run"));
     await waitFor(() => expect(onProjectCreated).toHaveBeenCalledWith(project));
     expect(requests(fetchMock).some((entry) => entry.includes("/analysis"))).toBe(false);
   });
 
-  it("blocks when today's analysis is used up, and lets the person go on without analysis", async () => {
+  it("without saved cards, creates only when the person chooses to go on without analysis", async () => {
     const project = makeProject({ id: "plain_project" });
     const fetchMock = mockServer({ [WS]: workspace({ dailyCalls: { used: 3, limit: 3 } }), "POST /projects": { project }, "PUT /settings/cast": { cast: [castMember("ASSET-CHAR-FOLDER", { representative: true })] } });
     const { onProjectCreated } = renderQuick();
     await chooseCharacter();
-    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("다 썼습니다"));
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("아직 저장한 관찰 카드가 없습니다"));
     expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("meme-quick-skip"));
     await waitFor(() => expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.getByTestId("meme-quick-plan").textContent).toContain("분석 없이 만듭니다");
     fireEvent.click(screen.getByTestId("meme-quick-run"));
     await waitFor(() => expect(onProjectCreated).toHaveBeenCalledWith(project));
     expect(requests(fetchMock).some((entry) => entry.includes("/analysis"))).toBe(false);
     expect(bodyOf(fetchMock, "POST /projects").initialStoryDraft.sceneCount).toBe(2);
   });
 
-  it("does not call analysis when the usage record cannot be read", async () => {
+  it("does not call analysis when the usage record cannot be read, and still needs saved cards", async () => {
     const fetchMock = mockServer({ [WS]: workspace({ dailyCalls: null }) });
     renderQuick();
     await chooseCharacter();
-    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("오늘 쓴 분석 횟수를 모릅니다"));
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("아직 저장한 관찰 카드가 없습니다"));
     expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(true);
     expect(requests(fetchMock).some((entry) => entry.includes("/analysis"))).toBe(false);
   });
 
-  it("stops before creating anything when the Gemini key is missing, and offers settings", async () => {
-    const fetchMock = mockServer(
-      { [WS]: workspace() },
-      { [ANALYSIS]: { status: 400, body: { code: "MEME_ANALYSIS_KEY_MISSING", message: "raw" } } },
-    );
-    const { onOpenSettings, onProjectCreated } = renderQuick();
+  /** 저장본을 못 읽으면 무엇으로 만들지 모르므로 만들지 않는다 — 이 화면은 Gemini 를 부르지 않으니 키 없음으로 막히지도 않는다. */
+  it("does not create anything when the saved cards cannot be read", async () => {
+    const fetchMock = mockServer({}, { [WS]: { status: 500, body: { code: "MEME_WORKSPACE_STORE_UNREADABLE", message: "raw" } } });
+    const { onProjectCreated } = renderQuick();
     await chooseCharacter();
-    await waitFor(() => expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByTestId("meme-quick-run"));
-
-    const alert = await screen.findByTestId("meme-quick-error");
-    expect(alert.getAttribute("data-error-code")).toBe("MEME_ANALYSIS_KEY_MISSING");
-    expect(alert.textContent).not.toContain("raw");
-    fireEvent.click(screen.getByTestId("meme-quick-open-settings"));
-    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("읽지 못했습니다"));
+    expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId("meme-quick-skip")).toBeNull();
     expect(onProjectCreated).not.toHaveBeenCalled();
-    expect(requests(fetchMock).some((entry) => entry === "POST /projects")).toBe(false);
+    expect(requests(fetchMock).some((entry) => entry === "POST /projects" || entry.includes("/analysis"))).toBe(false);
   });
 
   /** 🔴 Codex 1304-②: 연결 실패 때 바로 이동하면 이 화면이 사라져 알림을 못 본다 — 이동하지 않고 여기서 알린다. */
@@ -257,71 +233,49 @@ describe("MemeQuickMake", () => {
     expect(onProjectCreated).toHaveBeenCalledWith(project);
   });
 
-  /** 🔴 Codex 1304-①: 서버가 분석을 먼저 저장해 두므로, 저장된 분석이 있으면 Gemini 를 다시 부르지 않고 카드 저장부터 잇는다. */
-  it("reuses a stored analysis and goes straight to saving the cards", async () => {
-    const project = makeProject({ id: "stored_project" });
-    const fetchMock = mockServer({
-      [WS]: analyzed,
-      [CARDS]: savedCards,
-      "POST /projects": { project },
-      "PUT /settings/cast": { cast: [castMember("ASSET-CHAR-FOLDER", { representative: true })] },
-    });
-    const { onProjectCreated } = renderQuick();
-    await chooseCharacter();
-    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("이미 분석한 제안 2개"));
-    expect(screen.getByTestId("meme-quick-run").textContent).toBe("이 밈으로 만들기");
-    fireEvent.click(screen.getByTestId("meme-quick-run"));
-    await waitFor(() => expect(onProjectCreated).toHaveBeenCalledWith(project));
-    expect(requests(fetchMock).some((entry) => entry.includes("/analysis"))).toBe(false);
-    expect(bodyOf(fetchMock, CARDS).cards).toHaveLength(2);
-  });
-
-  it("does not analyse twice when saving the cards fails once and the person presses again", async () => {
-    const project = makeProject({ id: "retry_project" });
-    const fetchMock = mockServer({
-      [WS]: workspace(),
-      [ANALYSIS]: analyzed,
-      [CARDS]: sequence([withStatus(500, { code: "MEME_STORE_UNWRITABLE", message: "boom" }), savedCards]),
-      "POST /projects": { project },
-      "PUT /settings/cast": { cast: [castMember("ASSET-CHAR-FOLDER", { representative: true })] },
-    });
-    const { onProjectCreated } = renderQuick();
-    await chooseCharacter();
-    await waitFor(() => expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByTestId("meme-quick-run"));
-    await screen.findByTestId("meme-quick-error");
-    expect(onProjectCreated).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("이미 분석한 제안 2개"));
-
-    fireEvent.click(screen.getByTestId("meme-quick-run"));
-    await waitFor(() => expect(onProjectCreated).toHaveBeenCalledWith(project));
-    expect(requests(fetchMock).filter((entry) => entry.includes("/analysis"))).toHaveLength(1);
-    expect(requests(fetchMock).filter((entry) => entry === "PUT /trends/memes/niko/cards")).toHaveLength(2);
-  });
-
-  /** 저장된 분석이 「제안 0개」면 자동으로 다시 부르지 않는다 — 다시 분석할지는 사람이 명시적으로 고른다. */
-  it("asks before re-analysing a stored analysis that found nothing, and never calls it on its own", async () => {
-    const empty = workspace({ analysis: { sourceVideoId: "top", provider: "gemini" as const, analyzedAt: NOW, model: "gemini-test", suggestions: [] }, dailyCalls: { used: 1, limit: 3 } });
-    const project = makeProject({ id: "empty_project" });
-    const fetchMock = mockServer({
-      [WS]: empty,
-      [ANALYSIS]: analyzed,
-      [CARDS]: savedCards,
-      "POST /projects": { project },
-      "PUT /settings/cast": { cast: [castMember("ASSET-CHAR-FOLDER", { representative: true })] },
-    });
+  /** 🔴 CLI 1340: 저장된 분석 제안은 사람이 고르기 전까지 카드가 아니다 — 여기서 저절로 카드로 저장하지 않는다. */
+  it("does not turn stored suggestions into cards on its own", async () => {
+    const fetchMock = mockServer({ [WS]: analyzed });
     renderQuick();
     await chooseCharacter();
-    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("알아볼 만한 말·동작을 찾지 못했습니다"));
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("분석한 영상 1편의 제안 2개"));
+    expect(screen.getByTestId("meme-quick-plan").textContent).toContain("쓸 제안만 가져와 저장");
     expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(true);
-    expect(requests(fetchMock).some((entry) => entry.includes("/analysis"))).toBe(false);
+    expect(requests(fetchMock).filter((entry) => !entry.startsWith("GET"))).toEqual([]);
+  });
 
-    fireEvent.click(screen.getByTestId("meme-quick-reanalyze"));
-    await waitFor(() => expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(false));
-    expect(screen.getByTestId("meme-quick-run").textContent).toContain("분석 1회 사용");
+  /** 관찰 카드 칸이 새 저장 시각을 알리면 저장본을 다시 읽고(GET), 그 카드로 만든다. 같은 시각이면 다시 읽지 않는다. */
+  it("re-reads the saved cards when the observation cards report a new save, then creates from them", async () => {
+    const project = makeProject({ id: "after_save_project" });
+    const fetchMock = mockServer({
+      [WS]: sequence([analyzed, savedCards]),
+      "POST /projects": { project },
+      "PUT /settings/cast": { cast: [castMember("ASSET-CHAR-FOLDER", { representative: true })] },
+    });
+    const { onProjectCreated, rerenderWith } = renderQuick();
+    await chooseCharacter();
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("제안 2개"));
+    rerenderWith(null);
+    expect(requests(fetchMock).filter((entry) => entry === WS)).toHaveLength(1);
+    rerenderWith(NOW);
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("저장한 관찰 카드 2장"));
     fireEvent.click(screen.getByTestId("meme-quick-run"));
-    await waitFor(() => expect(requests(fetchMock)).toContain("POST /projects"));
-    expect(requests(fetchMock).filter((entry) => entry.includes("/analysis"))).toHaveLength(1);
+    await waitFor(() => expect(onProjectCreated).toHaveBeenCalledWith(project));
+    expect(requests(fetchMock).filter((entry) => entry === WS)).toHaveLength(2);
+    expect(requests(fetchMock).some((entry) => entry.includes("/analysis") || entry.includes("/cards"))).toBe(false);
+  });
+
+  /** 제안 0개였던 분석도 여기서 다시 분석하지 않는다 — 다시 분석은 관찰 카드 칸에서 한 편씩 직접. */
+  it("offers no re-analysis here for a stored analysis that found nothing", async () => {
+    const empty = workspace({ analyses: [{ ...ANALYSIS_TOP, suggestions: [] }], dailyCalls: { used: 1, limit: 3 } });
+    const fetchMock = mockServer({ [WS]: empty });
+    renderQuick();
+    await chooseCharacter();
+    await waitFor(() => expect(screen.getByTestId("meme-quick-plan").textContent).toContain("아직 저장한 관찰 카드가 없습니다"));
+    expect(screen.queryByTestId("meme-quick-reanalyze")).toBeNull();
+    expect((screen.getByTestId("meme-quick-run") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("meme-quick-skip")).toBeTruthy();
+    expect(requests(fetchMock).some((entry) => entry.includes("/analysis"))).toBe(false);
   });
 
   it("says so when the library has no usable character", async () => {
