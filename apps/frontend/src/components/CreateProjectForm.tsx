@@ -4,6 +4,7 @@ import type { Project } from "@ai-animation-studio/shared";
 import { createProject, toDisplayError } from "../api/projectsApi.js";
 import { isSafeProjectId } from "../validation/projectId.js";
 import { CreateFlowerReelForm } from "./CreateFlowerReelForm.js";
+import { CreateScriptReelForm } from "./CreateScriptReelForm.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { cardSectionRoomy, outlineButton, primaryButton } from "./ui/surfaces.js";
 
@@ -32,11 +33,14 @@ const fieldClassName =
  * 🟠 An earlier version of this branch wrote the script by hand instead. It could create a project that the
  * image step then refused, because the prompts read seventeen scene fields and only story generation fills
  * them (CLI Round 609). Preset, not pipeline.
+ *
+ * 「대본으로 시작」(CLI 1348) is the same kind of branch: the person's own script goes in as the brief
+ * (`initialStoryDraft.fullStory`) and the ordinary story step splits it into scenes.
  */
-type ScriptSource = "ai" | "flower";
+type ScriptSource = "ai" | "flower" | "script";
 
 /** The radio group's order, which the arrow keys walk. */
-const SOURCES: readonly ScriptSource[] = ["ai", "flower"];
+const SOURCES: readonly ScriptSource[] = ["ai", "flower", "script"];
 
 export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProps) {
   const [source, setSource] = useState<ScriptSource>("ai");
@@ -145,11 +149,22 @@ export function CreateProjectForm({ onCreated, onCancel }: CreateProjectFormProp
   );
 
   const picker = (
-    <div role="radiogroup" aria-label="무엇으로 시작할지" className="mt-5 flex max-w-2xl flex-wrap gap-3">
+    <div role="radiogroup" aria-label="무엇으로 시작할지" className="mt-5 flex max-w-3xl flex-wrap gap-3">
       {choice("ai", "빈 프로젝트에서 시작", "주제 한 줄을 적고, 나머지는 설정 화면에서 채웁니다.")}
       {choice("flower", "꽃말 릴스 서식", "꽃 이름과 꽃말만 적으면 씨앗에서 꽃이 피기까지의 구성과 화면 스타일이 채워집니다.")}
+      {choice("script", "대본으로 시작", "가지고 있는 대본을 붙여넣거나 .txt·.md 파일로 불러오면, AI가 그 대본을 장면으로 나눕니다.")}
     </div>
   );
+
+  if (source === "script") {
+    return (
+      <>
+        {header}
+        {picker}
+        <CreateScriptReelForm onCreated={onCreated} onCancel={onCancel} />
+      </>
+    );
+  }
 
   if (source === "flower") {
     return (

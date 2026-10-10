@@ -37,7 +37,7 @@ const SAFE_ERRORS: Record<string, string> = {
   NOVEL_SOURCE_TEXT_TOO_LARGE: "작품 파일이 이 앱이 받는 크기보다 커서 가져오지 않았습니다. 다른 작품을 골라 주세요.",
   NOVEL_SOURCE_UPSTREAM_ERROR: "작품 목록 제공처(Project Gutenberg)가 오류로 답했습니다. 잠시 뒤 다시 검색해 주세요.",
   NOVEL_SOURCE_UPSTREAM_INVALID: "작품 목록 제공처의 응답을 읽을 수 없습니다. 잠시 뒤 다시 검색해 주세요.",
-  NOVEL_SOURCE_UNAVAILABLE: "작품 목록 제공처에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 검색해 주세요.",
+  NOVEL_SOURCE_UNAVAILABLE: "작품 제공처(Project Gutenberg)가 제때 답하지 않았거나 연결하지 못했습니다. 처음 찾는 검색어는 제공처가 답하는 데 오래 걸릴 수 있어, 잠시 뒤 같은 검색을 다시 누르면 대개 됩니다. 계속되면 인터넷 연결을 확인해 주세요.",
 };
 const NETWORK = { code: "CLIENT_NETWORK_ERROR", message: "로컬 서버에 연결하지 못했습니다." };
 const MALFORMED = { code: "CLIENT_MALFORMED_RESPONSE", message: "서버 응답을 확인할 수 없습니다." };

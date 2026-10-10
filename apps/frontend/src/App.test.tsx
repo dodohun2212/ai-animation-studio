@@ -356,7 +356,8 @@ describe("App", () => {
 
   /**
    * 이야기 만들기는 사이드바의 독립 항목이 아니라 「장기 프로젝트 → 새 작품 만들기 → 소설에서 시작」으로만 닿는다(CLI 1327).
-   * 길을 따라가는 동안 AI 도 장기 프로젝트 생성도 부르지 않는다 — 장기 프로젝트 목록과 보관함 캐릭터 목록 읽기뿐.
+   * 길을 따라가는 동안 AI 도 장기 프로젝트 생성도 부르지 않는다 — 장기 프로젝트 목록과 보관함 캐릭터 목록 읽기, 그리고
+   * 「작품 고르기」가 열 때 보여 주는 소설 후보 목록(읽기 전용, 본문·분석 없음 — CLI 1351)뿐.
    */
   it("reaches 이야기 만들기 through 장기 프로젝트 → 새 작품 만들기, not as a separate sidebar product", async () => {
     const fetchMock = vi.fn<FakeFetch>(async (input) => {
@@ -364,6 +365,7 @@ describe("App", () => {
       if (requestUrl === "/projects") return jsonResponse(200, { projects: [] });
       if (requestUrl === "/long-projects") return jsonResponse(200, { projects: [] });
       if (requestUrl === "/assets?assetType=character") return jsonResponse(200, { assets: [] });
+      if (requestUrl === "/story-sources/search") return jsonResponse(201, { provider: "project-gutenberg", results: [], page: 1, hasNextPage: false });
       throw new Error(`Unexpected fetch call in test: ${requestUrl}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -379,7 +381,8 @@ describe("App", () => {
     fetchMock.mockClear();
     fireEvent.click(screen.getByTestId("long-start-story"));
     await screen.findByTestId("story-studio-form");
-    expect(fetchMock.mock.calls.map(([url, init]) => `${(init as RequestInit | undefined)?.method ?? "GET"} ${String(url)}`)).toEqual(["GET /assets?assetType=character"]);
+    expect(fetchMock.mock.calls.map(([url, init]) => `${(init as RequestInit | undefined)?.method ?? "GET"} ${String(url)}`)).toEqual(expect.arrayContaining(["GET /assets?assetType=character", "POST /story-sources/search"]));
+    expect(fetchMock.mock.calls).toHaveLength(2);
     expect(window.location.hash).toBe("#/storyStudio");
     // 이 화면에서도 사이드바는 「장기 프로젝트」 아래에 있다.
     expect(screen.getByRole("button", { name: "장기 프로젝트" }).getAttribute("aria-current")).toBe("page");

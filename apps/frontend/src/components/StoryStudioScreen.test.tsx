@@ -9,15 +9,23 @@ const CHILD = makeAsset({ assetId: "ASSET-CHAR-CHILD", assetType: "character", d
 const SOLO = makeAsset({ assetId: "ASSET-CHAR-SOLO", assetType: "character", displayName: "미니", parentFolderId: "" });
 
 function mockServer(extra: Record<string, unknown> = {}) {
-  const fetchMock = stubFetchByRoute({ "GET /assets?assetType=character": { assets: [FOLDER, CHILD, SOLO] }, ...extra });
+  const fetchMock = stubFetchByRoute({
+    "GET /assets?assetType=character": { assets: [FOLDER, CHILD, SOLO] },
+    "POST /story-sources/search": { provider: "project-gutenberg", results: [], page: 1, hasNextPage: false },
+    ...extra,
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
 
+/**
+ * 바깥으로 무언가를 만들거나 보내는 요청들. 「작품 고르기」가 열 때 부르는 후보 목록(`/story-sources/search`, CLI 1351)은
+ * 읽기 전용 목록이라 POST 여도 여기서 뺍니다 — 이 테스트들이 지키는 것은 「프로젝트·분석 요청이 버튼 없이 나가지 않는다」입니다.
+ */
 const sent = (fetchMock: ReturnType<typeof vi.fn>) =>
   fetchMock.mock.calls
     .map(([url, init]) => ({ method: (init as RequestInit | undefined)?.method ?? "GET", url: String(url), body: (init as RequestInit | undefined)?.body ? JSON.parse(String((init as RequestInit).body)) : undefined }))
-    .filter((call) => call.method !== "GET");
+    .filter((call) => call.method !== "GET" && call.url !== "/story-sources/search");
 
 function fill(testId: string, value: string) {
   fireEvent.change(screen.getByTestId(testId), { target: { value } });
@@ -120,10 +128,10 @@ describe("StoryStudioScreen", () => {
     fireEvent.click(screen.getByTestId("story-rights"));
     fill("novel-source-query", "poe");
     fireEvent.click(screen.getByTestId("novel-source-search"));
+    // CLI 1349: 본문 칸이 비어 있으면 「이 작품 가져오기」 한 번으로 곧바로 채워진다.
     fireEvent.click(await screen.findByTestId("novel-source-check-2147"));
-    fireEvent.click(await screen.findByTestId("novel-source-use"));
 
-    expect((screen.getByTestId("story-text") as HTMLTextAreaElement).value).toBe("Once upon a.");
+    await waitFor(() => expect((screen.getByTestId("story-text") as HTMLTextAreaElement).value).toBe("Once upon a."));
     expect((screen.getByTestId("story-title") as HTMLInputElement).value).toBe("The Raven");
     expect((screen.getByTestId("story-source") as HTMLInputElement).value).toBe("The Raven — Poe, Edgar Allan (~1849) · Project Gutenberg #2147");
     expect(screen.getByTestId("story-imported-source").textContent).toContain("저자 사망 1849년");
