@@ -5,6 +5,7 @@ import { Injectable } from "@nestjs/common";
 import {
   MAX_SCENE_COUNT, MIN_SCENE_COUNT, NOVEL_ANALYSIS_MAX_EPISODES, NOVEL_ANALYSIS_MIN_EPISODES,
   NOVEL_SOURCE_MAX_CHARS, NOVEL_ANALYSIS_CHUNK_MAX_CHARS, NOVEL_ANALYSIS_ESTIMATED_COST_USD, isSha256Hex,
+  isNovelStorySourceCitation,
   type ApproveNovelStoryAnalysisRequest, type ApproveNovelStoryAnalysisResponse,
   type NovelStoryAnalysisInput, type NovelStoryAnalysisPreviewResponse, type NovelStorySourceMetadata,
 } from "@ai-animation-studio/shared";
@@ -30,12 +31,13 @@ const object = (value: unknown): value is Record<string, unknown> => typeof valu
 
 function parseInput(value: unknown): NovelStoryAnalysisInput {
   if (!object(value)) throw storyAnalysisInvalidRequest();
-  const allowed = new Set(["sourceText", "title", "logline", "sourceNote", "rightsConfirmed", "episodeCount", "sceneCount"]);
+  const allowed = new Set(["sourceText", "title", "logline", "sourceNote", "source", "rightsConfirmed", "episodeCount", "sceneCount"]);
   if (Object.keys(value).some((key) => !allowed.has(key))
     || typeof value.sourceText !== "string" || !value.sourceText.trim() || value.sourceText.length > NOVEL_SOURCE_MAX_CHARS
     || typeof value.title !== "string" || !value.title.trim() || value.title.trim().length > 120
     || typeof value.logline !== "string" || !value.logline.trim() || value.logline.trim().length > 500
     || (value.sourceNote !== undefined && (typeof value.sourceNote !== "string" || value.sourceNote.length > 500))
+    || (value.source !== undefined && !isNovelStorySourceCitation(value.source))
     || value.rightsConfirmed !== true
     || !Number.isInteger(value.episodeCount) || (value.episodeCount as number) < NOVEL_ANALYSIS_MIN_EPISODES || (value.episodeCount as number) > NOVEL_ANALYSIS_MAX_EPISODES
     || !Number.isInteger(value.sceneCount) || (value.sceneCount as number) < MIN_SCENE_COUNT || (value.sceneCount as number) > MAX_SCENE_COUNT) {
@@ -46,6 +48,7 @@ function parseInput(value: unknown): NovelStoryAnalysisInput {
     title: value.title.trim(),
     logline: value.logline.trim(),
     ...(typeof value.sourceNote === "string" && value.sourceNote.trim() ? { sourceNote: value.sourceNote.trim() } : {}),
+    ...(value.source !== undefined ? { source: value.source } : {}),
     rightsConfirmed: true,
     episodeCount: value.episodeCount as number,
     sceneCount: value.sceneCount as number,
@@ -188,6 +191,7 @@ export class StoryAnalysisService {
       promptSha256: promptSha,
       title: input.title,
       ...(input.sourceNote ? { sourceNote: input.sourceNote } : {}),
+      ...(input.source ? { source: input.source } : {}),
       rightsConfirmedAt: timestamp,
       model: OPENAI_STORY_MODEL,
       episodeCount: input.episodeCount,

@@ -3,10 +3,15 @@ import { API_ROUTES, type ApproveNovelStoryAnalysisRequest, type ApproveNovelSto
 import { StoryPromptService } from "./story-prompt.service.js";
 import { StoryAnalysisService } from "./story-analysis.service.js";
 import { NovelCharacterImageService } from "./novel-character-image.service.js";
+import { NovelSourceService } from "./novel-source.service.js";
 
 @Controller()
 export class StoryPromptController {
-  constructor(private readonly service: StoryPromptService, private readonly analysis: StoryAnalysisService, private readonly characterImage: NovelCharacterImageService) {}
+  constructor(private readonly service: StoryPromptService, private readonly analysis: StoryAnalysisService, private readonly characterImage: NovelCharacterImageService, private readonly novelSource: NovelSourceService) {}
+  @Post(API_ROUTES.novelSourceSearch)
+  searchNovelSources(@Body() body: unknown) { return this.novelSource.search(body); }
+  @Post(API_ROUTES.novelSourceImport)
+  importNovelSource(@Body() body: unknown) { return this.novelSource.importWork(body); }
   @Post(API_ROUTES.novelStoryAnalysisPreview)
   previewNovelAnalysis(@Body() body: unknown): Promise<NovelStoryAnalysisPreviewResponse> { return this.analysis.preview(body); }
   @Post(API_ROUTES.novelStoryAnalysis)

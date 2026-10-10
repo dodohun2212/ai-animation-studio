@@ -33,7 +33,7 @@ export class StoryAnalysisApiError extends Error {
 }
 
 const SAFE_ERRORS: Record<string, string> = {
-  STORY_ANALYSIS_INVALID_REQUEST: "입력이 조건에 맞지 않습니다. 본문(6,000자 이하)·제목(120자)·한 줄 소개(500자)·출처 메모(500자)·회차(1–20)·회차당 장면(2–12)과 권리 확인을 확인해 주세요. 요청은 나가지 않았습니다.",
+  STORY_ANALYSIS_INVALID_REQUEST: "입력이 조건에 맞지 않습니다. 본문(120,000자 이하)·제목(120자)·한 줄 소개(500자)·출처 메모(500자)·회차(1–20)·회차당 장면(2–12)과 권리 확인을 확인해 주세요. 요청은 나가지 않았습니다.",
   STORY_ANALYSIS_PROMPT_STALE: "미리보기를 만든 뒤 입력이 바뀌어 승인할 수 없습니다. 요청은 나가지 않았습니다 — 미리보기를 다시 만들어 확인한 뒤 승인해 주세요.",
   STORY_ANALYSIS_KEY_MISSING: "OpenAI 키가 저장·연결되어 있지 않습니다. 요청은 나가지 않았습니다 — API 설정에 키를 넣은 뒤 다시 승인해 주세요.",
   STORY_ANALYSIS_BUDGET_EXCEEDED: `이번 달 OpenAI 예산이 부족해 요청을 보내지 않았습니다. ${BUDGET_LIMIT_ROUTE_HINT}`,

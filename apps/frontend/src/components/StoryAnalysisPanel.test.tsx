@@ -219,7 +219,7 @@ describe("StoryAnalysisPanel", () => {
   it.each([
     ["STORY_ANALYSIS_ALREADY_ATTEMPTED", 409, undefined, "다시 보내지 않았습니다"],
     ["STORY_ANALYSIS_PROMPT_STALE", 409, undefined, "요청은 나가지 않았습니다"],
-    ["STORY_ANALYSIS_INVALID_REQUEST", 400, undefined, "6,000자"],
+    ["STORY_ANALYSIS_INVALID_REQUEST", 400, undefined, "120,000자"],
     ["BUDGET_LEDGER_UNREADABLE", 409, undefined, "사용 기록 파일을 읽지 못해"],
     ["STORY_ANALYSIS_PROVIDER_ERROR", 502, { category: "timeout", spendUnrecorded: true }, "OpenAI 사용량을 확인해 주세요"],
     ["STORY_ANALYSIS_STORAGE_ERROR", 500, { requestSent: true, spendUnrecorded: false }, "요청은 나갔지만 결과를 저장하지 못했습니다"],

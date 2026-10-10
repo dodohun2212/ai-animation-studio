@@ -105,6 +105,57 @@ describe("StoryStudioScreen", () => {
     expect(sent(fetchMock).find((entry) => entry.url === "/story-analysis/preview")!.body.sourceNote).toBe("작가 이름");
   });
 
+  /** CLI 1345: 「작품 고르기」로 고른 본문이 칸에 들어가고, 권리 확인은 다시 받으며, 분석 입력에 원문 없는 출처 기록(`source`)이 실린다. */
+  it("fills the story from a picked public-domain work and sends its citation with the analysis", async () => {
+    const book = { provider: "project-gutenberg", sourceId: "2147", title: "The Raven", authors: [{ name: "Poe, Edgar Allan", deathYear: 1849 }], translators: [], language: "en", subjects: ["Poetry"], sourceUrl: "https://www.gutenberg.org/ebooks/2147", rightsEvidence: "저자 사망 1849년" };
+    const fetchMock = mockServer({
+      "POST /story-sources/search": { provider: "project-gutenberg", results: [book], page: 1, hasNextPage: false },
+      "POST /story-sources/import": { book, fullSourceCharacterCount: 12, chapters: [{ number: 1, title: "The Raven", characterCount: 12 }], needsChapterRange: false, selectedCharacterCount: 12, sourceText: "Once upon a." },
+      "POST /story-analysis/preview": {
+        preview: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), prompt: "프롬프트", prompts: ["프롬프트"], sourceChunkCount: 1, providerCallCount: 1, model: "gpt-5.6-luna", sourceCharacterCount: 12, estimatedCostUsd: 0.05, providerAvailable: true },
+      },
+    });
+    render(<StoryStudioScreen onCreated={() => {}} onProjectFromAnalysis={() => {}} onBack={() => {}} onStartDirect={() => {}} onOpenSettings={() => {}} />);
+    await screen.findByTestId("story-title");
+    fireEvent.click(screen.getByTestId("story-rights"));
+    fill("novel-source-query", "poe");
+    fireEvent.click(screen.getByTestId("novel-source-search"));
+    fireEvent.click(await screen.findByTestId("novel-source-check-2147"));
+    fireEvent.click(await screen.findByTestId("novel-source-use"));
+
+    expect((screen.getByTestId("story-text") as HTMLTextAreaElement).value).toBe("Once upon a.");
+    expect((screen.getByTestId("story-title") as HTMLInputElement).value).toBe("The Raven");
+    expect((screen.getByTestId("story-source") as HTMLInputElement).value).toBe("The Raven — Poe, Edgar Allan (~1849) · Project Gutenberg #2147");
+    expect(screen.getByTestId("story-imported-source").textContent).toContain("저자 사망 1849년");
+    // 근거가 바뀌었으니 권리 확인은 다시 — 문구도 만료 작품용으로 바뀐다.
+    expect((screen.getByTestId("story-rights") as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByTestId("story-rights").closest("label")!.textContent).toContain("저작권 보호기간이 끝난 작품");
+
+    fill("story-logline", "까마귀가 찾아온다");
+    fireEvent.click(screen.getByTestId("story-rights"));
+    fireEvent.click(screen.getByTestId("story-preview-run"));
+    await screen.findByTestId("story-preview");
+    const body = sent(fetchMock).find((entry) => entry.url === "/story-analysis/preview")!.body;
+    expect(body.sourceText).toBe("Once upon a.");
+    expect(body.source).toMatchObject({ provider: "project-gutenberg", sourceId: "2147", fullSourceCharacterCount: 12, selectedCharacterCount: 12, rightsEvidence: "저자 사망 1849년" });
+    expect(JSON.stringify(body.source)).not.toContain("Once upon a.");
+    expect(sent(fetchMock).some((entry) => entry.url === "/story-analysis")).toBe(false);
+
+    fill("story-text", "Once upon a. edited");
+    expect(screen.getByTestId("story-imported-edited")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("story-imported-clear"));
+    expect(screen.queryByTestId("story-imported-source")).toBeNull();
+    expect(screen.getByTestId("story-rights").closest("label")!.textContent).toContain("직접 쓴 글이거나");
+  });
+
+  it("writes the public-domain basis into the project notes when made without analysis", () => {
+    const citation = { provider: "project-gutenberg" as const, sourceId: "2147", title: "The Raven", authors: [{ name: "Poe, Edgar Allan", deathYear: 1849 }], translators: [], language: "en" as const, sourceUrl: "https://www.gutenberg.org/ebooks/2147", rightsEvidence: "저자 사망 1849년", fullSourceCharacterCount: 100, selectedCharacterCount: 40, chapterRange: { firstChapter: 2, lastChapter: 3 } };
+    const notes = buildStoryNotes("", [], true, citation);
+    expect(notes).toContain("저작권 보호기간이 끝난 작품");
+    expect(notes).toContain("The Raven — Poe, Edgar Allan (~1849) · Project Gutenberg #2147 · 2–3장");
+    expect(notes).not.toContain("직접 썼거나");
+  });
+
   /** CLI 1326: 입력칸에서 Enter(폼 제출)로는 분석 없는 만들기가 일어나지 않고, 전용 버튼을 눌러야만 만들어진다. */
   it("does not create a project when Enter submits the form from a field", async () => {
     const fetchMock = mockServer({ "POST /long-projects": { project: makeLongProject() } });

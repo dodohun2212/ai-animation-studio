@@ -18,10 +18,11 @@ const novelAnalysis = {
   episodes: Array.from({ length: 3 }, (_, index) => ({ episodeNumber: index + 1, title: `Episode ${index + 1}`, summary: `Summary ${index + 1}`, mainEvent: `Event ${index + 1}`, conflict: `Conflict ${index + 1}`, cliffhanger: `Cliffhanger ${index + 1}`, nextEpisodeHook: `Hook ${index + 1}` })),
   warnings: ["Review sensitive topics before production."],
 };
+const novelSourceCitation = { provider: "project-gutenberg" as const, sourceId: "11", title: "Alice's Adventures in Wonderland", authors: [{ name: "Lewis Carroll", deathYear: 1898 }], translators: [], language: "en" as const, sourceUrl: "https://www.gutenberg.org/ebooks/11", rightsEvidence: "Korean term filter", fullSourceCharacterCount: 5, selectedCharacterCount: 5 };
 const novelRequest = {
   projectId: "novel_created",
   settings: { ...input.settings, title: novelAnalysis.title, logline: novelAnalysis.logline, genre: novelAnalysis.genre, tone: novelAnalysis.tone, theme: novelAnalysis.theme },
-  source: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), title: "Original input title", sourceNote: "Own draft", rightsConfirmedAt: "2026-10-10T00:00:00.000Z", analyzedAt: "2026-10-10T00:01:00.000Z", model: "gpt-5.6-luna", episodeCount: 3, sceneCount: 6 },
+  source: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), title: "Original input title", sourceNote: "Own draft", source: novelSourceCitation, rightsConfirmedAt: "2026-10-10T00:00:00.000Z", analyzedAt: "2026-10-10T00:01:00.000Z", model: "gpt-5.6-luna", episodeCount: 3, sceneCount: 6 },
   analysis: novelAnalysis,
 };
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });

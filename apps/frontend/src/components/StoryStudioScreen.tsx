@@ -10,10 +10,12 @@ import {
   type LongProject,
   type LongProjectSettingsInput,
   type NovelStoryAnalysisInput,
+  type NovelStorySourceCitation,
 } from "@ai-animation-studio/shared";
 
 import { assetContentUrl, listAssets } from "../api/assetsApi.js";
 import { createLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
+import { NovelSourcePicker, contributorsLabel, type PickedNovelSource } from "./NovelSourcePicker.js";
 import { Spinner } from "./Spinner.js";
 import { StoryAnalysisPanel } from "./StoryAnalysisPanel.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
@@ -56,15 +58,22 @@ let characterSequence = 0;
 export { autoStoryProjectId } from "../utils/storyProjectId.js";
 import { autoStoryProjectId } from "../utils/storyProjectId.js";
 
+/** 가져온 작품의 한 줄 요약 — 출처 메모 칸과 메모의 권리 줄에 씁니다. */
+export function citationSummary(citation: NovelStorySourceCitation): string {
+  const range = citation.chapterRange ? ` · ${citation.chapterRange.firstChapter}–${citation.chapterRange.lastChapter}장` : "";
+  return `${citation.title} — ${contributorsLabel(citation.authors)} · Project Gutenberg #${citation.sourceId}${range}`;
+}
+
 /** 장기 프로젝트의 「메모」에 들어가는 글 — 재창작 지시, 출처, 등장인물. 대본 AI가 읽는 자리입니다. */
-export function buildStoryNotes(source: string, characters: { name: string; description: string; assetName: string | null }[], rightsConfirmed = false): string {
+export function buildStoryNotes(source: string, characters: { name: string; description: string; assetName: string | null }[], rightsConfirmed = false, citation: NovelStorySourceCitation | null = null): string {
   const lines = [
     "【재창작 지시】 붙여넣은 이야기는 줄거리와 분위기의 재료일 뿐입니다. 원문의 문장·대사를 그대로 옮기지 말고, 인물 이름·사건 표현·대사를 새로 바꿔 쓰십시오. 실존 인물·실제 지명·개인정보는 지어낸 것으로 바꾸십시오.",
     "【영상화 지시】 속마음·설명 위주의 부분은 화면에 보이는 행동과 사건으로 바꾸고, 각 회차는 처음 몇 초 안에 궁금증을 만드는 장면으로 시작하십시오.",
   ];
   const trimmedSource = source.trim();
   if (trimmedSource) lines.push(`【출처 메모】 ${trimmedSource}`);
-  if (rightsConfirmed) lines.push("【권리 확인】 사용자가 이 글을 직접 썼거나 이용 허락을 받았다고 확인했습니다. 원문·개인정보를 그대로 공개하지 마십시오.");
+  if (rightsConfirmed && citation) lines.push(`【권리 확인】 사용자가 저작권 보호기간이 끝난 작품으로 쓰겠다고 확인했습니다(${citationSummary(citation)} · 근거: ${citation.rightsEvidence}). 원문을 그대로 옮기지 마십시오.`);
+  else if (rightsConfirmed) lines.push("【권리 확인】 사용자가 이 글을 직접 썼거나 이용 허락을 받았다고 확인했습니다. 원문·개인정보를 그대로 공개하지 마십시오.");
   const named = characters.filter((character) => character.name.trim());
   if (named.length > 0) {
     lines.push("【등장인물】");
@@ -94,6 +103,10 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
   const [sceneCount, setSceneCount] = useState<number>(STORY_DEFAULTS.sceneCount);
   /** 본인이 쓴 글이거나 이용 허락을 받은 글이라는 확인 — 없으면 만들 수 없습니다(Reddit 조건 조사, CLI 1305). */
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  /** 「작품 고르기」로 가져온 작품의 출처 기록(원문 없음) — 분석 입력의 `source` 로 갑니다. */
+  const [citation, setCitation] = useState<NovelStorySourceCitation | null>(null);
+  /** 가져온 그대로의 본문 — 가져온 뒤 고쳤는지 말하는 데만 씁니다. */
+  const [importedText, setImportedText] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterDraft[]>([]);
   const [library, setLibrary] = useState<Asset[] | null>(null);
   const [libraryFailed, setLibraryFailed] = useState(false);
@@ -120,11 +133,23 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
           title: title.trim(),
           logline: logline.trim(),
           ...(source.trim() ? { sourceNote: source.trim() } : {}),
+          ...(citation ? { source: citation } : {}),
           rightsConfirmed: true,
           episodeCount,
           sceneCount,
         }
       : null;
+
+  /** 고른 본문을 칸에 넣습니다. 권리 확인은 근거가 바뀌었으니 다시 받습니다. 제목·출처 메모는 비어 있을 때만 채웁니다. */
+  function usePicked(picked: PickedNovelSource): void {
+    setText(picked.text);
+    setImportedText(picked.text);
+    setCitation(picked.citation);
+    setRightsConfirmed(false);
+    if (!title.trim()) setTitle(picked.citation.title.slice(0, 100));
+    if (!source.trim()) setSource(citationSummary(picked.citation).slice(0, 300));
+    setError("");
+  }
 
   function addCharacter(): void {
     setCharacters((old) => [...old, { key: ++characterSequence, name: "", description: "", assetId: "" }]);
@@ -161,7 +186,7 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
       clipDurationSeconds: 5,
       aspectRatio: "9:16",
       audience: "",
-      notes: buildStoryNotes(source, characters.map((character) => ({ name: character.name, description: character.description, assetName: assetsById.get(character.assetId)?.displayName ?? null })), rightsConfirmed),
+      notes: buildStoryNotes(source, characters.map((character) => ({ name: character.name, description: character.description, assetName: assetsById.get(character.assetId)?.displayName ?? null })), rightsConfirmed, citation),
       startingState: "",
       midpoint: "",
       endingDirection: "",
@@ -198,6 +223,9 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
 
       {/* 🔴 Enter 로는 아무것도 만들어지지 않습니다 — 이 form 에는 submit 버튼이 없고, 유료 분석도 분석 없이 만들기도 각자의 버튼을 눌러야 합니다. */}
       <form data-testid="story-studio-form" onSubmit={(event) => event.preventDefault()} className="space-y-6" noValidate>
+        {/* ── 작품 고르기 (선택) — 저작권이 끝난 소설을 찾아 아래 본문 칸에 넣습니다. 직접 붙여넣는 길은 그대로입니다. ── */}
+        <NovelSourcePicker onPick={usePicked} hasText={text.trim().length > 0} disabled={submitting} />
+
         {/* ── 1. 이야기 ── */}
         <div className="space-y-3 rounded-lg border border-line bg-ground-raised p-5">
           <h2 className="text-base font-semibold text-bone">1. 이야기</h2>
@@ -227,12 +255,38 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
           <label className="block text-xs text-bone-dim">출처 메모 (선택)
             <input data-testid="story-source" className={inputClass} value={source} onChange={(event) => setSource(event.target.value)} disabled={submitting} maxLength={300} placeholder="예: Reddit 글 주소, 작가 이름" />
           </label>
+          {citation && (
+            <div data-testid="story-imported-source" className="space-y-1 rounded border border-line p-3 text-xs text-bone-dim">
+              <p>
+                가져온 작품: <span className="text-bone">「{citation.title}」</span> — {contributorsLabel(citation.authors)}
+                {citation.translators.length > 0 ? ` · 번역 ${contributorsLabel(citation.translators)}` : ""}
+                {citation.chapterRange ? ` · ${citation.chapterRange.firstChapter}–${citation.chapterRange.lastChapter}장` : ""}
+                {` · ${citation.selectedCharacterCount.toLocaleString("ko-KR")}자 / 전체 ${citation.fullSourceCharacterCount.toLocaleString("ko-KR")}자`}
+              </p>
+              <p className="text-bone-faint">
+                권리 근거: {citation.rightsEvidence} · <a href={citation.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-bone">원본 페이지</a>
+              </p>
+              {importedText !== null && text !== importedText && (
+                <p data-testid="story-imported-edited" className="text-bone-faint">가져온 뒤 본문을 고쳤습니다 — 출처 기록은 그대로 함께 보냅니다.</p>
+              )}
+              <button type="button" data-testid="story-imported-clear" className={smallOutlineButton} onClick={() => { setCitation(null); setImportedText(null); setRightsConfirmed(false); }} disabled={submitting}>
+                가져온 작품 기록 지우기
+              </button>
+            </div>
+          )}
           <label className="flex items-start gap-2 rounded border border-line p-3 text-xs text-bone">
             <input type="checkbox" data-testid="story-rights" className="mt-0.5" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} disabled={submitting} />
-            <span>
-              이 글은 <strong>제가 직접 쓴 글이거나 작성자의 이용 허락을 받은 글</strong>입니다.
-              <span className="mt-0.5 block text-bone-faint">남의 글을 직접 붙여넣어도 작성자의 권리는 사라지지 않습니다. 이 앱은 메모에 재창작 지시를 넣지만 원문이 그대로 쓰이지 않는다고 보장하지는 않으며, 권리 확인을 대신하지 않습니다.</span>
-            </span>
+            {citation ? (
+              <span>
+                이 작품을 <strong>저작권 보호기간이 끝난 작품</strong>으로 쓰겠습니다(근거는 위).
+                <span className="mt-0.5 block text-bone-faint">앱의 거르기는 저자·번역자의 사망 연도로 본 보수적인 필터일 뿐 법적 보증이 아니며, 판본·번역의 권리까지 확인해 주지는 않습니다. 확인 책임은 사용자에게 있습니다.</span>
+              </span>
+            ) : (
+              <span>
+                이 글은 <strong>제가 직접 쓴 글이거나 작성자의 이용 허락을 받은 글</strong>입니다.
+                <span className="mt-0.5 block text-bone-faint">남의 글을 직접 붙여넣어도 작성자의 권리는 사라지지 않습니다. 이 앱은 메모에 재창작 지시를 넣지만 원문이 그대로 쓰이지 않는다고 보장하지는 않으며, 권리 확인을 대신하지 않습니다.</span>
+              </span>
+            )}
           </label>
         </div>
 
@@ -314,8 +368,9 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
       <section aria-label="아직 안 되는 것" data-testid="story-not-yet" className="space-y-1.5 rounded-lg border border-dashed border-line p-5">
         <h2 className="text-sm font-medium text-bone-dim">아직 안 되는 것 (준비 중)</h2>
         <ul className="list-inside list-disc space-y-1 text-xs text-bone-faint">
-          <li>Reddit 주소만 넣어 글 가져오기 — Reddit의 사전 승인과 이용 조건이 필요해 만들지 않습니다. 직접 쓴 글이나 허락받은 글을 붙여넣어 주세요.</li>
-          <li>{NOVEL_SOURCE_MAX_CHARS.toLocaleString("ko-KR")}자보다 긴 글 — 지금은 그 길이까지 나눠서 분석합니다. 더 긴 글은 앞부분만 붙이거나 나눠서 작품을 만들어 주세요.</li>
+          <li>Reddit 주소만 넣어 글 가져오기, 웹소설 플랫폼에서 가져오기 — 사전 승인과 이용 조건·저작권 때문에 만들지 않습니다. 직접 쓴 글이나 허락받은 글을 붙여넣거나, 위 「작품 고르기」에서 저작권이 끝난 작품을 고르세요.</li>
+          <li>한국어 저작권 만료 작품(공유마당) 가져오기 — 제공처의 원문 이용 조건을 확인하기 전이라 아직 없습니다.</li>
+          <li>{NOVEL_SOURCE_MAX_CHARS.toLocaleString("ko-KR")}자보다 긴 글을 한 번에 — 지금은 그 길이까지 나눠서 분석합니다. 「작품 고르기」로 가져온 장편은 장 범위를 골라 1부·2부처럼 나눠 만들고, 직접 붙여넣는 글은 앞부분만 붙이거나 나눠 주세요.</li>
         </ul>
       </section>
     </section>

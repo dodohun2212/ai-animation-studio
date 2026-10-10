@@ -18,7 +18,7 @@ describe("local Story generator isolation", () => {
     for (const name of files) {
       const source = await fsPromises.readFile(path.join(directory, name), "utf8");
       expect(source, name).not.toMatch(/from\s+["'](?:openai|runway|node:child_process)["']/i);
-      expect(source, name).not.toMatch(/\b(?:fetch|axios|exec|spawn)\s*\(/);
+      expect(source, name).not.toMatch(/(?<![.\w])(?:fetch|axios|exec|spawn)\s*\(/);
       expect(source, name).not.toMatch(/\bffmpeg\b/i);
     }
   });

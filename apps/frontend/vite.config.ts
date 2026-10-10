@@ -10,7 +10,7 @@ import { defineConfig } from "vitest/config";
  * the browser while working in the packaged app.
  *
  * The list is exhaustive against the top-level prefixes in shared's API_ROUTES: /health, /projects,
- * /long-projects, /settings, /assets, /audio, /videos, /trends, /story-analysis. Instagram needs no entry of its own — its routes live
+ * /long-projects, /settings, /assets, /audio, /videos, /trends, /story-analysis, /story-sources. Instagram needs no entry of its own — its routes live
  * under /settings.
  */
 // Local NestJS backend only, for manual dev checks — never a paid provider.
@@ -27,6 +27,7 @@ const DEV_PROXY: Record<string, string> = {
   "/news": "http://127.0.0.1:3000",
   "/trends": "http://127.0.0.1:3000",
   "/story-analysis": "http://127.0.0.1:3000",
+  "/story-sources": "http://127.0.0.1:3000",
   // The subtitle fonts, so a card preview in the dev browser draws with the same bytes FFmpeg burns in.
   "/fonts": "http://127.0.0.1:3000",
 };

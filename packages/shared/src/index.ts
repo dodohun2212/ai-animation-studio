@@ -6,4 +6,5 @@ export * from "./trend.js";
 export * from "./news-reel-card.js";
 export * from "./news-summary-check.js";
 export * from "./novel-story.js";
+export * from "./novel-source.js";
 export * from "./workflow.js";

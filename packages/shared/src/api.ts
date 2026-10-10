@@ -16,6 +16,7 @@ export interface ApiError {
 }
 
 export type { ApproveNovelStoryAnalysisRequest, ApproveNovelStoryAnalysisResponse, NovelStoryAnalysisPreviewResponse } from "./novel-story.js";
+export type { NovelSourceImportRequest, NovelSourceImportResponse, NovelSourceSearchRequest, NovelSourceSearchResponse, NovelStorySourceCitation } from "./novel-source.js";
 export type { CreateNovelStoryProjectRequest } from "./novel-story.js";
 export type { NovelCharacterImageInput, NovelCharacterImagePreviewResponse, GenerateNovelCharacterImageRequest, GenerateNovelCharacterImageResponse } from "./novel-story.js";
 
@@ -3728,6 +3729,8 @@ export const API_ROUTES = {
   health: "/health",
   novelStoryAnalysisPreview: "/story-analysis/preview",
   novelStoryAnalysis: "/story-analysis",
+  novelSourceSearch: "/story-sources/search",
+  novelSourceImport: "/story-sources/import",
   novelStoryProjectCreate: "/long-projects/from-story-analysis",
   novelCharacterImagePreview: "/story-analysis/character-image/preview",
   novelCharacterImageGenerate: "/story-analysis/character-image",

@@ -1,4 +1,4 @@
-import { ASPECT_RATIOS, CLIP_DURATION_LIMITS, isAspectRatio, isClipDurationSeconds, isSha256Hex, type AspectRatio } from "@ai-animation-studio/shared";
+import { ASPECT_RATIOS, CLIP_DURATION_LIMITS, isAspectRatio, isClipDurationSeconds, isSha256Hex, isNovelStorySourceCitation, type AspectRatio } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { withWarning } from "../projects/warnings.js";
 import { readLongProjectJson } from "./long-project-json.js";
@@ -104,10 +104,11 @@ function novelStoryProjectInput(value: unknown): { projectId: string; settings: 
   const sourceValue = value.source;
   const analysisValue = value.analysis;
   if (!isPlainObject(sourceValue) || !isPlainObject(analysisValue)) throw longInvalidRequest();
-  const sourceKeys = ["inputSha256", "promptSha256", "title", "sourceNote", "rightsConfirmedAt", "analyzedAt", "model", "episodeCount", "sceneCount"];
+  const sourceKeys = ["inputSha256", "promptSha256", "title", "sourceNote", "source", "rightsConfirmedAt", "analyzedAt", "model", "episodeCount", "sceneCount"];
   if (Object.keys(sourceValue).some((key) => !sourceKeys.includes(key))
     || !isSha256Hex(sourceValue.inputSha256) || !isSha256Hex(sourceValue.promptSha256)
     || !boundedText(sourceValue.title, 120) || (sourceValue.sourceNote !== undefined && (typeof sourceValue.sourceNote !== "string" || sourceValue.sourceNote.length > 500))
+    || (sourceValue.source !== undefined && !isNovelStorySourceCitation(sourceValue.source))
     || !boundedText(sourceValue.model, 100) || typeof sourceValue.rightsConfirmedAt !== "string" || !Number.isFinite(Date.parse(sourceValue.rightsConfirmedAt))
     || typeof sourceValue.analyzedAt !== "string" || !Number.isFinite(Date.parse(sourceValue.analyzedAt))
     || !Number.isInteger(sourceValue.episodeCount) || (sourceValue.episodeCount as number) < 1 || (sourceValue.episodeCount as number) > 20
@@ -155,7 +156,7 @@ function novelStoryProjectInput(value: unknown): { projectId: string; settings: 
     || projectSettings.theme !== analysisValue.theme.trim()) throw longInvalidRequest("Project settings must match the reviewed story analysis.");
   return {
     projectId: id, settings: projectSettings,
-    source: { inputSha256: sourceValue.inputSha256 as string, promptSha256: sourceValue.promptSha256 as string, title: sourceValue.title.trim(), ...(sourceValue.sourceNote !== undefined ? { sourceNote: (sourceValue.sourceNote as string).trim() } : {}), rightsConfirmedAt: sourceValue.rightsConfirmedAt, analyzedAt: sourceValue.analyzedAt, model: sourceValue.model.trim(), episodeCount: sourceValue.episodeCount as number, sceneCount: sourceValue.sceneCount as number },
+    source: { inputSha256: sourceValue.inputSha256 as string, promptSha256: sourceValue.promptSha256 as string, title: sourceValue.title.trim(), ...(sourceValue.sourceNote !== undefined ? { sourceNote: (sourceValue.sourceNote as string).trim() } : {}), ...(sourceValue.source !== undefined ? { source: sourceValue.source } : {}), rightsConfirmedAt: sourceValue.rightsConfirmedAt, analyzedAt: sourceValue.analyzedAt, model: sourceValue.model.trim(), episodeCount: sourceValue.episodeCount as number, sceneCount: sourceValue.sceneCount as number },
     analysis: { title: analysisValue.title.trim(), logline: analysisValue.logline.trim(), genre: analysisValue.genre.trim(), tone: analysisValue.tone.trim(), theme: analysisValue.theme.trim(), characters, episodes, warnings: analysisValue.warnings as string[] },
     ...(typeof protagonistAssetId === "string" ? { protagonistAssetId: protagonistAssetId.trim() } : {}),
     supportingCharacterAssetLinks,

@@ -1,3 +1,5 @@
+import type { NovelStorySourceCitation } from "./novel-source.js";
+
 /** Story analysis accepts up to two source blocks; count follows JavaScript string length. */
 export const NOVEL_SOURCE_MAX_CHARS = 120_000;
 /** Long source text is analyzed in blocks capped at 60,000 JavaScript characters. */
@@ -14,6 +16,7 @@ export interface NovelStoryAnalysisInput {
   title: string;
   logline: string;
   sourceNote?: string;
+  source?: NovelStorySourceCitation;
   rightsConfirmed: true;
   episodeCount: number;
   sceneCount: number;
@@ -82,6 +85,7 @@ export interface NovelStorySourceMetadata {
   promptSha256: string;
   title: string;
   sourceNote?: string;
+  source?: NovelStorySourceCitation;
   rightsConfirmedAt: string;
   analyzedAt: string;
   model: string;

@@ -8,6 +8,7 @@ import type { NovelStoryAnalysis } from "@ai-animation-studio/shared";
 
 const sourceText = "UNIQUE_NOVEL_SOURCE_SECRET — 옛 항구의 유리등대에서 두 사람이 만난다.";
 const input = { sourceText, title: "등대", logline: "두 사람의 여정", rightsConfirmed: true as const, episodeCount: 1, sceneCount: 6 };
+const sourceCitation = { provider: "project-gutenberg" as const, sourceId: "11", title: "Alice's Adventures in Wonderland", authors: [{ name: "Lewis Carroll", deathYear: 1898 }], translators: [], language: "en" as const, sourceUrl: "https://www.gutenberg.org/ebooks/11", rightsEvidence: "Korean term filter", fullSourceCharacterCount: 5, selectedCharacterCount: 5 };
 const output: NovelStoryAnalysis = {
   title: "유리 너머", logline: "새로운 인물들이 길을 찾는다", genre: "모험", tone: "따뜻함", theme: "용기",
   characters: [{ id: "character-1", name: "나린", role: "protagonist", appearance: "짧은 은발", personality: "침착함" }],
@@ -19,14 +20,14 @@ const chunkSummary = { themes: ["새 출발"], characterNotes: ["익명의 주�
 let root: string;
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); vi.restoreAllMocks(); });
 
-async function setup(analyze = vi.fn(async () => output), analyzeChunk = vi.fn(async () => chunkSummary)) {
+async function setup(analyze = vi.fn(async () => output), analyzeChunk = vi.fn(async () => chunkSummary), requestInput = input) {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "story-analysis-"));
   const providerSettings = { rawCredentialIfConnected: vi.fn(async (): Promise<string | null> => "test-key") };
   const budget = new OpenAiBudget(root, 2);
   const service = new StoryAnalysisService(root, providerSettings as never, budget, analyze as never, undefined, analyzeChunk as never);
-  const preview = await service.preview(input);
+  const preview = await service.preview(requestInput);
   const approve = {
-    ...input,
+    ...requestInput,
     inputSha256: preview.preview.inputSha256,
     promptSha256: preview.preview.promptSha256,
     approved: true as const,
@@ -59,6 +60,19 @@ describe("StoryAnalysisService", () => {
     expect(analyze).toHaveBeenCalledTimes(1);
     const ledger = JSON.parse(await fs.readFile(path.join(root, "api_budget_usage.json"), "utf8")) as unknown[];
     expect(ledger).toHaveLength(1);
+  });
+
+  it("accepts and persists a catalog citation without storing the imported source text", async () => {
+    const requestInput = { ...input, source: sourceCitation };
+    const { service, approve, preview } = await setup(undefined, undefined, requestInput);
+    expect(preview.preview).toMatchObject({ providerAvailable: true });
+
+    const result = await service.approve(approve);
+
+    expect(result.source.source).toEqual(sourceCitation);
+    const saved = await fs.readFile(path.join(root, "story_sources", `${approve.inputSha256}.json`), "utf8");
+    expect(saved).toContain("Lewis Carroll");
+    expect(saved).not.toContain(sourceText);
   });
 
   it("returns a saved analysis without requiring a key or remaining budget", async () => {

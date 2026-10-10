@@ -58,6 +58,14 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 원문 본문은 `learning_data/story_sources/`나 예산 장부에 쓰지 않는다. 입력 해시를 파일명으로 사용하며, 저장값은 해시·프롬프트 해시·제목·선택 출처 메모·권리 확인 시각·모델·회차/장면 수·분석 결과뿐이다. 같은 입력의 성공 결과는 다시 돌려주고 Provider를 재호출하지 않는다. 분석 시도 직전 `.claimed` 파일을 독점 생성하므로 응답이 모호하게 끊겨도 같은 입력은 다시 보내지 않는다. 이 기능의 오류 코드는 `STORY_ANALYSIS_INVALID_REQUEST`, `STORY_ANALYSIS_PROMPT_STALE`, `STORY_ANALYSIS_KEY_MISSING`, `STORY_ANALYSIS_BUDGET_EXCEEDED`, `STORY_ANALYSIS_ALREADY_ATTEMPTED`, `STORY_ANALYSIS_STORAGE_ERROR`, `STORY_ANALYSIS_PROVIDER_ERROR`다.
 
+## 온라인 소설 출처 검색·가져오기
+
+`POST /story-sources/search`는 `{ query, topic?, page? }`를 받고 Gutendex 메타데이터 검색 결과 중 Project Gutenberg의 영어 작품만 반환한다. `copyright=false`는 미국 기준이며, 한국 내 보호기간을 보장하지 않는다. 서버는 이름과 사망연도가 제공된 저자 전원 및 번역자 전원이 현재 연도 기준 한국의 생존기간+70년을 넘긴 작품만 남긴다. 검색 응답에는 제목·작가/번역자·주제어·원본 작품 페이지·필터의 근거 문구가 있다. 원문 길이는 카탈로그가 제공하지 않아 검색 결과에 정확한 글자 수/길이 필터를 표시하지 않는다.
+
+`POST /story-sources/import`는 `{ sourceId, chapterRange? }`를 받는다. 본문 요청은 사용자가 작품을 선택한 뒤에만 발생하며, 서버는 작품 ID로 Project Gutenberg 공식 텍스트 미러 경로를 구성한다(클라이언트 URL을 받지 않는다). Gutenberg 머리말·꼬리말과 줄바꿈을 정규화한 문자열의 JavaScript UTF-16 `length`를 분석 입력 글자 수로 센다. 120,000자 이하는 `sourceText`를 반환한다. 초과 작품은 장 경계와 각 장의 글자 수만 반환하며, 프론트가 연속된 `chapterRange`를 보내면 그 범위 본문만 반환한다. 범위가 여전히 120,000자를 넘으면 `selectionTooLong`으로 거절한다. 장 경계를 찾지 못한 원문은 자동 분할하지 않는다.
+
+분석 입력의 선택적 `source` citation과 M2 `source` 안의 citation은 작품 ID·제목·저자/번역자·원본 링크·권리 필터 근거·전체/선택 글자 수·선택 장 범위를 담는다. 원문은 분석 저장 파일이나 장기 프로젝트 출처 파일에 쓰지 않는다. 이 보수적 필터는 법률 자문이나 판본별 권리 보증이 아니다. Project Gutenberg는 해외 사용자의 현지 권리 확인을 요구한다. 공유마당은 공개 문서만으로 원문 자동 전송 권한을 확인하지 못해 현재 출처에 포함하지 않는다. 이 경로는 실제 Provider를 호출하지 않는다.
+
 ## 소설 분석 결과로 장기 프로젝트 만들기 — M2
 
 `POST /long-projects/from-story-analysis`는 `{ projectId, settings, source, analysis, protagonistAssetId? }`를 받는다. `source`는 M1이 돌려준 원문 없는 `NovelStorySourceMetadata`; 본문은 받지 않는다. `analysis`는 화면에서 확인·수정한 줄거리·인물 카드·회차 개요이며, 회차 개수는 최종 `settings.episodeCount`와 맞아야 한다. `source`의 회차·장면 수는 최초 분석 요청의 기록이므로 화면에서 회차를 추가·삭제하거나 새 프로젝트 설정을 바꿔도 덮어쓰지 않는다. `settings`의 제목·한 줄 소개·장르·분위기·주제는 승인한 분석과 일치해야 한다. 주인공 역할은 정확히 하나여야 하고, 선택한 `protagonistAssetId`는 사용 가능한 캐릭터 폴더여야 한다.

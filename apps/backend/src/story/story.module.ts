@@ -13,11 +13,15 @@ import { StoryPromptService } from "./story-prompt.service.js";
 import { ProviderSettingsRepository } from "../settings/provider-settings.repository.js";
 import { StoryAnalysisService } from "./story-analysis.service.js";
 import { NovelCharacterImageService } from "./novel-character-image.service.js";
+import { NovelSourceService } from "./novel-source.service.js";
+import { NovelSourceHttpClient } from "../providers/novel-source-http.client.js";
 
 @Module({
   imports: [ProjectsModule, ProjectAssetMappingsModule, ProviderSettingsModule, AssetsModule],
   controllers: [StoryPromptController],
   providers: [
+    NovelSourceService,
+    NovelSourceHttpClient,
     { provide: OpenAiBudget, useFactory: (root: string, settings: ProviderSettingsRepository) => new OpenAiBudget(root, undefined, settings), inject: [LEARNING_DATA_ROOT, ProviderSettingsRepository] },
     {
       provide: StoryPromptService,
