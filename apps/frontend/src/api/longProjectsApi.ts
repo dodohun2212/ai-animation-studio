@@ -32,6 +32,7 @@ import {
   type BudgetPreview,
   type CreateLongProjectOutlinePreviewResponse,
   type CreateLongProjectRequest,
+  type CreateNovelStoryProjectRequest,
   type CreateLongProjectResponse,
   type DuplicateLongEpisodeResponse,
   type GenerateLongEpisodeScriptRequest,
@@ -773,6 +774,21 @@ async function request<T>(url: string, init: RequestInit | undefined, guard: (va
   }
   if (!guard(body)) throw new LongProjectsApiError(MALFORMED.code, MALFORMED.message);
   return body;
+}
+
+/**
+ * 소설 분석 결과(사람이 확인·수정한 것)로 장기 프로젝트를 **한 번에** 만듭니다(M2, `POST /long-projects/from-story-analysis`).
+ *
+ * 🔴 OpenAI·이미지·영상 Provider 를 부르지 않는 저장 요청입니다 — 돈이 나가지 않습니다. 본문은 보내지 않고(분석 구조와 M1 출처
+ * 메타데이터만), 서버가 프로젝트·Story Bible·회차 개요를 임시 폴더에 다 쓴 뒤 한 번에 바꿔 놓으므로 실패해도 반쪽 프로젝트가 남지 않습니다.
+ * 응답은 `createLongProject` 와 같은 모양이라 같은 가드를 씁니다.
+ */
+export function createNovelStoryProject(requestBody: CreateNovelStoryProjectRequest): Promise<CreateLongProjectResponse> {
+  return request(
+    API_ROUTES.novelStoryProjectCreate,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) },
+    isCreateLongProjectResponse,
+  );
 }
 
 export function createLongProject(requestBody: CreateLongProjectRequest): Promise<CreateLongProjectResponse> {

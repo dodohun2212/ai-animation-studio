@@ -58,6 +58,12 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 원문 본문은 `learning_data/story_sources/`나 예산 장부에 쓰지 않는다. 입력 해시를 파일명으로 사용하며, 저장값은 해시·프롬프트 해시·제목·선택 출처 메모·권리 확인 시각·모델·회차/장면 수·분석 결과뿐이다. 같은 입력의 성공 결과는 다시 돌려주고 Provider를 재호출하지 않는다. 분석 시도 직전 `.claimed` 파일을 독점 생성하므로 응답이 모호하게 끊겨도 같은 입력은 다시 보내지 않는다. 이 기능의 오류 코드는 `STORY_ANALYSIS_INVALID_REQUEST`, `STORY_ANALYSIS_PROMPT_STALE`, `STORY_ANALYSIS_KEY_MISSING`, `STORY_ANALYSIS_BUDGET_EXCEEDED`, `STORY_ANALYSIS_ALREADY_ATTEMPTED`, `STORY_ANALYSIS_STORAGE_ERROR`, `STORY_ANALYSIS_PROVIDER_ERROR`다.
 
+## 소설 분석 결과로 장기 프로젝트 만들기 — M2
+
+`POST /long-projects/from-story-analysis`는 `{ projectId, settings, source, analysis, protagonistAssetId? }`를 받는다. `source`는 M1이 돌려준 원문 없는 `NovelStorySourceMetadata`; 본문은 받지 않는다. `analysis`는 화면에서 확인·수정한 줄거리·인물 카드·회차 개요이며, 회차 개수는 최종 `settings.episodeCount`와 맞아야 한다. `source`의 회차·장면 수는 최초 분석 요청의 기록이므로 화면에서 회차를 추가·삭제하거나 새 프로젝트 설정을 바꿔도 덮어쓰지 않는다. `settings`의 제목·한 줄 소개·장르·분위기·주제는 승인한 분석과 일치해야 한다. 주인공 역할은 정확히 하나여야 하고, 선택한 `protagonistAssetId`는 사용 가능한 캐릭터 폴더여야 한다.
+
+서버는 `project.json`을 `outline_ready`로, 모든 항목을 `outline_ready`인 `episode_outlines.json`으로 저장한다. 수정된 인물 카드와 주의 표지는 Story Bible `basic`에 놓아 다음 회차 프롬프트가 읽는다. 선택한 주인공 폴더 링크도 함께 저장한다. M1에서 받은 출처 메타데이터는 `novel_story_source.json`에 보존한다. 기존 `<projectId>` 폴더 안의 임시 `long_story` 디렉터리에 네 파일을 먼저 모두 쓴 뒤 최종 `long_story`로 이름을 바꾸므로 저장 중 실패하면 반쪽 프로젝트가 보이지 않는다. 기존 짧은 프로젝트와 같은 ID를 쓸 수 있으며, `long_story`가 이미 있으면 기존 자료를 그대로 두고 충돌 오류를 돌려준다. 이 경로는 OpenAI·이미지·영상 Provider를 부르지 않는다.
+
 
 ## 밈 관찰 카드에서 단기 프로젝트 초안으로
 

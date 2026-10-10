@@ -2,18 +2,21 @@ import { useRef, useState } from "react";
 import {
   NOVEL_ANALYSIS_ESTIMATED_COST_USD,
   type ApproveNovelStoryAnalysisResponse,
+  type LongProject,
   type NovelStoryAnalysisInput,
   type NovelStoryAnalysisPreviewResponse,
 } from "@ai-animation-studio/shared";
 
 import { approveStoryAnalysis, previewStoryAnalysis, toStoryAnalysisDisplayError } from "../api/storyAnalysisApi.js";
-import { formatDateTime } from "../utils/formatDateTime.js";
 import { Spinner } from "./Spinner.js";
+import { StoryAnalysisReview } from "./StoryAnalysisReview.js";
 import { outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
   /** 입력이 분석 조건을 모두 채웠을 때만(아니면 null) — 칸 검사는 부모 화면이 합니다. */
   input: NovelStoryAnalysisInput | null;
+  /** 확인·수정한 결과로 장기 프로젝트가 만들어졌을 때(M2). */
+  onProjectCreated: (project: LongProject) => void;
   /** 키가 없을 때 갈 곳 — OpenAI 키 칸은 API 설정에 있습니다. */
   onOpenSettings: () => void;
 }
@@ -29,7 +32,7 @@ const usd = (value: number) => `$${value.toFixed(2)}`;
  * 🟠 결과는 **AI가 정리한 제안**입니다 — 법적 권리가 해결됐다거나 원문과 비슷하지 않다는 보장을 하지 않습니다.
  * 원문은 이 요청에만 쓰이고 서버에 저장되지 않으며(저장되는 건 해시·분석 결과), 이 화면도 결과만 들고 있습니다.
  */
-export function StoryAnalysisPanel({ input, onOpenSettings }: Props) {
+export function StoryAnalysisPanel({ input, onOpenSettings, onProjectCreated }: Props) {
   const [preview, setPreview] = useState<{ key: string; response: NovelStoryAnalysisPreviewResponse } | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -159,87 +162,7 @@ export function StoryAnalysisPanel({ input, onOpenSettings }: Props) {
         </div>
       )}
 
-      {result && <AnalysisResult response={result.response} stale={resultStale} />}
+      {result && <StoryAnalysisReview key={`${result.response.source.inputSha256}-${result.response.source.analyzedAt}`} response={result.response} stale={resultStale} onCreated={onProjectCreated} />}
     </div>
-  );
-}
-
-function AnalysisResult({ response, stale }: { response: ApproveNovelStoryAnalysisResponse; stale: boolean }) {
-  const { analysis, source } = response;
-  return (
-    <section data-testid="story-result" aria-label="AI 분석 결과" className="space-y-4 rounded-lg border border-violet-400/40 bg-violet-500/10 p-4">
-      <h3 className="text-base font-semibold text-bone">AI가 이렇게 읽었습니다</h3>
-
-      <div className="space-y-1.5 text-xs">
-        {response.reused && (
-          <p data-testid="story-result-reused" className="text-emerald-300">같은 입력의 지난 분석을 다시 보여 줍니다 — OpenAI에 새로 보내지 않았고 새로 청구되지 않았습니다.</p>
-        )}
-        {!response.saved && (
-          <p role="status" data-testid="story-result-unsaved" className="text-amber-300">이 결과는 서버에 저장되지 않았습니다. 이 화면을 벗어나면 다시 볼 수 없으니 필요한 내용을 지금 옮겨 두세요.</p>
-        )}
-        {response.spendUnrecorded === true && (
-          <p role="status" data-testid="story-result-spend-unrecorded" className="text-amber-300">분석은 끝났지만 이번 지출이 월 예산 장부에 기록되지 않았을 수 있습니다. 실제 청구는 OpenAI 사용량에서 확인해 주세요.</p>
-        )}
-        {stale && <p role="status" data-testid="story-result-stale" className="text-amber-300">입력이 바뀌었습니다 — 이 결과는 바뀌기 전 입력의 분석입니다.</p>}
-      </div>
-
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-bone" data-testid="story-result-title">{analysis.title}</p>
-        <p className="text-sm text-bone-dim">{analysis.logline}</p>
-        <p className="text-xs text-bone-faint">장르 {analysis.genre || "—"} · 분위기 {analysis.tone || "—"} · 주제 {analysis.theme || "—"}</p>
-      </div>
-
-      <div className="space-y-2">
-        <h4 className="text-sm font-medium text-bone">등장인물 {analysis.characters.length}명</h4>
-        <ul className="grid gap-2 md:grid-cols-2" data-testid="story-result-characters">
-          {analysis.characters.map((character) => (
-            <li key={character.id} className="space-y-1 rounded border border-line p-3" data-testid={`story-character-card-${character.id}`}>
-              <p className="flex items-center gap-2 text-sm font-medium text-bone">
-                {character.name}
-                <span className="rounded border border-line px-1.5 py-0.5 text-[11px] font-normal text-bone-dim">{character.role === "protagonist" ? "주인공" : "조연"}</span>
-              </p>
-              <p className="text-xs text-bone-dim"><span className="text-bone-faint">외모 </span>{character.appearance}</p>
-              <p className="text-xs text-bone-dim"><span className="text-bone-faint">성격 </span>{character.personality}</p>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="space-y-2">
-        <h4 className="text-sm font-medium text-bone">회차 구성 {analysis.episodes.length}회</h4>
-        <ol className="space-y-2" data-testid="story-result-episodes">
-          {analysis.episodes.map((episode) => (
-            <li key={episode.episodeNumber} className="space-y-1 rounded border border-line p-3" data-testid={`story-episode-card-${episode.episodeNumber}`}>
-              <p className="text-sm font-medium text-bone">{episode.episodeNumber}회 · {episode.title}</p>
-              <p className="text-xs text-bone-dim">{episode.summary}</p>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
-                <dt className="text-bone-faint">핵심 사건</dt><dd className="text-bone-dim">{episode.mainEvent}</dd>
-                <dt className="text-bone-faint">갈등</dt><dd className="text-bone-dim">{episode.conflict}</dd>
-                <dt className="text-bone-faint">마지막 장면</dt><dd className="text-bone-dim">{episode.cliffhanger}</dd>
-                <dt className="text-bone-faint">다음 화로</dt><dd className="text-bone-dim">{episode.nextEpisodeHook}</dd>
-              </dl>
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      {analysis.warnings.length > 0 && (
-        <div className="space-y-1" data-testid="story-result-warnings">
-          <h4 className="text-sm font-medium text-amber-300">주의 표지</h4>
-          <ul className="list-inside list-disc space-y-0.5 text-xs text-amber-300">
-            {analysis.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-          </ul>
-          <p className="text-[11px] text-bone-faint">이미지·영상 제공자가 거절할 수 있는 내용이거나 실존 인물·개인정보가 의심되는 부분입니다.</p>
-        </div>
-      )}
-
-      <div className="space-y-1 border-t border-line pt-3 text-[11px] text-bone-faint" data-testid="story-result-source">
-        <p>
-          모델 {source.model} · {formatDateTime(source.analyzedAt)} 분석 · 권리 확인 {formatDateTime(source.rightsConfirmedAt)} · {source.episodeCount}회차 × {source.sceneCount}장면
-          {source.sourceNote ? ` · 출처 메모: ${source.sourceNote}` : ""}
-        </p>
-        <p>AI가 정리한 제안입니다. 법적 권리가 해결됐다거나 원문과 비슷하지 않다는 보장은 하지 않습니다. 이 구조로 장기 프로젝트를 만들고 인물을 정하는 단계는 준비 중입니다.</p>
-      </div>
-    </section>
   );
 }

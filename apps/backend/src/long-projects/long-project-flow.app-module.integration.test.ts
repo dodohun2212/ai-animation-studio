@@ -30,6 +30,12 @@ const SETTINGS = {
   narrationEnabled: true, subtitlesEnabled: false,
 };
 const SCENES = [1, 2, 3, 4, 5, 6] as readonly SceneNumber[];
+const NOVEL_ANALYSIS = {
+  title: "Reviewed story", logline: "A new story arc", genre: "Mystery", tone: "Quiet", theme: "Trust",
+  characters: [{ id: "character-1", name: "Mina", role: "protagonist", appearance: "Short dark hair", personality: "Careful" }],
+  episodes: [1, 2].map((episodeNumber) => ({ episodeNumber, title: `Episode ${episodeNumber}`, summary: `Summary ${episodeNumber}`, mainEvent: `Event ${episodeNumber}`, conflict: `Conflict ${episodeNumber}`, cliffhanger: `Cliffhanger ${episodeNumber}`, nextEpisodeHook: `Hook ${episodeNumber}` })),
+  warnings: [],
+};
 
 let root: string | undefined;
 let app: INestApplication | undefined;
@@ -69,6 +75,22 @@ async function call<T>(method: "GET" | "POST" | "PUT", route: string, body?: unk
 }
 
 describe.sequential("Long Project Episode flow over HTTP", () => {
+  it("creates a ready project through the novel-analysis route and exposes reviewed episode outlines", async () => {
+    await boot();
+    const request = {
+      projectId: "novel_flow",
+      settings: { ...SETTINGS, title: NOVEL_ANALYSIS.title, logline: NOVEL_ANALYSIS.logline, genre: NOVEL_ANALYSIS.genre, tone: NOVEL_ANALYSIS.tone, theme: NOVEL_ANALYSIS.theme },
+      source: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), title: "Input title", rightsConfirmedAt: "2026-10-10T00:00:00.000Z", analyzedAt: "2026-10-10T00:01:00.000Z", model: "gpt-5.6-luna", episodeCount: 2, sceneCount: 6 },
+      analysis: NOVEL_ANALYSIS,
+    };
+    const created = await call<{ project: { outlineStatus: string; episodes: Array<{ title: string; status: string }> } }>("POST", API_ROUTES.novelStoryProjectCreate, request);
+    expect(created.project).toMatchObject({ outlineStatus: "outline_ready", episodes: NOVEL_ANALYSIS.episodes.map(({ title }) => ({ title, status: "outline_ready" })) });
+    const script = await call<{ episode: { status: string; approved: boolean } }>("POST", API_ROUTES.longEpisodeScriptGeneration("novel_flow", 1), { userRequestId: "novel-flow-script-1" });
+    expect(script.episode).toMatchObject({ status: "script_review", approved: false });
+    const sourceFile = await fs.readFile(path.join(root!, "projects", "novel_flow", "long_story", "novel_story_source.json"), "utf8");
+    expect(sourceFile).not.toContain("sourceText");
+  });
+
   it("carries one Episode from an empty project to approved videos through the routes the frontend calls", async () => {
     await boot();
 

@@ -1,4 +1,4 @@
-import { ASPECT_RATIOS, CLIP_DURATION_LIMITS, isAspectRatio, isClipDurationSeconds, type AspectRatio } from "@ai-animation-studio/shared";
+import { ASPECT_RATIOS, CLIP_DURATION_LIMITS, isAspectRatio, isClipDurationSeconds, isSha256Hex, type AspectRatio } from "@ai-animation-studio/shared";
 import * as crypto from "node:crypto";
 import { withWarning } from "../projects/warnings.js";
 import { readLongProjectJson } from "./long-project-json.js";
@@ -7,7 +7,7 @@ import { isBudgetLedgerUnreadable } from "../providers/budget-ledger.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Injectable } from "@nestjs/common";
-import { LONG_EPISODE_STATUSES, LONG_OUTLINE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, MIN_SCENE_COUNT, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchiveProjectRequest, type ArchiveProjectResponse, type ArchivedLongProjectSummary, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
+import { LONG_EPISODE_STATUSES, LONG_OUTLINE_ESTIMATED_COST_USD, MAX_SCENE_COUNT, MIN_SCENE_COUNT, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchiveProjectRequest, type ArchiveProjectResponse, type ArchivedLongProjectSummary, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type CreateNovelStoryProjectRequest, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type LongEpisodeOutline, type LongProject, type LongProjectSettings, type LongProjectSummary, type NovelStoryAnalysis, type NovelStoryEpisode, type NovelStorySourceMetadata, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
 import { LocalAssetsRepository } from "../assets/assets.repository.js";
 import { atomicWriteUtf8File } from "../projects/atomic-file.js";
 import { archiveProjectDirectory, deleteArchivedProjectDirectory, listArchivedProjectDirectories, restoreProjectDirectory } from "../projects/project-archive.js";
@@ -45,6 +45,8 @@ const optionalText = (value: unknown): string => (value === undefined ? "" : tex
 const text = (value: unknown, required = false): string => { if (typeof value !== "string") throw longInvalidRequest(); const result = value.trim(); if (required && !result) throw longInvalidRequest(); return result; };
 const isValidSceneCount = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= MIN_SCENE_COUNT && value <= MAX_SCENE_COUNT;
 const isValidClipDuration = isClipDurationSeconds;
+const isPlainObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const boundedText = (value: unknown, max: number): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= max;
 /**
  * A project stored before sceneCount/clipDurationSeconds existed has neither field — only the older
  * episode_duration_seconds (itself once a free-form number, later constrained to 30/60). Coerces to the nearest
@@ -93,6 +95,58 @@ function settings(value: unknown): LongProjectSettings {
     visualStyle: optionalText(data.visualStyle), color: optionalText(data.color), lighting: optionalText(data.lighting), avoid: optionalText(data.avoid),
   };
 }
+function novelStoryProjectInput(value: unknown): { projectId: string; settings: LongProjectSettings; source: NovelStorySourceMetadata; analysis: NovelStoryAnalysis; protagonistAssetId?: string } {
+  if (!isPlainObject(value)) throw longInvalidRequest();
+  if (Object.keys(value).some((key) => !["projectId", "settings", "source", "analysis", "protagonistAssetId"].includes(key))) throw longInvalidRequest();
+  const id = text(value.projectId, true);
+  if (!isSafeProjectId(id)) throw longUnsafeId();
+  const projectSettings = settings(value.settings);
+  const sourceValue = value.source;
+  const analysisValue = value.analysis;
+  if (!isPlainObject(sourceValue) || !isPlainObject(analysisValue)) throw longInvalidRequest();
+  const sourceKeys = ["inputSha256", "promptSha256", "title", "sourceNote", "rightsConfirmedAt", "analyzedAt", "model", "episodeCount", "sceneCount"];
+  if (Object.keys(sourceValue).some((key) => !sourceKeys.includes(key))
+    || !isSha256Hex(sourceValue.inputSha256) || !isSha256Hex(sourceValue.promptSha256)
+    || !boundedText(sourceValue.title, 120) || (sourceValue.sourceNote !== undefined && (typeof sourceValue.sourceNote !== "string" || sourceValue.sourceNote.length > 500))
+    || !boundedText(sourceValue.model, 100) || typeof sourceValue.rightsConfirmedAt !== "string" || !Number.isFinite(Date.parse(sourceValue.rightsConfirmedAt))
+    || typeof sourceValue.analyzedAt !== "string" || !Number.isFinite(Date.parse(sourceValue.analyzedAt))
+    || !Number.isInteger(sourceValue.episodeCount) || (sourceValue.episodeCount as number) < 1 || (sourceValue.episodeCount as number) > 20
+    || !isValidSceneCount(sourceValue.sceneCount)) throw longInvalidRequest("The story source details are invalid.");
+
+  const analysisKeys = ["title", "logline", "genre", "tone", "theme", "characters", "episodes", "warnings"];
+  if (Object.keys(analysisValue).some((key) => !analysisKeys.includes(key))
+    || !boundedText(analysisValue.title, 120) || !boundedText(analysisValue.logline, 800)
+    || !boundedText(analysisValue.genre, 100) || !boundedText(analysisValue.tone, 300) || !boundedText(analysisValue.theme, 500)
+    || !Array.isArray(analysisValue.characters) || analysisValue.characters.length < 1 || analysisValue.characters.length > 40
+    || !Array.isArray(analysisValue.episodes) || analysisValue.episodes.length !== projectSettings.episodeCount
+    || !Array.isArray(analysisValue.warnings) || analysisValue.warnings.length > 10
+    || analysisValue.warnings.some((item) => !boundedText(item, 300))) throw longInvalidRequest("The edited story analysis is invalid.");
+  const characters = analysisValue.characters.map((item, index) => {
+    if (!isPlainObject(item) || Object.keys(item).some((key) => !["id", "name", "role", "appearance", "personality"].includes(key))
+      || !boundedText(item.id, 80) || !boundedText(item.name, 80) || (item.role !== "protagonist" && item.role !== "supporting")
+      || !boundedText(item.appearance, 500) || !boundedText(item.personality, 500)) throw longInvalidRequest("A character in the edited story analysis is invalid.");
+    return { id: item.id.trim(), name: item.name.trim(), role: item.role as "protagonist" | "supporting", appearance: item.appearance.trim(), personality: item.personality.trim(), order: index + 1 };
+  });
+  if (characters.filter((item) => item.role === "protagonist").length !== 1) throw longInvalidRequest("Choose exactly one protagonist.");
+  const episodes = analysisValue.episodes.map((item, index) => {
+    if (!isPlainObject(item) || Object.keys(item).some((key) => !["episodeNumber", "title", "summary", "mainEvent", "conflict", "cliffhanger", "nextEpisodeHook"].includes(key))
+      || item.episodeNumber !== index + 1 || !boundedText(item.title, 120) || !boundedText(item.summary, 1200)
+      || !boundedText(item.mainEvent, 600) || !boundedText(item.conflict, 600) || !boundedText(item.cliffhanger, 500)
+      || !boundedText(item.nextEpisodeHook, 500)) throw longInvalidRequest("An episode in the edited story analysis is invalid.");
+    return item as unknown as NovelStoryEpisode;
+  });
+  if (projectSettings.title !== analysisValue.title.trim() || projectSettings.logline !== analysisValue.logline.trim()
+    || projectSettings.genre !== analysisValue.genre.trim() || projectSettings.tone !== analysisValue.tone.trim()
+    || projectSettings.theme !== analysisValue.theme.trim()) throw longInvalidRequest("Project settings must match the reviewed story analysis.");
+  const protagonistAssetId = value.protagonistAssetId;
+  if (protagonistAssetId !== undefined && !boundedText(protagonistAssetId, 160)) throw longInvalidRequest();
+  return {
+    projectId: id, settings: projectSettings,
+    source: { inputSha256: sourceValue.inputSha256 as string, promptSha256: sourceValue.promptSha256 as string, title: sourceValue.title.trim(), ...(sourceValue.sourceNote !== undefined ? { sourceNote: (sourceValue.sourceNote as string).trim() } : {}), rightsConfirmedAt: sourceValue.rightsConfirmedAt, analyzedAt: sourceValue.analyzedAt, model: sourceValue.model.trim(), episodeCount: sourceValue.episodeCount as number, sceneCount: sourceValue.sceneCount as number },
+    analysis: { title: analysisValue.title.trim(), logline: analysisValue.logline.trim(), genre: analysisValue.genre.trim(), tone: analysisValue.tone.trim(), theme: analysisValue.theme.trim(), characters, episodes, warnings: analysisValue.warnings as string[] },
+    ...(typeof protagonistAssetId === "string" ? { protagonistAssetId: protagonistAssetId.trim() } : {}),
+  };
+}
 function toSettings(s: Stored): LongProjectSettings { return { title: s.title, logline: s.logline, overview: s.overview, genre: s.genre, tone: s.tone, theme: s.theme, episodeCount: s.episode_count, episodeDurationSeconds: s.scene_count * s.clip_duration_seconds, sceneCount: s.scene_count, clipDurationSeconds: s.clip_duration_seconds, aspectRatio: s.aspect_ratio, audience: s.audience, notes: s.notes, startingState: s.starting_state, midpoint: s.midpoint, endingDirection: s.ending_direction, storyFlowSummary: s.story_flow_summary, narrationEnabled: s.narration_enabled, subtitlesEnabled: s.subtitles_enabled, visualStyle: s.visual_style ?? "", color: s.color ?? "", lighting: s.lighting ?? "", avoid: s.avoid ?? "" }; }
 function setStored(id: string, s: LongProjectSettings, now: string, createdAt = now, status: Stored["outline_status"] = "planned"): Stored { return { project_id: id, project_type: "long_story_project", title: s.title, logline: s.logline, overview: s.overview, genre: s.genre, tone: s.tone, theme: s.theme, episode_count: s.episodeCount, scene_count: s.sceneCount, clip_duration_seconds: s.clipDurationSeconds, aspect_ratio: s.aspectRatio, audience: s.audience, notes: s.notes, starting_state: s.startingState, midpoint: s.midpoint, ending_direction: s.endingDirection, story_flow_summary: s.storyFlowSummary, narration_enabled: s.narrationEnabled, subtitles_enabled: s.subtitlesEnabled, visual_style: s.visualStyle, color: s.color, lighting: s.lighting, avoid: s.avoid, created_at: createdAt, updated_at: now, outline_status: status }; }
 function summary(s: Stored): LongProjectSummary { return { id: s.project_id, title: s.title, logline: s.logline, episodeCount: s.episode_count, outlineStatus: s.outline_status, createdAt: s.created_at, updatedAt: s.updated_at, ...(s.warnings && s.warnings.length > 0 ? { warnings: s.warnings } : {}) }; }
@@ -109,7 +163,7 @@ export class LongProjectsService {
     private readonly assets?: LocalAssetsRepository,
   ) {}
   private root(id: string): string { return longStoryRoot(this.projectsRoot, id); }
-  private files(id: string) { const root = this.root(id); return { root, project: path.join(root, "project.json"), bible: path.join(root, "story_bible.json"), outlines: path.join(root, "episode_outlines.json") }; }
+  private files(id: string) { const root = this.root(id); return { root, project: path.join(root, "project.json"), bible: path.join(root, "story_bible.json"), outlines: path.join(root, "episode_outlines.json"), source: path.join(root, "novel_story_source.json") }; }
   private archiveRoot(id: string): string { return longStoryRoot(path.resolve(this.projectsRoot, ".archive"), id); }
   private archiveFile(id: string): string { return path.join(this.archiveRoot(id), "project.json"); }
   private async loadArchived(id: string): Promise<Stored> { const stored = this.parseStored(await readLongProjectJson(this.archiveFile(id))); if (stored.project_id !== id) throw longInvalidData(); return stored; }
@@ -146,6 +200,46 @@ export class LongProjectsService {
   }
   private async project(id: string): Promise<LongProject> { const s = await this.load(id); const bible = object(await readLongProjectJson(this.files(id).bible)); const basic = object(bible.basic); const world = object(bible.world); return { ...summary(s), settings: toSettings(s), storyBible: { basic, world }, episodes: await this.withContinuitySaved(id, await this.outlines(id, s.episode_count)) }; }
   async create(request: CreateLongProjectRequest): Promise<CreateLongProjectResponse> { const id = text(request?.projectId, true); if (!isSafeProjectId(id)) throw longUnsafeId(); const input = settings(request?.settings); const now = new Date().toISOString(); const stored = setStored(id, input, now); const files = this.files(id); try { await fs.mkdir(files.root, { recursive: false }); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") { try { await fs.mkdir(path.dirname(files.root), { recursive: true }); await fs.mkdir(files.root); } catch (nested) { if ((nested as NodeJS.ErrnoException).code === "EEXIST") throw longExists(); throw longStorageError(); } } else if ((error as NodeJS.ErrnoException).code === "EEXIST") throw longExists(); else throw longStorageError(); } try { await Promise.all([atomicWriteUtf8File(files.project, JSON.stringify(stored, null, 2)), atomicWriteUtf8File(files.bible, JSON.stringify({ basic: {}, world: {}, characters: [], locations: [], props: [], secrets: [], foreshadowing: [], summaries: {}, updated_at: now }, null, 2)), atomicWriteUtf8File(files.outlines, JSON.stringify(Array.from({ length: input.episodeCount }, (_, i) => ({ episode_number: i + 1, title: `Episode ${i + 1}`, summary: "", main_event: "", conflict: "", cliffhanger: "", next_episode_hook: "", status: "planned" })), null, 2))]); } catch { throw longStorageError(); } return { project: await this.project(id) }; }
+  async createFromNovelStory(value: CreateNovelStoryProjectRequest): Promise<CreateLongProjectResponse> {
+    const input = novelStoryProjectInput(value);
+    if (input.protagonistAssetId) {
+      if (!this.assets) throw longInvalidRequest("The selected protagonist character is unavailable.");
+      let asset;
+      try { asset = await this.assets.get(input.protagonistAssetId); } catch { throw longInvalidRequest("The selected protagonist character is unavailable."); }
+      if (asset.asset_type !== "character" || !asset.is_folder || !asset.enabled) throw longInvalidRequest("The selected protagonist character is unavailable.");
+    }
+
+    const now = new Date().toISOString();
+    const stored = setStored(input.projectId, input.settings, now, now, "outline_ready");
+    const basic: Record<string, unknown> = { characterCards: input.analysis.characters, warnings: input.analysis.warnings };
+    if (input.protagonistAssetId) basic.protagonist_asset_link = { asset_id: input.protagonistAssetId, version_policy: "follow_latest", pinned_version: null };
+    const bible = { basic, world: {}, characters: [], locations: [], props: [], secrets: [], foreshadowing: [], summaries: {}, updated_at: now };
+    const outlines = input.analysis.episodes.map((episode) => ({
+      episode_number: episode.episodeNumber, title: episode.title.trim(), summary: episode.summary.trim(),
+      main_event: episode.mainEvent.trim(), conflict: episode.conflict.trim(), cliffhanger: episode.cliffhanger.trim(),
+      next_episode_hook: episode.nextEpisodeHook.trim(), status: "outline_ready",
+    }));
+    const source: NovelStorySourceMetadata = input.source;
+    const destination = this.root(input.projectId);
+    const destinationParent = path.dirname(destination);
+    await fs.mkdir(destinationParent, { recursive: true }).catch(() => { throw longStorageError(); });
+    const stagedLongRoot = await fs.mkdtemp(path.join(destinationParent, ".novel-long-story-" )).catch(() => { throw longStorageError(); });
+    try {
+      await Promise.all([
+        atomicWriteUtf8File(path.join(stagedLongRoot, "project.json"), JSON.stringify(stored, null, 2)),
+        atomicWriteUtf8File(path.join(stagedLongRoot, "story_bible.json"), JSON.stringify(bible, null, 2)),
+        atomicWriteUtf8File(path.join(stagedLongRoot, "episode_outlines.json"), JSON.stringify(outlines, null, 2)),
+        atomicWriteUtf8File(path.join(stagedLongRoot, "novel_story_source.json"), JSON.stringify(source, null, 2)),
+      ]);
+      await fs.rename(stagedLongRoot, destination);
+    } catch (error) {
+      await fs.rm(stagedLongRoot, { recursive: true, force: true }).catch(() => undefined);
+      const destinationExists = await fs.access(destination).then(() => true, () => false);
+      if (destinationExists || (error as NodeJS.ErrnoException).code === "EEXIST" || (error as NodeJS.ErrnoException).code === "ENOTEMPTY") throw longExists();
+      throw longStorageError();
+    }
+    return { project: await this.project(input.projectId) };
+  }
   async list(): Promise<ListLongProjectsResponse> { let entries: string[]; try { entries = (await fs.readdir(this.projectsRoot, { withFileTypes: true })).filter((x) => x.isDirectory() && isSafeProjectId(x.name)).map((x) => x.name); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { projects: [] }; throw longStorageError(); } const projects: LongProjectSummary[] = []; for (const id of entries) { try { projects.push(summary(await this.load(id))); } catch { /* Python catalog skips unreadable entries. */ } } return { projects: projects.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)) }; }
   async get(id: string): Promise<GetLongProjectResponse> { return { project: await this.project(id.trim()) }; }
   async archive(id: string, request: ArchiveProjectRequest): Promise<ArchiveProjectResponse> {

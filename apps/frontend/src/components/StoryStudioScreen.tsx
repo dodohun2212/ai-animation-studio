@@ -19,7 +19,10 @@ import { ScreenHeader } from "./ui/ScreenHeader.js";
 import { outlineButton, primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
+  /** 「분석 없이 바로 만들기」(M0)로 만든 프로젝트 — 회차 개요가 아직 비어 있어 「회차 나누기(AI)」로 이어집니다. */
   onCreated: (project: LongProject) => void;
+  /** AI 분석 결과를 확정해 만든 프로젝트(M2) — 회차 개요가 이미 채워져 있어 프로젝트 화면으로 이어집니다. */
+  onProjectFromAnalysis: (project: LongProject) => void;
   /** 키·예산이 막을 때 갈 곳 — OpenAI 키와 월 한도는 API 설정에 있습니다. */
   onOpenSettings: () => void;
 }
@@ -44,12 +47,8 @@ interface CharacterDraft {
 
 let characterSequence = 0;
 
-/** 폴더 이름을 사람이 짓지 않아도 되게 — 글자·숫자·_·- 만 남깁니다. */
-export function autoStoryProjectId(title: string, now: Date): string {
-  const base = title.replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_+|_+$/g, "").slice(0, 30) || "story";
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `이야기_${base}_${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
+export { autoStoryProjectId } from "../utils/storyProjectId.js";
+import { autoStoryProjectId } from "../utils/storyProjectId.js";
 
 /** 장기 프로젝트의 「메모」에 들어가는 글 — 재창작 지시, 출처, 등장인물. 대본 AI가 읽는 자리입니다. */
 export function buildStoryNotes(source: string, characters: { name: string; description: string; assetName: string | null }[], rightsConfirmed = false): string {
@@ -80,7 +79,7 @@ export function buildStoryNotes(source: string, characters: { name: string; desc
  * 글로만 알립니다 — 눌러도 아무 일도 없는 버튼은 약속이 아니라 거짓말이기 때문입니다.
  * 이 화면은 OpenAI·Runway 를 부르지 않습니다.
  */
-export function StoryStudioScreen({ onCreated, onOpenSettings }: Props) {
+export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onOpenSettings }: Props) {
   const [title, setTitle] = useState("");
   const [logline, setLogline] = useState("");
   const [text, setText] = useState("");
@@ -237,7 +236,7 @@ export function StoryStudioScreen({ onCreated, onOpenSettings }: Props) {
         {/* ── 2. AI 분석 (M1) ── */}
         <div className="space-y-3 rounded-lg border border-line bg-ground-raised p-5">
           <h2 className="text-base font-semibold text-bone">2. AI로 먼저 분석해 보기 (유료·선택)</h2>
-          <StoryAnalysisPanel input={analysisInput} onOpenSettings={onOpenSettings} />
+          <StoryAnalysisPanel input={analysisInput} onOpenSettings={onOpenSettings} onProjectCreated={onProjectFromAnalysis} />
         </div>
 
         {/* ── 3. 등장인물 — 선택. 소설을 AI가 읽고 인물을 뽑아 주는 기능(설계 docs/08 M1~M2)이 생기면 이 칸은 그 결과로 채워집니다. ── */}

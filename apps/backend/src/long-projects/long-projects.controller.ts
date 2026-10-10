@@ -1,11 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
-import { API_ROUTES, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchiveProjectRequest, type ArchiveProjectResponse, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveLongProjectOutlineRequest, type ApproveLongProjectOutlineResponse, type ArchiveProjectRequest, type ArchiveProjectResponse, type CreateLongProjectOutlinePreviewResponse, type CreateLongProjectRequest, type CreateLongProjectResponse, type CreateNovelStoryProjectRequest, type DeleteArchivedProjectRequest, type DeleteArchivedProjectResponse, type GetLongProjectResponse, type GetLongProjectSettingsResponse, type ListArchivedLongProjectsResponse, type ListLongProjectsResponse, type RestoreProjectResponse, type UpdateLongProjectSettingsRequest, type UpdateLongProjectSettingsResponse } from "@ai-animation-studio/shared";
 import { LongProjectsService } from "./long-projects.service.js";
 
 @Controller()
 export class LongProjectsController {
   constructor(private readonly service: LongProjectsService) {}
   @Post(API_ROUTES.longProjects) create(@Body() body: CreateLongProjectRequest): Promise<CreateLongProjectResponse> { return this.service.create(body); }
+  @Post(API_ROUTES.novelStoryProjectCreate) createFromNovelStory(@Body() body: CreateNovelStoryProjectRequest): Promise<CreateLongProjectResponse> { return this.service.createFromNovelStory(body); }
   @Get(API_ROUTES.longProjects) list(): Promise<ListLongProjectsResponse> { return this.service.list(); }
   @Get(API_ROUTES.longProjectsArchived) listArchived(): Promise<ListArchivedLongProjectsResponse> { return this.service.listArchived(); }
   @Get(`${API_ROUTES.longProjects}/:projectId`) get(@Param("projectId") id: string): Promise<GetLongProjectResponse> { return this.service.get(id); }

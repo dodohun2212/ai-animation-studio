@@ -88,3 +88,13 @@ export interface ApproveNovelStoryAnalysisResponse {
   saved: boolean;
   spendUnrecorded?: boolean;
 }
+
+/** Creates a Long Project from the analysis the person reviewed and edited. The source text is never included. */
+export interface CreateNovelStoryProjectRequest {
+  projectId: string;
+  settings: import("./api.js").LongProjectSettingsInput;
+  source: NovelStorySourceMetadata;
+  analysis: NovelStoryAnalysis;
+  /** Optional existing character Folder selected for the protagonist. */
+  protagonistAssetId?: string;
+}

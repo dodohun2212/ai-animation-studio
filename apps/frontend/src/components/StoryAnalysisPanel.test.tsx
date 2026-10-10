@@ -62,8 +62,9 @@ const posts = (fetchMock: ReturnType<typeof vi.fn>) =>
 
 function renderPanel(input: NovelStoryAnalysisInput | null = INPUT) {
   const onOpenSettings = vi.fn();
-  const view = render(<StoryAnalysisPanel input={input} onOpenSettings={onOpenSettings} />);
-  return { onOpenSettings, rerender: (next: NovelStoryAnalysisInput | null) => view.rerender(<StoryAnalysisPanel input={next} onOpenSettings={onOpenSettings} />) };
+  const onProjectCreated = vi.fn();
+  const view = render(<StoryAnalysisPanel input={input} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} />);
+  return { onOpenSettings, onProjectCreated, rerender: (next: NovelStoryAnalysisInput | null) => view.rerender(<StoryAnalysisPanel input={next} onOpenSettings={onOpenSettings} onProjectCreated={onProjectCreated} />) };
 }
 
 async function makePreview() {
@@ -106,10 +107,12 @@ describe("StoryAnalysisPanel", () => {
     const result = await screen.findByTestId("story-result");
     expect(posts(fetchMock).map((call) => call.url)).toEqual(["/story-analysis/preview", "/story-analysis"]);
     expect(posts(fetchMock)[1]!.body).toEqual({ ...INPUT, inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), approved: true });
-    expect(screen.getByTestId("story-result-title").textContent).toBe("달빛 문");
-    expect(screen.getByTestId("story-character-card-c1").textContent).toContain("주인공");
-    expect(screen.getByTestId("story-character-card-c2").textContent).toContain("조연");
-    expect(screen.getByTestId("story-episode-card-2").textContent).toContain("문지기의 제안");
+    // M2: 결과는 읽기 전용 카드가 아니라 고칠 수 있는 칸이다 — 값은 input 에 들어 있다.
+    expect((screen.getByTestId("review-title") as HTMLInputElement).value).toBe("달빛 문");
+    expect((screen.getByTestId("review-protagonist-0") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId("review-protagonist-1") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("review-character-name-0") as HTMLInputElement).value).toBe("새봄");
+    expect((screen.getByTestId("review-episode-hook-2") as HTMLTextAreaElement).value).toBe("문지기의 제안");
     expect(screen.getByTestId("story-result-warnings").textContent).toContain("실존 인물");
     expect(result.textContent).toContain("보장은 하지 않습니다");
     expect(screen.queryByTestId("story-result-reused")).toBeNull();

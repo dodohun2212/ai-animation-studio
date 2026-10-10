@@ -8,10 +8,78 @@ import { ACQUIRE_TIMEOUT_MS } from "../videos/project-lock.js";
 
 let root: string | undefined;
 const input = { projectId: "long_test", settings: { title: "A long story", logline: "A hero changes", overview: "", genre: "", tone: "", theme: "", episodeCount: 3, sceneCount: 6, clipDurationSeconds: 5, aspectRatio: "9:16" as const, audience: "", notes: "", startingState: "", midpoint: "", endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false } };
+const novelAnalysis = {
+  title: "Reviewed story", logline: "A new story arc", genre: "Mystery", tone: "Quiet", theme: "Trust",
+  characters: [
+    { id: "character-1", name: "Mina", role: "protagonist" as const, appearance: "Short dark hair", personality: "Careful" },
+    { id: "character-2", name: "Joon", role: "supporting" as const, appearance: "Round glasses", personality: "Curious" },
+  ],
+  episodes: Array.from({ length: 3 }, (_, index) => ({ episodeNumber: index + 1, title: `Episode ${index + 1}`, summary: `Summary ${index + 1}`, mainEvent: `Event ${index + 1}`, conflict: `Conflict ${index + 1}`, cliffhanger: `Cliffhanger ${index + 1}`, nextEpisodeHook: `Hook ${index + 1}` })),
+  warnings: ["Review sensitive topics before production."],
+};
+const novelRequest = {
+  projectId: "novel_created",
+  settings: { ...input.settings, title: novelAnalysis.title, logline: novelAnalysis.logline, genre: novelAnalysis.genre, tone: novelAnalysis.tone, theme: novelAnalysis.theme },
+  source: { inputSha256: "a".repeat(64), promptSha256: "b".repeat(64), title: "Original input title", sourceNote: "Own draft", rightsConfirmedAt: "2026-10-10T00:00:00.000Z", analyzedAt: "2026-10-10T00:01:00.000Z", model: "gpt-5.6-luna", episodeCount: 3, sceneCount: 6 },
+  analysis: novelAnalysis,
+};
 afterEach(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); root = undefined; });
 async function service(): Promise<LongProjectsService> { root = await fs.mkdtemp(path.join(os.tmpdir(), "long-project-")); return new LongProjectsService(path.join(root, "projects")); }
 
 describe("LongProjectsService", () => {
+  it("creates the reviewed novel project as one ready Long Project without storing source text", async () => {
+    const subject = await service();
+    const result = await subject.createFromNovelStory(novelRequest);
+    const rootPath = path.join(root!, "projects", "novel_created", "long_story");
+    expect(result.project.outlineStatus).toBe("outline_ready");
+    expect(result.project.episodes.map((episode) => [episode.title, episode.status])).toEqual(novelAnalysis.episodes.map((episode) => [episode.title, "outline_ready"]));
+    const bible = JSON.parse(await fs.readFile(path.join(rootPath, "story_bible.json"), "utf8"));
+    expect(bible.basic.characterCards).toEqual(novelAnalysis.characters.map((character, index) => ({ ...character, order: index + 1 })));
+    const sourceFile = await fs.readFile(path.join(rootPath, "novel_story_source.json"), "utf8");
+    expect(JSON.parse(sourceFile)).toEqual(novelRequest.source);
+    expect(sourceFile).not.toContain("sourceText");
+    expect(await fs.readdir(path.join(root!, "projects"))).toEqual(["novel_created"]);
+  });
+
+  it("preserves the original analyzed episode count when the review changes the final project count", async () => {
+    const subject = await service();
+    const edited = {
+      ...novelRequest,
+      settings: { ...novelRequest.settings, episodeCount: 2 },
+      analysis: { ...novelAnalysis, episodes: novelAnalysis.episodes.slice(0, 2) },
+    };
+    const result = await subject.createFromNovelStory(edited);
+    const source = JSON.parse(await fs.readFile(path.join(root!, "projects", "novel_created", "long_story", "novel_story_source.json"), "utf8"));
+    expect(result.project.episodes).toHaveLength(2);
+    expect(source.episodeCount).toBe(3);
+  });
+
+  it("adds the long story under a shared ID without replacing an existing short-project directory", async () => {
+    const subject = await service();
+    const shortProjectRoot = path.join(root!, "projects", "novel_created");
+    await fs.mkdir(shortProjectRoot, { recursive: true });
+    await fs.writeFile(path.join(shortProjectRoot, "project.json"), "short-project-marker", "utf8");
+    await subject.createFromNovelStory(novelRequest);
+    expect(await fs.readFile(path.join(shortProjectRoot, "project.json"), "utf8")).toBe("short-project-marker");
+    expect(await fs.stat(path.join(shortProjectRoot, "long_story", "episode_outlines.json"))).toBeTruthy();
+  });
+
+  it("rejects a malformed edited outline before creating any project files", async () => {
+    const subject = await service();
+    const invalid = { ...novelRequest, analysis: { ...novelAnalysis, episodes: novelAnalysis.episodes.map((episode, index) => index === 1 ? { ...episode, episodeNumber: 3 } : episode) } };
+    await expect(subject.createFromNovelStory(invalid)).rejects.toMatchObject({ response: { code: "INVALID_REQUEST" } });
+    await expect(fs.readdir(path.join(root!, "projects"))).rejects.toBeTruthy();
+  });
+
+  it("does not replace an existing project or leave staging directories after an ID collision", async () => {
+    const subject = await service();
+    await subject.create({ ...input, projectId: "novel_created" });
+    const before = await fs.readFile(path.join(root!, "projects", "novel_created", "long_story", "project.json"), "utf8");
+    await expect(subject.createFromNovelStory(novelRequest)).rejects.toMatchObject({ response: { code: "LONG_PROJECT_ALREADY_EXISTS" } });
+    expect(await fs.readFile(path.join(root!, "projects", "novel_created", "long_story", "project.json"), "utf8")).toBe(before);
+    expect((await fs.readdir(path.join(root!, "projects"))).sort()).toEqual(["novel_created"]);
+  });
+
   it("stores a separate planned long project and reloads it from a fresh service", async () => {
     const first = await service(); const created = await first.create(input);
     expect(created.project.episodes).toHaveLength(3);
