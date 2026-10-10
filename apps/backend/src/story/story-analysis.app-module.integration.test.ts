@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { NestFactory } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
-import { API_ROUTES } from "@ai-animation-studio/shared";
+import { API_ROUTES, type ApproveNovelStoryAnalysisResponse } from "@ai-animation-studio/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppModule } from "../app.module.js";
 
@@ -25,7 +25,7 @@ afterEach(async () => {
 });
 
 describe.sequential("Story analysis AppModule HTTP flow", () => {
-  it("previews without a Provider call, then approves once and persists no original novel text", async () => {
+  it("previews and approves the novel, then registers a mocked character image without the source text", async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "story-analysis-app-"));
     for (const key of envKeys) originalEnvironment.set(key, process.env[key]);
     process.env.LEARNING_DATA_ROOT = path.join(root, "learning_data");
@@ -41,6 +41,11 @@ describe.sequential("Story analysis AppModule HTTP flow", () => {
     const realFetch = globalThis.fetch;
     const providerCalls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.openai.com/v1/images/generations") {
+        providerCalls.push(String(url));
+        const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlSAAAAAASUVORK5CYII=";
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), { status: 200 });
+      }
       if (String(url) === "https://api.openai.com/v1/responses") {
         providerCalls.push(String(url));
         const response = {
@@ -73,7 +78,7 @@ describe.sequential("Story analysis AppModule HTTP flow", () => {
       body: JSON.stringify({ ...input, inputSha256: preview.preview.inputSha256, promptSha256: preview.preview.promptSha256, approved: true }),
     });
     expect(approveResponse.status).toBe(201);
-    const approved = await approveResponse.json() as { analysis: { title: string }; saved: boolean };
+    const approved = await approveResponse.json() as ApproveNovelStoryAnalysisResponse;
     expect(approved).toMatchObject({ analysis: { title: "새 항구" }, saved: true });
     expect(providerCalls).toHaveLength(1);
 
@@ -82,5 +87,48 @@ describe.sequential("Story analysis AppModule HTTP flow", () => {
     expect(saved).not.toContain(sourceText);
     const ledger = JSON.parse(await fs.readFile(path.join(root, "learning_data", "api_budget_usage.json"), "utf8")) as unknown[];
     expect(ledger).toHaveLength(1);
+
+    const character = { storyInputSha256: preview.preview.inputSha256, characterId: "c1", name: "나린", appearance: "짧은 은발", personality: "침착함" };
+    const imagePreviewResponse = await fetch(`${base}${API_ROUTES.novelCharacterImagePreview}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(character),
+    });
+    expect(imagePreviewResponse.status).toBe(201);
+    const imagePreview = await imagePreviewResponse.json() as { preview: { inputSha256: string; promptSha256: string; prompt: string } };
+    expect(imagePreview.preview.prompt).not.toContain(sourceText);
+    expect(providerCalls).toHaveLength(1);
+    const imageResponse = await fetch(`${base}${API_ROUTES.novelCharacterImageGenerate}`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...character, inputSha256: imagePreview.preview.inputSha256, promptSha256: imagePreview.preview.promptSha256, approved: true }),
+    });
+    expect(imageResponse.status).toBe(201);
+    const created = await imageResponse.json() as { folderAssetId: string; imageAssetId: string; reused: boolean };
+    expect(created).toMatchObject({ reused: false });
+    const assetResponse = await fetch(`${base}${API_ROUTES.asset(created.folderAssetId)}`);
+    expect(assetResponse.status).toBe(200);
+    const savedFolder = await assetResponse.json() as { asset: { isFolder: boolean; thumbnailAssetId: string } };
+    expect(savedFolder.asset).toMatchObject({ isFolder: true, thumbnailAssetId: created.imageAssetId });
+    expect(providerCalls).toHaveLength(2);
+    const finalLedger = JSON.parse(await fs.readFile(path.join(root, "learning_data", "api_budget_usage.json"), "utf8")) as unknown[];
+    expect(finalLedger).toHaveLength(2);
+
+    const analysis = approved.analysis;
+    const projectResponse = await fetch(`${base}${API_ROUTES.novelStoryProjectCreate}`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "novel_m3_integration", source: approved.source, analysis, protagonistAssetId: created.folderAssetId,
+        settings: {
+          title: analysis.title, logline: analysis.logline, overview: analysis.logline, genre: analysis.genre,
+          tone: analysis.tone, theme: analysis.theme, episodeCount: analysis.episodes.length, sceneCount: 6,
+          clipDurationSeconds: 5, aspectRatio: "9:16", audience: "", notes: "", startingState: "", midpoint: "",
+          endingDirection: "", storyFlowSummary: "", narrationEnabled: false, subtitlesEnabled: false,
+        },
+      }),
+    });
+    expect(projectResponse.status).toBe(201);
+    const project = await projectResponse.json() as { project: { outlineStatus: string; episodes: Array<{ status: string }> } };
+    expect(project.project.outlineStatus).toBe("outline_ready");
+    expect(project.project.episodes.every((episode) => episode.status === "outline_ready")).toBe(true);
+    const bible = JSON.parse(await fs.readFile(path.join(root, "learning_data", "projects", "novel_m3_integration", "long_story", "story_bible.json"), "utf8")) as { basic: { protagonist_asset_link: { asset_id: string } } };
+    expect(bible.basic.protagonist_asset_link.asset_id).toBe(created.folderAssetId);
   });
 });

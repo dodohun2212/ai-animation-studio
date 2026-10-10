@@ -162,7 +162,7 @@ export function StoryAnalysisPanel({ input, onOpenSettings, onProjectCreated }: 
         </div>
       )}
 
-      {result && <StoryAnalysisReview key={`${result.response.source.inputSha256}-${result.response.source.analyzedAt}`} response={result.response} stale={resultStale} onCreated={onProjectCreated} />}
+      {result && <StoryAnalysisReview key={`${result.response.source.inputSha256}-${result.response.source.analyzedAt}`} response={result.response} stale={resultStale} onCreated={onProjectCreated} onOpenSettings={onOpenSettings} />}
     </div>
   );
 }

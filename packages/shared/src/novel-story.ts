@@ -98,3 +98,38 @@ export interface CreateNovelStoryProjectRequest {
   /** Optional existing character Folder selected for the protagonist. */
   protagonistAssetId?: string;
 }
+
+/** One reviewed character image. The source hash keeps identical names in different stories separate. */
+export interface NovelCharacterImageInput {
+  storyInputSha256: string;
+  characterId: string;
+  name: string;
+  appearance: string;
+  personality: string;
+}
+
+export interface NovelCharacterImagePreviewResponse {
+  preview: {
+    inputSha256: string;
+    promptSha256: string;
+    prompt: string;
+    model: string;
+    size: string;
+    estimatedCostUsd: number;
+    providerAvailable: boolean;
+  };
+  budget?: import("./api.js").BudgetPreview;
+}
+
+export interface GenerateNovelCharacterImageRequest extends NovelCharacterImageInput {
+  inputSha256: string;
+  promptSha256: string;
+  approved: true;
+}
+
+export interface GenerateNovelCharacterImageResponse {
+  folderAssetId: string;
+  imageAssetId: string;
+  reused: boolean;
+  spendUnrecorded?: boolean;
+}

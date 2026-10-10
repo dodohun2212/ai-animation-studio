@@ -64,6 +64,14 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 서버는 `project.json`을 `outline_ready`로, 모든 항목을 `outline_ready`인 `episode_outlines.json`으로 저장한다. 수정된 인물 카드와 주의 표지는 Story Bible `basic`에 놓아 다음 회차 프롬프트가 읽는다. 선택한 주인공 폴더 링크도 함께 저장한다. M1에서 받은 출처 메타데이터는 `novel_story_source.json`에 보존한다. 기존 `<projectId>` 폴더 안의 임시 `long_story` 디렉터리에 네 파일을 먼저 모두 쓴 뒤 최종 `long_story`로 이름을 바꾸므로 저장 중 실패하면 반쪽 프로젝트가 보이지 않는다. 기존 짧은 프로젝트와 같은 ID를 쓸 수 있으며, `long_story`가 이미 있으면 기존 자료를 그대로 두고 충돌 오류를 돌려준다. 이 경로는 OpenAI·이미지·영상 Provider를 부르지 않는다.
 
+## 소설 인물 이미지 → 보관함 폴더 — M3 백엔드 계약
+
+`POST /story-analysis/character-image/preview`는 `{ storyInputSha256, characterId, name, appearance, personality }`를 받고, 이미지 모델에 보낼 프롬프트·입력/프롬프트 SHA-256·모델/크기·고정 예상 비용 `$0.10`·OpenAI 키와 월 예산 상태를 돌려준다. 저장이나 Provider 호출은 없다. 원문과 출처 메모는 이 요청과 프롬프트에 포함하지 않는다. 이름·ID는 최대 80자, 외모·성격은 각각 최대 500자다.
+
+`POST /story-analysis/character-image`는 같은 다섯 필드와 미리보기의 두 해시, `approved: true`가 필수다. 서버는 해시·OpenAI 키·월 예산을 다시 확인한 뒤 `gpt-image-2`로 1024×1536 PNG를 한 번만 요청한다. `learning_data/novel_character_images/`에 입력 해시별 독점 claim을 먼저 쓰고, 성공한 PNG를 저장한 뒤 보관함의 캐릭터 폴더와 정면 이미지를 한 번의 인덱스 쓰기로 등록한다. 응답은 `{ folderAssetId, imageAssetId, reused, spendUnrecorded? }`다. 같은 입력은 폴더를 재사용하며, 유료 이미지 저장 뒤 보관함 등록에 실패해도 다음 요청은 저장된 PNG로 등록을 재개하고 Provider를 다시 부르지 않는다. 전송 여부가 모호하고 PNG도 없으면 claim을 유지해 재전송을 거절한다. PNG 자체를 디스크에 쓸 수 없는 드문 실패는 `NOVEL_CHARACTER_IMAGE_STORAGE_ERROR.details.recoveryImageBase64`로 이미 치른 결과 바이트를 돌려준다.
+
+새 폴더와 이미지는 `approved:false`로 등록한다. 사람은 생성된 이미지를 확인해 사용할 폴더를 M2의 `protagonistAssetId`로 고른다. 기존 장기 프로젝트 생성 경로가 해당 폴더를 Story Bible에 연결한다. 이 경로의 오류 코드는 `NOVEL_CHARACTER_IMAGE_INVALID_REQUEST`, `NOVEL_CHARACTER_IMAGE_PROMPT_STALE`, `NOVEL_CHARACTER_IMAGE_KEY_MISSING`, `NOVEL_CHARACTER_IMAGE_BUDGET_EXCEEDED`, `NOVEL_CHARACTER_IMAGE_ALREADY_ATTEMPTED`, `NOVEL_CHARACTER_IMAGE_STORAGE_ERROR`, `NOVEL_CHARACTER_IMAGE_PROVIDER_ERROR`, `BUDGET_LEDGER_UNREADABLE`이다.
+
 
 ## 밈 관찰 카드에서 단기 프로젝트 초안으로
 

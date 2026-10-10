@@ -11,6 +11,7 @@ import { assetContentUrl, listAssets } from "../api/assetsApi.js";
 import { createNovelStoryProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
 import { formatDateTime } from "../utils/formatDateTime.js";
 import { autoStoryProjectId } from "../utils/storyProjectId.js";
+import { CharacterImageControl } from "./CharacterImageControl.js";
 import { primaryButton, smallOutlineButton } from "./ui/surfaces.js";
 
 interface Props {
@@ -18,6 +19,8 @@ interface Props {
   /** 분석을 만든 뒤 입력 칸이 바뀐 경우 — 이 결과로는 프로젝트를 만들 수 없습니다. */
   stale: boolean;
   onCreated: (project: LongProject) => void;
+  /** 키·예산이 막을 때 갈 곳 — OpenAI 키와 월 한도는 API 설정에 있습니다. */
+  onOpenSettings: () => void;
 }
 
 /** 서버가 받는 한도(`long-projects.service.ts` 의 `novelStoryProjectInput`) — 칸의 maxLength 로 넘치지 않게 합니다. */
@@ -61,7 +64,7 @@ function Field({ label, value, onChange, max, testId, multiline = false, disable
  * 없고, 서버로 가는 것은 사람이 고친 구조와 M1 출처 메타데이터(원문 없는 해시·모델·시각)입니다.
  * 🟠 분석은 **제안**이라 모든 칸을 고칠 수 있고, 서버 한도(칸마다 글자 수, 인물 1–40명, 회차 1–20회, 주인공 정확히 한 명)는 칸이 먼저 지킵니다.
  */
-export function StoryAnalysisReview({ response, stale, onCreated }: Props) {
+export function StoryAnalysisReview({ response, stale, onCreated, onOpenSettings }: Props) {
   const { analysis, source } = response;
   const sequence = useRef(0);
   const nextKey = () => `draft-${++sequence.current}`;
@@ -78,9 +81,23 @@ export function StoryAnalysisReview({ response, stale, onCreated }: Props) {
   const [library, setLibrary] = useState<Asset[] | null>(null);
   const [libraryFailed, setLibraryFailed] = useState(false);
   const [assetId, setAssetId] = useState("");
+  /** 방금 만든 그림을 주인공 이미지로 쓰기로 한 경우, 그 그림을 만든 인물 — 주인공이 바뀌면 이 연결은 풀립니다. */
+  const [assetFromCharacterKey, setAssetFromCharacterKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const busy = useRef(false);
+
+  /** 캐릭터 폴더 목록(켜진 것만). 인물 이미지를 만들어 보관함에 폴더가 생긴 뒤에도 다시 읽습니다. */
+  async function loadLibrary(): Promise<void> {
+    try {
+      const result = await listAssets({ assetType: "character" });
+      setLibrary(result.assets.filter((asset) => asset.isFolder && asset.enabled));
+      setLibraryFailed(false);
+    } catch {
+      setLibraryFailed(true);
+      setLibrary((old) => old ?? []);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -100,9 +117,19 @@ export function StoryAnalysisReview({ response, stale, onCreated }: Props) {
 
   function updateCharacter(key: string, patch: Partial<CharacterDraft>): void {
     setCharacters((old) => old.map((character) => (character.key === key ? { ...character, ...patch } : character)));
+    // 그 인물의 설명(이름·외모·성격)이 바뀌면, 바뀌기 전 설명으로 만들어 고른 주인공 이미지는 더 이상 그 설명의 그림이 아니라서 연결을 풉니다(CLI 1322).
+    if (assetFromCharacterKey === key && ("name" in patch || "appearance" in patch || "personality" in patch)) {
+      setAssetId("");
+      setAssetFromCharacterKey(null);
+    }
   }
   function chooseProtagonist(key: string): void {
     setCharacters((old) => old.map((character) => ({ ...character, role: character.key === key ? "protagonist" : "supporting" })));
+    // 다른 인물의 그림으로 골라 둔 주인공 이미지는 새 주인공의 것이 아니므로 풉니다.
+    if (assetFromCharacterKey !== null && assetFromCharacterKey !== key) {
+      setAssetId("");
+      setAssetFromCharacterKey(null);
+    }
   }
   function addCharacter(): void {
     if (characters.length >= REVIEW_LIMITS.characters) return;
@@ -258,6 +285,19 @@ export function StoryAnalysisReview({ response, stale, onCreated }: Props) {
               <Field label="이름" value={character.name} onChange={(value) => updateCharacter(character.key, { name: value })} max={REVIEW_LIMITS.characterName} testId={`review-character-name-${index}`} disabled={creating} />
               <Field label="외모" value={character.appearance} onChange={(value) => updateCharacter(character.key, { appearance: value })} max={REVIEW_LIMITS.appearance} testId={`review-character-appearance-${index}`} multiline disabled={creating} />
               <Field label="성격" value={character.personality} onChange={(value) => updateCharacter(character.key, { personality: value })} max={REVIEW_LIMITS.personality} testId={`review-character-personality-${index}`} multiline disabled={creating} />
+              <CharacterImageControl
+                storyInputSha256={source.inputSha256}
+                characterId={character.id}
+                name={character.name}
+                appearance={character.appearance}
+                personality={character.personality}
+                isProtagonist={character.role === "protagonist"}
+                onOpenSettings={onOpenSettings}
+                onGenerated={() => void loadLibrary()}
+                onUseAsProtagonist={(folderAssetId) => { setAssetId(folderAssetId); setAssetFromCharacterKey(character.key); }}
+                usedAsProtagonistFolderId={assetFromCharacterKey === character.key ? assetId : ""}
+                disabled={creating}
+              />
             </li>
           ))}
         </ul>
@@ -271,7 +311,7 @@ export function StoryAnalysisReview({ response, stale, onCreated }: Props) {
           )}
           {library !== null && library.length > 0 && (
             <div className="flex flex-wrap items-center gap-3">
-              <select data-testid="review-protagonist-asset" className={`${inputClass} max-w-xs`} value={assetId} onChange={(event) => setAssetId(event.target.value)} disabled={creating}>
+              <select data-testid="review-protagonist-asset" className={`${inputClass} max-w-xs`} value={assetId} onChange={(event) => { setAssetId(event.target.value); setAssetFromCharacterKey(null); }} disabled={creating}>
                 <option value="">연결하지 않음</option>
                 {library.map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.displayName}</option>)}
               </select>

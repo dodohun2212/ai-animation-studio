@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApproveNovelStoryAnalysisResponse } from "@ai-animation-studio/shared";
-import { makeAsset, makeAssetFolder, makeLongProject, stubFetchByRoute } from "../api/testUtils.js";
+import { makeAsset, makeAssetFolder, makeLongProject, sequence, stubFetchByRoute } from "../api/testUtils.js";
 import { REVIEW_LIMITS, StoryAnalysisReview, normalizeProtagonist } from "./StoryAnalysisReview.js";
 
 function response(overrides: Partial<ApproveNovelStoryAnalysisResponse> = {}): ApproveNovelStoryAnalysisResponse {
@@ -34,6 +34,7 @@ const CREATE = "POST /long-projects/from-story-analysis";
 const FOLDER = makeAssetFolder({ assetId: "ASSET-CHAR-FOLDER", assetType: "character", displayName: "토리" });
 const CHILD = makeAsset({ assetId: "ASSET-CHAR-CHILD", assetType: "character", displayName: "토리 웃는 얼굴", parentFolderId: "ASSET-CHAR-FOLDER" });
 const OFF = makeAssetFolder({ assetId: "ASSET-CHAR-OFF", assetType: "character", displayName: "꺼 둔 폴더", enabled: false });
+const NEW_FOLDER = makeAssetFolder({ assetId: "ASSET-CHAR-NEW", assetType: "character", displayName: "새봄" });
 
 function mockServer(routes: Record<string, unknown> = {}, errors: Record<string, { status: number; body: unknown }> = {}) {
   const fetchMock = stubFetchByRoute({ "GET /assets?assetType=character": { assets: [FOLDER, CHILD, OFF] }, ...routes }, errors);
@@ -48,7 +49,7 @@ const posts = (fetchMock: ReturnType<typeof vi.fn>) =>
 
 function renderReview(props: { response?: ApproveNovelStoryAnalysisResponse; stale?: boolean } = {}) {
   const onCreated = vi.fn();
-  render(<StoryAnalysisReview response={props.response ?? response()} stale={props.stale ?? false} onCreated={onCreated} />);
+  render(<StoryAnalysisReview response={props.response ?? response()} stale={props.stale ?? false} onCreated={onCreated} onOpenSettings={() => {}} />);
   return { onCreated };
 }
 
@@ -174,6 +175,88 @@ describe("StoryAnalysisReview (M2)", () => {
     expect(settings.episodeCount).toBe(2);
   });
 
+  /** M3: 인물 이미지는 사람이 승인한 한 번뿐 — 화면 진입·프로젝트 확정만으로는 이미지 요청이 나가지 않는다. */
+  it("never sends a character-image request on its own, not even when the project is confirmed", async () => {
+    const fetchMock = mockServer({ [CREATE]: { project: makeLongProject() } });
+    renderReview();
+    expect(screen.getByTestId("character-image-preview-c1")).toBeTruthy();
+    expect(screen.getByTestId("character-image-preview-c2")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("review-create"));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("character-image"))).toBe(false);
+  });
+
+  it("refreshes the library after a picture is made and links it as the lead only when the person chooses", async () => {
+    const fetchMock = mockServer({
+      "GET /assets?assetType=character": sequence([{ assets: [FOLDER, CHILD, OFF] }, { assets: [FOLDER, NEW_FOLDER, CHILD, OFF] }]),
+      "POST /story-analysis/character-image/preview": {
+        preview: { inputSha256: "c".repeat(64), promptSha256: "d".repeat(64), prompt: "프롬프트", model: "gpt-image-2", size: "1024x1536", estimatedCostUsd: 0.1, providerAvailable: true },
+      },
+      "POST /story-analysis/character-image": { folderAssetId: "ASSET-CHAR-NEW", imageAssetId: "ASSET-IMG-NEW", reused: false },
+      [CREATE]: { project: makeLongProject() },
+    });
+    renderReview();
+    const select = (await screen.findByTestId("review-protagonist-asset")) as HTMLSelectElement;
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "ASSET-CHAR-FOLDER"]);
+
+    fireEvent.click(screen.getByTestId("character-image-preview-c1"));
+    await screen.findByTestId("character-image-card-c1");
+    fireEvent.click(screen.getByTestId("character-image-approve-c1"));
+    await screen.findByTestId("character-image-result-c1");
+    await waitFor(() => expect(Array.from((screen.getByTestId("review-protagonist-asset") as HTMLSelectElement).options).map((option) => option.value)).toEqual(["", "ASSET-CHAR-FOLDER", "ASSET-CHAR-NEW"]));
+    // 만들어졌다고 자동으로 연결되지 않는다.
+    expect((screen.getByTestId("review-protagonist-asset") as HTMLSelectElement).value).toBe("");
+
+    fireEvent.click(screen.getByTestId("character-image-use-c1"));
+    expect((screen.getByTestId("review-protagonist-asset") as HTMLSelectElement).value).toBe("ASSET-CHAR-NEW");
+    fireEvent.click(screen.getByTestId("review-create"));
+    await waitFor(() => expect(posts(fetchMock).some((call) => call.url === "/long-projects/from-story-analysis")).toBe(true));
+    expect(posts(fetchMock).find((call) => call.url === "/long-projects/from-story-analysis")!.body.protagonistAssetId).toBe("ASSET-CHAR-NEW");
+  });
+
+  /** CLI 1322: 연결해 둔 주인공 그림의 인물 설명을 바꾸면, 바뀌기 전 설명의 그림이라 연결이 풀린다. */
+  it("drops the linked lead picture when that character's description is edited afterwards", async () => {
+    mockServer({
+      "GET /assets?assetType=character": { assets: [FOLDER, NEW_FOLDER] },
+      "POST /story-analysis/character-image/preview": {
+        preview: { inputSha256: "c".repeat(64), promptSha256: "d".repeat(64), prompt: "프롬프트", model: "gpt-image-2", size: "1024x1536", estimatedCostUsd: 0.1, providerAvailable: true },
+      },
+      "POST /story-analysis/character-image": { folderAssetId: "ASSET-CHAR-NEW", imageAssetId: "ASSET-IMG-NEW", reused: false },
+    });
+    renderReview();
+    fireEvent.click(screen.getByTestId("character-image-preview-c1"));
+    await screen.findByTestId("character-image-card-c1");
+    fireEvent.click(screen.getByTestId("character-image-approve-c1"));
+    await screen.findByTestId("character-image-result-c1");
+    fireEvent.click(screen.getByTestId("character-image-use-c1"));
+    await waitFor(() => expect((screen.getByTestId("review-protagonist-asset") as HTMLSelectElement).value).toBe("ASSET-CHAR-NEW"));
+
+    change("review-character-appearance-0", "다른 모습으로 고친 설명");
+    expect((screen.getByTestId("review-protagonist-asset") as HTMLSelectElement).value).toBe("");
+    expect(screen.queryByTestId("character-image-use-c1")).toBeNull();
+    expect(screen.getByTestId("character-image-old-c1")).toBeTruthy();
+  });
+
+  it("drops a picture linked for one lead when someone else becomes the lead", async () => {
+    mockServer({
+      "GET /assets?assetType=character": { assets: [FOLDER, NEW_FOLDER] },
+      "POST /story-analysis/character-image/preview": {
+        preview: { inputSha256: "c".repeat(64), promptSha256: "d".repeat(64), prompt: "프롬프트", model: "gpt-image-2", size: "1024x1536", estimatedCostUsd: 0.1, providerAvailable: true },
+      },
+      "POST /story-analysis/character-image": { folderAssetId: "ASSET-CHAR-NEW", imageAssetId: "ASSET-IMG-NEW", reused: false },
+    });
+    renderReview();
+    fireEvent.click(screen.getByTestId("character-image-preview-c1"));
+    await screen.findByTestId("character-image-card-c1");
+    fireEvent.click(screen.getByTestId("character-image-approve-c1"));
+    await screen.findByTestId("character-image-result-c1");
+    fireEvent.click(screen.getByTestId("character-image-use-c1"));
+    await waitFor(() => expect((screen.getByTestId("review-protagonist-asset") as HTMLSelectElement).value).toBe("ASSET-CHAR-NEW"));
+
+    fireEvent.click(screen.getByTestId("review-protagonist-1"));
+    expect((screen.getByTestId("review-protagonist-asset") as HTMLSelectElement).value).toBe("");
+  });
+
   it("stops adding episodes at the shared maximum", () => {
     mockServer();
     renderReview();
@@ -228,12 +311,12 @@ describe("StoryAnalysisReview (M2)", () => {
 
   it("says so when the library has no folder or cannot be read, and still creates", async () => {
     vi.stubGlobal("fetch", stubFetchByRoute({ "GET /assets?assetType=character": { assets: [CHILD] } }));
-    const first = render(<StoryAnalysisReview response={response()} stale={false} onCreated={() => {}} />);
+    const first = render(<StoryAnalysisReview response={response()} stale={false} onCreated={() => {}} onOpenSettings={() => {}} />);
     expect((await screen.findByTestId("review-library-empty")).textContent).toContain("캐릭터 폴더가 보관함에 없습니다");
     first.unmount();
 
     vi.stubGlobal("fetch", stubFetchByRoute({}, { "GET /assets?assetType=character": { status: 500, body: { code: "X", message: "boom" } } }));
-    render(<StoryAnalysisReview response={response()} stale={false} onCreated={() => {}} />);
+    render(<StoryAnalysisReview response={response()} stale={false} onCreated={() => {}} onOpenSettings={() => {}} />);
     await waitFor(() => expect(screen.getByText(/목록을 불러오지 못했습니다/)).toBeTruthy());
     expect((screen.getByTestId("review-create") as HTMLButtonElement).disabled).toBe(false);
   });

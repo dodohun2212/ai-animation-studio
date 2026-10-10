@@ -17,6 +17,7 @@ export interface ApiError {
 
 export type { ApproveNovelStoryAnalysisRequest, ApproveNovelStoryAnalysisResponse, NovelStoryAnalysisPreviewResponse } from "./novel-story.js";
 export type { CreateNovelStoryProjectRequest } from "./novel-story.js";
+export type { NovelCharacterImageInput, NovelCharacterImagePreviewResponse, GenerateNovelCharacterImageRequest, GenerateNovelCharacterImageResponse } from "./novel-story.js";
 
 /** Stored with a new short project before any story Provider call. The story preview reads these ordinary settings. */
 export interface CreateProjectInitialStoryDraft {
@@ -3718,6 +3719,8 @@ export const API_ROUTES = {
   novelStoryAnalysisPreview: "/story-analysis/preview",
   novelStoryAnalysis: "/story-analysis",
   novelStoryProjectCreate: "/long-projects/from-story-analysis",
+  novelCharacterImagePreview: "/story-analysis/character-image/preview",
+  novelCharacterImageGenerate: "/story-analysis/character-image",
   memeTrends: "/trends/memes",
   memeTrendsRefresh: "/trends/memes/refresh",
   memeTrendWorkspace: (trendId: string) => `/trends/memes/${encodeURIComponent(trendId)}/workspace`,
