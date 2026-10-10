@@ -8,10 +8,16 @@ const book = {
 };
 
 describe("novel source contracts", () => {
-  it("accepts search results only with named, dated contributors and the source landing page", () => {
+  it("accepts catalog entries without treating contributor dates as an import gate", () => {
     expect(isNovelSourceSearchResponse({ provider: "project-gutenberg", page: 1, hasNextPage: false, results: [book] })).toBe(true);
-    expect(isNovelSourceSearchResponse({ provider: "project-gutenberg", page: 1, hasNextPage: false, results: [{ ...book, authors: [{ name: "Unknown", deathYear: null }] }] })).toBe(false);
+    expect(isNovelSourceSearchResponse({ provider: "project-gutenberg", page: 1, hasNextPage: false, results: [{ ...book, authors: [{ name: "Unknown", deathYear: null }], rightsEvidence: undefined }] })).toBe(true);
     expect(isNovelSourceSearchResponse({ provider: "project-gutenberg", page: 1, hasNextPage: false, results: [{ ...book, sourceUrl: "https://elsewhere.test/11" }] })).toBe(false);
+  });
+
+  it("accepts Korean Wikisource pages without author or rights metadata, but validates their source URL", () => {
+    const wikisourceBook = { provider: "ko-wikisource", sourceId: "1234", title: "운수 좋은 날", authors: [], translators: [], language: "ko", subjects: [], sourceUrl: "https://ko.wikisource.org/wiki/%EC%9A%B4%EC%88%98_%EC%A2%8B%EC%9D%80_%EB%82%A0" };
+    expect(isNovelSourceSearchResponse({ provider: "ko-wikisource", page: 1, hasNextPage: false, results: [wikisourceBook] })).toBe(true);
+    expect(isNovelSourceSearchResponse({ provider: "ko-wikisource", page: 1, hasNextPage: false, results: [{ ...wikisourceBook, sourceUrl: "https://elsewhere.test/1234" }] })).toBe(false);
   });
 
   it("requires imported text length to match the measured UTF-16 count", () => {
@@ -30,5 +36,6 @@ describe("novel source contracts", () => {
 
   it("accepts citation metadata without the catalog-only subjects field", () => {
     expect(isNovelStorySourceCitation({ ...book, fullSourceCharacterCount: 5, selectedCharacterCount: 5 })).toBe(true);
+    expect(isNovelStorySourceCitation({ provider: "ko-wikisource", sourceId: "1234", title: "운수 좋은 날", authors: [], translators: [], language: "ko", sourceUrl: "https://ko.wikisource.org/wiki/%EC%9A%B4%EC%88%98_%EC%A2%8B%EC%9D%80_%EB%82%A0", fullSourceCharacterCount: 5, selectedCharacterCount: 5 })).toBe(true);
   });
 });

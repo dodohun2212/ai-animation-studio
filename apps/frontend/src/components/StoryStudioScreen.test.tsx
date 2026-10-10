@@ -135,9 +135,10 @@ describe("StoryStudioScreen", () => {
     expect((screen.getByTestId("story-title") as HTMLInputElement).value).toBe("The Raven");
     expect((screen.getByTestId("story-source") as HTMLInputElement).value).toBe("The Raven — Poe, Edgar Allan (~1849) · Project Gutenberg #2147");
     expect(screen.getByTestId("story-imported-source").textContent).toContain("저자 사망 1849년");
-    // 근거가 바뀌었으니 권리 확인은 다시 — 문구도 만료 작품용으로 바뀐다.
+    // 근거가 바뀌었으니 권리 확인은 다시 — 문구도 가져온 작품용(권리 확인, 목록은 거르지 않음 — 캡틴D 1362)으로 바뀐다.
     expect((screen.getByTestId("story-rights") as HTMLInputElement).checked).toBe(false);
-    expect(screen.getByTestId("story-rights").closest("label")!.textContent).toContain("저작권 보호기간이 끝난 작품");
+    expect(screen.getByTestId("story-rights").closest("label")!.textContent).toContain("이 작품을 쓸 권리를 확인했습니다");
+    expect(screen.getByTestId("story-rights").closest("label")!.textContent).toContain("거르거나 판단하지 않습니다");
 
     fill("story-logline", "까마귀가 찾아온다");
     fireEvent.click(screen.getByTestId("story-rights"));
@@ -156,11 +157,14 @@ describe("StoryStudioScreen", () => {
     expect(screen.getByTestId("story-rights").closest("label")!.textContent).toContain("직접 쓴 글이거나");
   });
 
-  it("writes the public-domain basis into the project notes when made without analysis", () => {
+  it("writes the confirmed right to use the picked work into the project notes when made without analysis", () => {
     const citation = { provider: "project-gutenberg" as const, sourceId: "2147", title: "The Raven", authors: [{ name: "Poe, Edgar Allan", deathYear: 1849 }], translators: [], language: "en" as const, sourceUrl: "https://www.gutenberg.org/ebooks/2147", rightsEvidence: "저자 사망 1849년", fullSourceCharacterCount: 100, selectedCharacterCount: 40, chapterRange: { firstChapter: 2, lastChapter: 3 } };
     const notes = buildStoryNotes("", [], true, citation);
-    expect(notes).toContain("저작권 보호기간이 끝난 작품");
+    expect(notes).toContain("쓸 권리(저작권 만료 또는 권리자 허락)를 확인했습니다");
     expect(notes).toContain("The Raven — Poe, Edgar Allan (~1849) · Project Gutenberg #2147 · 2–3장");
+    // 위키문헌 작품은 작가가 없을 수 있고, 출처는 제공처 이름으로.
+    const wiki = buildStoryNotes("", [], true, { ...citation, provider: "ko-wikisource", sourceId: "12345", title: "운수 좋은 날", authors: [], language: "ko", sourceUrl: "https://ko.wikisource.org/wiki/x", chapterRange: undefined });
+    expect(wiki).toContain("이 작품(운수 좋은 날 · 위키문헌)");
     expect(notes).not.toContain("직접 썼거나");
   });
 

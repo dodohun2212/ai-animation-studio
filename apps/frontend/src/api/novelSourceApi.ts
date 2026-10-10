@@ -30,7 +30,7 @@ export class NovelSourceApiError extends Error {
 
 const SAFE_ERRORS: Record<string, string> = {
   NOVEL_SOURCE_INVALID_REQUEST: "검색어나 고른 장 범위가 조건에 맞지 않습니다. 제목·작가 또는 장르를 넣고, 장 범위는 처음 장이 끝 장보다 앞서게 골라 주세요.",
-  NOVEL_SOURCE_NOT_ELIGIBLE: "이 작품은 저자·번역자의 사망 연도로 한국 보호기간이 끝났는지 확인할 수 없어 가져오지 않았습니다. 다른 작품을 골라 주세요.",
+  NOVEL_SOURCE_NOT_FOUND: "고른 작품을 제공처에서 찾지 못했습니다. 목록이 바뀌었을 수 있으니 다시 검색한 뒤 골라 주세요.",
   NOVEL_SOURCE_CHAPTERS_UNAVAILABLE: "이 원문에서 장의 경계를 찾지 못해 범위를 나눌 수 없습니다. 다른 작품을 고르거나 본문을 직접 붙여넣어 주세요.",
   NOVEL_SOURCE_TEXT_INVALID: "가져온 원문에서 본문의 처음과 끝을 확인할 수 없습니다. 다른 작품을 고르거나 본문을 직접 붙여넣어 주세요.",
   NOVEL_SOURCE_TEXT_UNAVAILABLE: "고른 작품의 텍스트 파일을 Project Gutenberg에서 받지 못했습니다. 잠시 뒤 다시 확인하거나 다른 작품을 골라 주세요.",

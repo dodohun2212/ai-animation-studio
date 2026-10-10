@@ -15,7 +15,7 @@ import {
 
 import { assetContentUrl, listAssets } from "../api/assetsApi.js";
 import { createLongProject, toLongProjectDisplayError } from "../api/longProjectsApi.js";
-import { NovelSourcePicker, contributorsLabel, type PickedNovelSource } from "./NovelSourcePicker.js";
+import { NOVEL_SOURCE_PROVIDER_LABEL, NovelSourcePicker, contributorsLabel, type PickedNovelSource } from "./NovelSourcePicker.js";
 import { Spinner } from "./Spinner.js";
 import { StoryAnalysisPanel } from "./StoryAnalysisPanel.js";
 import { ScreenHeader } from "./ui/ScreenHeader.js";
@@ -61,7 +61,9 @@ import { autoStoryProjectId } from "../utils/storyProjectId.js";
 /** 가져온 작품의 한 줄 요약 — 출처 메모 칸과 메모의 권리 줄에 씁니다. */
 export function citationSummary(citation: NovelStorySourceCitation): string {
   const range = citation.chapterRange ? ` · ${citation.chapterRange.firstChapter}–${citation.chapterRange.lastChapter}장` : "";
-  return `${citation.title} — ${contributorsLabel(citation.authors)} · Project Gutenberg #${citation.sourceId}${range}`;
+  const people = citation.authors.length > 0 ? ` — ${contributorsLabel(citation.authors)}` : "";
+  const where = citation.provider === "project-gutenberg" ? `Project Gutenberg #${citation.sourceId}` : NOVEL_SOURCE_PROVIDER_LABEL[citation.provider];
+  return `${citation.title}${people} · ${where}${range}`;
 }
 
 /** 장기 프로젝트의 「메모」에 들어가는 글 — 재창작 지시, 출처, 등장인물. 대본 AI가 읽는 자리입니다. */
@@ -72,7 +74,7 @@ export function buildStoryNotes(source: string, characters: { name: string; desc
   ];
   const trimmedSource = source.trim();
   if (trimmedSource) lines.push(`【출처 메모】 ${trimmedSource}`);
-  if (rightsConfirmed && citation) lines.push(`【권리 확인】 사용자가 저작권 보호기간이 끝난 작품으로 쓰겠다고 확인했습니다(${citationSummary(citation)} · 근거: ${citation.rightsEvidence}). 원문을 그대로 옮기지 마십시오.`);
+  if (rightsConfirmed && citation) lines.push(`【권리 확인】 사용자가 이 작품(${citationSummary(citation)})을 쓸 권리(저작권 만료 또는 권리자 허락)를 확인했습니다. 원문을 그대로 옮기지 마십시오.`);
   else if (rightsConfirmed) lines.push("【권리 확인】 사용자가 이 글을 직접 썼거나 이용 허락을 받았다고 확인했습니다. 원문·개인정보를 그대로 공개하지 마십시오.");
   const named = characters.filter((character) => character.name.trim());
   if (named.length > 0) {
@@ -258,13 +260,13 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
           {citation && (
             <div data-testid="story-imported-source" className="space-y-1 rounded border border-line p-3 text-xs text-bone-dim">
               <p>
-                가져온 작품: <span className="text-bone">「{citation.title}」</span> — {contributorsLabel(citation.authors)}
+                가져온 작품: <span className="text-bone">「{citation.title}」</span>{citation.authors.length > 0 ? ` — ${contributorsLabel(citation.authors)}` : ""} · {NOVEL_SOURCE_PROVIDER_LABEL[citation.provider]}
                 {citation.translators.length > 0 ? ` · 번역 ${contributorsLabel(citation.translators)}` : ""}
                 {citation.chapterRange ? ` · ${citation.chapterRange.firstChapter}–${citation.chapterRange.lastChapter}장` : ""}
                 {` · ${citation.selectedCharacterCount.toLocaleString("ko-KR")}자 / 전체 ${citation.fullSourceCharacterCount.toLocaleString("ko-KR")}자`}
               </p>
               <p className="text-bone-faint">
-                권리 근거: {citation.rightsEvidence} · <a href={citation.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-bone">원본 페이지</a>
+                {citation.rightsEvidence ? `제공처 정보: ${citation.rightsEvidence} · ` : ""}<a href={citation.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-bone">원본 페이지</a>
               </p>
               {importedText !== null && text !== importedText && (
                 <p data-testid="story-imported-edited" className="text-bone-faint">가져온 뒤 본문을 고쳤습니다 — 출처 기록은 그대로 함께 보냅니다.</p>
@@ -278,8 +280,8 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
             <input type="checkbox" data-testid="story-rights" className="mt-0.5" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} disabled={submitting} />
             {citation ? (
               <span>
-                이 작품을 <strong>저작권 보호기간이 끝난 작품</strong>으로 쓰겠습니다(근거는 위).
-                <span className="mt-0.5 block text-bone-faint">앱의 거르기는 저자·번역자의 사망 연도로 본 보수적인 필터일 뿐 법적 보증이 아니며, 판본·번역의 권리까지 확인해 주지는 않습니다. 확인 책임은 사용자에게 있습니다.</span>
+                이 작품을 쓸 <strong>권리를 확인했습니다</strong>(저작권이 끝났거나 권리자의 이용 허락을 받음).
+                <span className="mt-0.5 block text-bone-faint">「작품 고르기」 목록은 저작권 상태를 거르거나 판단하지 않습니다. 판본·번역의 권리를 포함해 확인 책임은 사용자에게 있습니다.</span>
               </span>
             ) : (
               <span>
@@ -369,7 +371,7 @@ export function StoryStudioScreen({ onCreated, onProjectFromAnalysis, onBack, on
         <h2 className="text-sm font-medium text-bone-dim">아직 안 되는 것 (준비 중)</h2>
         <ul className="list-inside list-disc space-y-1 text-xs text-bone-faint">
           <li>Reddit 주소만 넣어 글 가져오기, 웹소설 플랫폼에서 가져오기 — 사전 승인과 이용 조건·저작권 때문에 만들지 않습니다. 직접 쓴 글이나 허락받은 글을 붙여넣거나, 위 「작품 고르기」에서 저작권이 끝난 작품을 고르세요.</li>
-          <li>한국어 저작권 만료 작품(공유마당) 가져오기 — 제공처의 원문 이용 조건을 확인하기 전이라 아직 없습니다.</li>
+          <li>공유마당의 한국어 작품 가져오기 — 제공처의 원문 이용 조건을 확인하기 전이라 아직 없습니다(한국어 작품은 위키문헌에서 고를 수 있습니다).</li>
           <li>{NOVEL_SOURCE_MAX_CHARS.toLocaleString("ko-KR")}자보다 긴 글을 한 번에 — 지금은 그 길이까지 나눠서 분석합니다. 「작품 고르기」로 가져온 장편은 장 범위를 골라 1부·2부처럼 나눠 만들고, 직접 붙여넣는 글은 앞부분만 붙이거나 나눠 주세요.</li>
         </ul>
       </section>

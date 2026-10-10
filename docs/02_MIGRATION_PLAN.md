@@ -4782,3 +4782,9 @@ GET /1328208640370353 200 name "Ibad", instagram_business_account @ibad_2012_
 
 - Cowork 라운드 1359의 최종 안내를 통합했다. 세 번째 독립 채널의 조회수 하한 3천, 후보 순위의 구독자 분모 하한 1천, 후보가 유행 확정이 아니라는 범위 문구를 화면에 표시한다. 수집 횟수와 3천 조회수 하한은 `packages/shared` 상수로 백엔드와 화면이 함께 읽는다.
 - 전체 typecheck·test·build 통과: backend 2095 pass/1 skip, frontend 2192, shared 141, desktop 38. 변경 소스 SHA-256은 검증 전후 동일, `git diff --check` 통과. 실제 YouTube·Gemini·유료 Provider 호출은 없었다.
+
+## 2026-10-11 — 한국어 위키문헌 소설 검색·가져오기
+
+- 작품 고르기에 한국어 위키문헌과 영어 Project Gutenberg 언어 선택을 추가했다. 한국어 기본 목록은 `분류:한국의 소설` 및 직접 하위 분류를 나눠 검색하고, 제목/본문 검색 결과는 소설 분류로 제한한다. 목록은 문서 머리말의 작가·번역자 정보를 가능한 범위에서 채운다. 다음 페이지 토큰은 MediaWiki category continuation을 이어 간다.
+- 본문은 명시적으로 작품을 고른 뒤 가져온다. 위키문헌에서 렌더된 본문의 스타일·틀 머리말·탐색 상자·라이선스 절을 제거하고, 한국어 장 제목을 인식해 기존 120,000자/장 범위 흐름으로 전달한다. Gutenberg도 `copyright`와 사망연도 유무로 목록·가져오기를 막지 않는다. 이용 허락 판단은 가져오기 때 하지 않으며, StoryStudio의 기존 권리 확인은 작품 사용 단계에 남겼다. 원문은 파일에 저장하지 않는다.
+- 전체 typecheck·test·build 통과: backend 2099 pass/1 skip, frontend 2194, shared 142, desktop 38. Cowork의 읽기 전용 실측에서 처음 발견된 위키문헌 머리틀/CSS/라이선스 문구 혼입에 회귀 테스트를 추가했다. 테스트와 빌드는 mock 응답만 사용했고 유료 Provider 호출은 없었다. 실측 후 본문 정리 재실행은 아직 하지 않았다.

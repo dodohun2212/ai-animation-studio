@@ -16,6 +16,17 @@ export const POE: NovelSourceBook = {
   sourceUrl: "https://www.gutenberg.org/ebooks/2147",
   rightsEvidence: "저자 사망 1849년 — 한국 보호기간(사후 70년) 경과",
 };
+/** 위키문헌 항목 — 작가·사망 연도·권리 정보가 없을 수 있다(CLI 1363). */
+const KIM: NovelSourceBook = {
+  provider: "ko-wikisource",
+  sourceId: "12345",
+  title: "운수 좋은 날",
+  authors: [],
+  translators: [],
+  language: "ko",
+  subjects: [],
+  sourceUrl: "https://ko.wikisource.org/wiki/%EC%9A%B4%EC%88%98_%EC%A2%8B%EC%9D%80_%EB%82%A0",
+};
 const LONG: NovelSourceBook = { ...POE, sourceId: "84", title: "Frankenstein", authors: [{ name: "Shelley, Mary", deathYear: 1851 }], sourceUrl: "https://www.gutenberg.org/ebooks/84" };
 
 const SEARCH = "POST /story-sources/search";
@@ -56,45 +67,86 @@ describe("NovelSourcePicker helpers", () => {
 describe("NovelSourcePicker", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  /** 🔴 검색은 누를 때만, 목록만 — 본문은 받지 않는다. 범위·한계는 늘 보인다. */
-  /** CLI 1351: 열자마자 소설 후보 1쪽(목록만) — 그 뒤 검색은 누를 때만, 장르는 영어 주제어로, 목록 단계에서 본문 요청 없음. */
-  it("lists fiction candidates on open, then searches only when asked, and fetches no text for the list", async () => {
+  /**
+   * 🔴 검색은 누를 때만(열 때·언어를 바꿀 때의 기본 목록 제외), 목록만 — 본문은 받지 않는다. 범위·한계는 늘 보인다.
+   * CLI 1351·1363: 열자마자 한국어(위키문헌) 후보, 영어로 바꾸면 Gutenberg 「fiction」 후보. 장르는 영어에서만.
+   */
+  it("lists Korean novels on open, lists English fiction on switching, then searches only when asked", async () => {
     const fetchMock = mockServer({ [SEARCH]: { provider: "project-gutenberg", results: [POE], page: 1, hasNextPage: false } });
     renderPicker();
-    expect(screen.getByTestId("novel-source-scope").textContent).toContain("법적 보증이 아니니");
-    expect(screen.getByTestId("novel-source-scope").textContent).toContain("1955년까지 세상을 떠난");
-    expect((screen.getByTestId("novel-source-topic") as HTMLSelectElement).value).toBe("fiction");
+    expect(screen.getByTestId("novel-source-scope").textContent).toContain("저작권이 끝났는지 거르지 않습니다");
+    expect(screen.getByTestId("novel-source-language-ko").getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByTestId("novel-source-topic")).toBeNull();
     await screen.findByTestId("novel-source-book-2147");
-    expect(posts(fetchMock)).toEqual([{ url: "/story-sources/search", body: { query: "", topic: "fiction" } }]);
+    expect(posts(fetchMock)).toEqual([{ url: "/story-sources/search", body: { query: "", language: "ko" } }]);
 
+    fireEvent.click(screen.getByTestId("novel-source-language-en"));
+    expect((screen.getByTestId("novel-source-topic") as HTMLSelectElement).value).toBe("fiction");
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
+    await screen.findByTestId("novel-source-book-2147");
     fireEvent.change(screen.getByTestId("novel-source-query"), { target: { value: "  poe " } });
     fireEvent.change(screen.getByTestId("novel-source-topic"), { target: { value: "horror" } });
     fireEvent.click(screen.getByTestId("novel-source-search"));
     const card = await screen.findByTestId("novel-source-book-2147");
     expect(card.textContent).toContain("Poe, Edgar Allan (~1849)");
+    expect(card.textContent).toContain("Project Gutenberg");
     expect(card.querySelector("a")!.getAttribute("href")).toBe("https://www.gutenberg.org/ebooks/2147");
     expect(card.querySelector("a")!.getAttribute("rel")).toBe("noopener noreferrer");
     expect(posts(fetchMock)).toEqual([
-      { url: "/story-sources/search", body: { query: "", topic: "fiction" } },
-      { url: "/story-sources/search", body: { query: "poe", topic: "horror" } },
+      { url: "/story-sources/search", body: { query: "", language: "ko" } },
+      { url: "/story-sources/search", body: { query: "", language: "en", topic: "fiction" } },
+      { url: "/story-sources/search", body: { query: "poe", language: "en", topic: "horror" } },
     ]);
   });
 
-  it("pages with the server's page number and says when nothing matched", async () => {
+  /** CLI 1363: 위키문헌 분류 목록은 이어보기 토큰으로 넘긴다 — 다음 쪽은 받은 토큰을, 첫 쪽으로 돌아가면 토큰 없이. */
+  it("pages the Korean category list with the server's continuation token, and says when nothing matched", async () => {
     const fetchMock = mockServer({ [SEARCH]: sequence([
-      { provider: "project-gutenberg", results: [POE], page: 1, hasNextPage: true },
-      { provider: "project-gutenberg", results: [], page: 2, hasNextPage: false },
+      { provider: "ko-wikisource", results: [KIM], page: 1, hasNextPage: true, nextPageToken: "page|tok2" },
+      { provider: "ko-wikisource", results: [], page: 2, hasNextPage: false },
+      { provider: "ko-wikisource", results: [KIM], page: 1, hasNextPage: true, nextPageToken: "page|tok2" },
     ]) });
     renderPicker();
-    await screen.findByTestId("novel-source-book-2147");
+    await screen.findByTestId("novel-source-book-12345");
     fireEvent.click(screen.getByTestId("novel-source-next"));
     await screen.findByTestId("novel-source-empty");
-    expect(posts(fetchMock)[1]!.body).toEqual({ query: "", topic: "fiction", page: 2 });
-    // 장르 「전체」+ 빈 검색어는 보낼 게 없어 검색이 꺼지고, Enter 도 보내지 않는다.
+    expect(posts(fetchMock)[1]!.body).toEqual({ query: "", language: "ko", page: 2, pageToken: "page|tok2" });
+    fireEvent.click(screen.getByTestId("novel-source-prev"));
+    await screen.findByTestId("novel-source-book-12345");
+    expect(posts(fetchMock)[2]!.body).toEqual({ query: "", language: "ko" });
+  });
+
+  /** 영어는 검색어나 장르 중 하나가 있어야 — 장르 「전체」+ 빈 검색어는 검색이 꺼지고 Enter 도 보내지 않는다. 한국어는 빈 검색어도 분류 목록. */
+  it("needs a query or a genre in English, but lets an empty Korean search list the category", async () => {
+    const fetchMock = mockServer({ [SEARCH]: { provider: "project-gutenberg", results: [POE], page: 1, hasNextPage: false } });
+    renderPicker();
+    await screen.findByTestId("novel-source-book-2147");
+    expect((screen.getByTestId("novel-source-search") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId("novel-source-language-en"));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByText(/목록을 찾는 중/)).toBeNull());
     fireEvent.change(screen.getByTestId("novel-source-topic"), { target: { value: "" } });
     expect((screen.getByTestId("novel-source-search") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.keyDown(screen.getByTestId("novel-source-query"), { key: "Enter" });
     expect(posts(fetchMock)).toHaveLength(2);
+  });
+
+  /** CLI 1363: 위키문헌 작품 — 작가 정보가 없어도 고를 수 있고, 가져올 때 제공처를 함께 보낸다. 권리 판단 줄은 그리지 않는다. */
+  it("imports a Wikisource work with its provider and shows where it came from", async () => {
+    const fetchMock = mockServer({
+      [SEARCH]: { provider: "ko-wikisource", results: [KIM], page: 1, hasNextPage: false },
+      [IMPORT]: { book: KIM, fullSourceCharacterCount: 10, chapters: [], needsChapterRange: false, selectedCharacterCount: 10, sourceText: "새침하게 흐린 품이" },
+    });
+    const { onPick } = renderPicker();
+    const card = await screen.findByTestId("novel-source-book-12345");
+    expect(card.textContent).toContain("작가 정보 없음");
+    expect(card.textContent).toContain("위키문헌");
+    expect(card.querySelector("a")!.getAttribute("href")).toContain("https://ko.wikisource.org/wiki/");
+    fireEvent.click(screen.getByTestId("novel-source-check-12345"));
+    await waitFor(() => expect(onPick).toHaveBeenCalledTimes(1));
+    expect(onPick.mock.calls[0]![0].citation).toMatchObject({ provider: "ko-wikisource", sourceId: "12345", language: "ko" });
+    expect(screen.queryByTestId("novel-source-rights")).toBeNull();
+    expect(posts(fetchMock).find((call) => call.url === "/story-sources/import")!.body).toEqual({ provider: "ko-wikisource", sourceId: "12345" });
   });
 
   /** CLI 1349: 본문 칸에 글이 있으면 덮지 않는다 — 「지금 본문을 바꿉니다」를 눌러야 들어가고, 넣은 뒤에는 다시 묻지 않는다. */
@@ -108,7 +160,7 @@ describe("NovelSourcePicker", () => {
     fireEvent.click(screen.getByTestId("novel-source-search"));
     fireEvent.click(await screen.findByTestId("novel-source-check-2147"));
     expect((await screen.findByTestId("novel-source-length")).textContent).toContain("전체 12자 · 장 1개");
-    expect(screen.getByTestId("novel-source-rights").textContent).toContain("사후 70년");
+    expect(screen.getByTestId("novel-source-rights").textContent).toContain("제공처 정보: 저자 사망 1849년");
     expect(onPick).not.toHaveBeenCalled();
     expect(screen.getByTestId("novel-source-ready").textContent).toContain("아직 넣지 않았습니다");
     expect(screen.getByTestId("novel-source-use").textContent).toContain("지금 본문을 바꿉니다");
@@ -117,7 +169,7 @@ describe("NovelSourcePicker", () => {
     expect(screen.queryByTestId("novel-source-use")).toBeNull();
     expect(onPick).toHaveBeenCalledWith({ text: "Once upon a.", citation: expect.objectContaining({ sourceId: "2147", fullSourceCharacterCount: 12, selectedCharacterCount: 12 }) });
     expect(onPick.mock.calls[0]![0].citation.chapterRange).toBeUndefined();
-    expect(posts(fetchMock).find((call) => call.url === "/story-sources/import")!.body).toEqual({ sourceId: "2147" });
+    expect(posts(fetchMock).find((call) => call.url === "/story-sources/import")!.body).toEqual({ provider: "project-gutenberg", sourceId: "2147" });
   });
 
   /** 1344-(a): 한도를 넘으면 장 목록과 장별 글자 수를 보여 주고, 이어진 범위를 골라 다시 가져온다. 넘는 범위는 보내지 않는다. */
@@ -150,8 +202,8 @@ describe("NovelSourcePicker", () => {
     expect(onPick).toHaveBeenCalledTimes(1);
     expect(onPick.mock.calls[0]![0].citation.chapterRange).toEqual({ firstChapter: 2, lastChapter: 2 });
     expect(posts(fetchMock).filter((call) => call.url === "/story-sources/import").map((call) => call.body)).toEqual([
-      { sourceId: "84" },
-      { sourceId: "84", chapterRange: { firstChapter: 2, lastChapter: 2 } },
+      { provider: "project-gutenberg", sourceId: "84" },
+      { provider: "project-gutenberg", sourceId: "84", chapterRange: { firstChapter: 2, lastChapter: 2 } },
     ]);
   });
 
@@ -171,7 +223,7 @@ describe("NovelSourcePicker", () => {
     expect(screen.getByTestId("novel-source-ready").textContent).toContain("본문 칸에 넣었습니다");
     expect(screen.getByTestId("novel-source-length").textContent).toContain("장 구분 없음");
     expect(screen.queryByTestId("novel-source-use")).toBeNull();
-    expect(posts(fetchMock).filter((call) => call.url === "/story-sources/import").map((call) => call.body)).toEqual([{ sourceId: "2147" }]);
+    expect(posts(fetchMock).filter((call) => call.url === "/story-sources/import").map((call) => call.body)).toEqual([{ provider: "project-gutenberg", sourceId: "2147" }]);
   });
 
   /** CLI 1351: 가져오는 동안 사람이 본문 칸에 글을 쓰면, 늦게 온 응답이 그 글을 덮지 않는다(응답 시점의 칸 상태로 판단). */
@@ -225,21 +277,24 @@ describe("NovelSourcePicker", () => {
   it("shows a fixed sentence for each source error and never the server's text", async () => {
     mockServer(
       { [SEARCH]: { provider: "project-gutenberg", results: [POE], page: 1, hasNextPage: false } },
-      { [IMPORT]: { status: 404, body: { code: "NOVEL_SOURCE_NOT_ELIGIBLE", message: "raw" } } },
+      { [IMPORT]: { status: 404, body: { code: "NOVEL_SOURCE_NOT_FOUND", message: "raw" } } },
     );
     renderPicker();
     fireEvent.change(screen.getByTestId("novel-source-query"), { target: { value: "poe" } });
     fireEvent.click(screen.getByTestId("novel-source-search"));
     fireEvent.click(await screen.findByTestId("novel-source-check-2147"));
     const alert = await screen.findByTestId("novel-source-import-error");
-    expect(alert.getAttribute("data-error-code")).toBe("NOVEL_SOURCE_NOT_ELIGIBLE");
-    expect(alert.textContent).toContain("사망 연도");
+    expect(alert.getAttribute("data-error-code")).toBe("NOVEL_SOURCE_NOT_FOUND");
+    expect(alert.textContent).toContain("찾지 못했습니다");
     expect(alert.textContent).not.toContain("raw");
   });
 
   it("explains an unreachable catalogue on search", async () => {
     mockServer({}, { [SEARCH]: { status: 503, body: { code: "NOVEL_SOURCE_UNAVAILABLE", message: "raw" } } });
     renderPicker();
+    await screen.findByTestId("novel-source-search-error");
+    fireEvent.click(screen.getByTestId("novel-source-language-en"));
+    await waitFor(() => expect(screen.queryByText(/목록을 찾는 중/)).toBeNull());
     fireEvent.change(screen.getByTestId("novel-source-topic"), { target: { value: "fantasy" } });
     fireEvent.click(screen.getByTestId("novel-source-search"));
     await waitFor(() => expect(screen.getByTestId("novel-source-search-error").getAttribute("data-error-code")).toBe("NOVEL_SOURCE_UNAVAILABLE"));

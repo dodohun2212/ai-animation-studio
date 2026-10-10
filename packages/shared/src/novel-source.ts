@@ -1,6 +1,10 @@
 /** The source catalog is an index only. The full source text is returned only after an explicit work selection. */
 export const NOVEL_SOURCE_PROVIDER = "project-gutenberg" as const;
+export const NOVEL_SOURCE_WIKISOURCE_PROVIDER = "ko-wikisource" as const;
+export type NovelSourceProvider = typeof NOVEL_SOURCE_PROVIDER | typeof NOVEL_SOURCE_WIKISOURCE_PROVIDER;
+export type NovelSourceLanguage = "en" | "ko";
 export const NOVEL_SOURCE_MAX_PAGE_SIZE = 32;
+export const NOVEL_SOURCE_DEFAULT_LANGUAGE: NovelSourceLanguage = "ko";
 /** Death in 1955 or earlier has completed the Korean life-plus-70 term by January 2026. */
 export const novelSourceDeathYearCutoff = (currentYear = new Date().getUTCFullYear()): number => currentYear - 71;
 
@@ -10,33 +14,36 @@ export function isNovelSourceContributorExpired(deathYear: number, currentYear =
 
 export interface NovelSourceSearchRequest {
   query: string;
+  language?: NovelSourceLanguage;
   topic?: string;
   page?: number;
+  pageToken?: string;
 }
 
 export interface NovelSourceContributor {
   name: string;
-  deathYear: number;
+  deathYear?: number | null;
 }
 
 export interface NovelSourceBook {
-  provider: typeof NOVEL_SOURCE_PROVIDER;
+  provider: NovelSourceProvider;
   sourceId: string;
   title: string;
   authors: NovelSourceContributor[];
   translators: NovelSourceContributor[];
-  language: "en";
+  language: NovelSourceLanguage;
   subjects: string[];
   sourceUrl: string;
-  /** A user-facing explanation of the conservative catalog filter, not a legal guarantee. */
-  rightsEvidence: string;
+  /** Source metadata only; this is not a permission or reuse decision. */
+  rightsEvidence?: string;
 }
 
 export interface NovelSourceSearchResponse {
-  provider: typeof NOVEL_SOURCE_PROVIDER;
+  provider: NovelSourceProvider;
   results: NovelSourceBook[];
   page: number;
   hasNextPage: boolean;
+  nextPageToken?: string;
 }
 
 export interface NovelSourceChapter {
@@ -51,6 +58,8 @@ export interface NovelSourceChapterRange {
 }
 
 export interface NovelSourceImportRequest {
+  /** Optional for older English Gutenberg callers; new source-specific UI sends it explicitly. */
+  provider?: NovelSourceProvider;
   sourceId: string;
   chapterRange?: NovelSourceChapterRange;
 }
@@ -69,14 +78,14 @@ export interface NovelSourceImportResponse {
 
 /** Citation-only metadata persisted with a successful analysis; sourceText is deliberately excluded. */
 export interface NovelStorySourceCitation {
-  provider: typeof NOVEL_SOURCE_PROVIDER;
+  provider: NovelSourceProvider;
   sourceId: string;
   title: string;
   authors: NovelSourceContributor[];
   translators: NovelSourceContributor[];
-  language: "en";
+  language: NovelSourceLanguage;
   sourceUrl: string;
-  rightsEvidence: string;
+  rightsEvidence?: string;
   fullSourceCharacterCount: number;
   selectedCharacterCount: number;
   chapterRange?: NovelSourceChapterRange;
@@ -85,22 +94,33 @@ export interface NovelStorySourceCitation {
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";
 const isPositiveInteger = (value: unknown): value is number => Number.isInteger(value) && (value as number) > 0;
+const isProvider = (value: unknown): value is NovelSourceProvider => value === NOVEL_SOURCE_PROVIDER || value === NOVEL_SOURCE_WIKISOURCE_PROVIDER;
+
+function sourceUrl(provider: NovelSourceProvider, sourceId: string, title: string): string {
+  return provider === NOVEL_SOURCE_PROVIDER
+    ? `https://www.gutenberg.org/ebooks/${sourceId}`
+    : `https://ko.wikisource.org/wiki/${encodeURIComponent(title.replace(/ /gu, "_"))}`;
+}
 
 export function isNovelSourceBook(value: unknown): value is NovelSourceBook {
-  if (!isRecord(value) || value.provider !== NOVEL_SOURCE_PROVIDER || !/^[1-9]\d{0,8}$/.test(String(value.sourceId))
-    || !isString(value.title) || !value.title.trim() || value.language !== "en"
-    || value.sourceUrl !== `https://www.gutenberg.org/ebooks/${value.sourceId}`
-    || !isString(value.rightsEvidence) || !Array.isArray(value.subjects) || !value.subjects.every(isString)) return false;
+  if (!isRecord(value) || !isProvider(value.provider) || !/^[1-9]\d{0,8}$/.test(String(value.sourceId))
+    || !isString(value.title) || !value.title.trim()
+    || (value.provider === NOVEL_SOURCE_PROVIDER ? value.language !== "en" : value.language !== "ko")
+    || value.sourceUrl !== sourceUrl(value.provider, String(value.sourceId), value.title)
+    || (value.rightsEvidence !== undefined && !isString(value.rightsEvidence))
+    || !Array.isArray(value.subjects) || !value.subjects.every(isString)) return false;
   const contributors = (entries: unknown): entries is NovelSourceContributor[] => Array.isArray(entries)
-    && entries.length > 0 && entries.every((entry) => isRecord(entry) && isString(entry.name) && !!entry.name.trim() && Number.isInteger(entry.deathYear));
-  return contributors(value.authors) && Array.isArray(value.translators)
-    && (value.translators.length === 0 || contributors(value.translators));
+    && entries.every((entry) => isRecord(entry) && isString(entry.name) && !!entry.name.trim()
+      && (entry.deathYear === undefined || entry.deathYear === null || Number.isInteger(entry.deathYear)));
+  return contributors(value.authors) && (value.provider === NOVEL_SOURCE_WIKISOURCE_PROVIDER || value.authors.length > 0)
+    && contributors(value.translators);
 }
 
 export function isNovelSourceSearchResponse(value: unknown): value is NovelSourceSearchResponse {
-  return isRecord(value) && value.provider === NOVEL_SOURCE_PROVIDER && Array.isArray(value.results)
-    && value.results.length <= NOVEL_SOURCE_MAX_PAGE_SIZE && value.results.every(isNovelSourceBook)
-    && isPositiveInteger(value.page) && typeof value.hasNextPage === "boolean";
+  return isRecord(value) && isProvider(value.provider) && Array.isArray(value.results)
+    && value.results.length <= NOVEL_SOURCE_MAX_PAGE_SIZE && value.results.every((book) => isNovelSourceBook(book) && book.provider === value.provider)
+    && isPositiveInteger(value.page) && typeof value.hasNextPage === "boolean"
+    && (value.nextPageToken === undefined || isString(value.nextPageToken));
 }
 
 export function isNovelSourceImportResponse(value: unknown): value is NovelSourceImportResponse {

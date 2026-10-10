@@ -64,11 +64,11 @@ React Frontend와 NestJS Backend 사이의 로컬 JSON 계약이다. OpenAI와 R
 
 ## 온라인 소설 출처 검색·가져오기
 
-`POST /story-sources/search`는 `{ query, topic?, page? }`를 받고 Gutendex 메타데이터 검색 결과 중 Project Gutenberg의 영어 작품만 반환한다. `copyright=false`는 미국 기준이며, 한국 내 보호기간을 보장하지 않는다. 서버는 이름과 사망연도가 제공된 저자 전원 및 번역자 전원이 현재 연도 기준 한국의 생존기간+70년을 넘긴 작품만 남긴다. 검색 응답에는 제목·작가/번역자·주제어·원본 작품 페이지·필터의 근거 문구가 있다. 원문 길이는 카탈로그가 제공하지 않아 검색 결과에 정확한 글자 수/길이 필터를 표시하지 않는다.
+`POST /story-sources/search`는 `{ query, language?, topic?, page?, pageToken? }`를 받는다. `language: "en"`은 Gutendex의 Project Gutenberg 메타데이터, `language: "ko"`는 한국어 위키문헌을 검색한다. 한국어에서 빈 검색어는 `분류:한국의 소설`과 직접 하위 분류의 작품 문서를 페이지로 나열하고, 검색어가 있으면 한국 소설 분류 안에서 제목·본문을 검색한다. 작가 정보는 문서 머리말에서 읽으며, 이름을 찾지 못하면 빈 배열이다. 카탈로그는 메타데이터만 반환하고 원문은 작품 선택 뒤에 요청한다. 저작권 보호기간이나 별도 허락 여부를 검색·가져오기 조건으로 검사하지 않는다. 원문 길이는 카탈로그가 제공하지 않아 목록에서 표시하지 않는다.
 
-`POST /story-sources/import`는 `{ sourceId, chapterRange? }`를 받는다. 본문 요청은 사용자가 작품을 선택한 뒤에만 발생하며, 서버는 작품 ID로 Project Gutenberg 공식 텍스트 미러 경로를 구성한다(클라이언트 URL을 받지 않는다). Gutenberg 머리말·꼬리말과 줄바꿈을 정규화한 문자열의 JavaScript UTF-16 `length`를 분석 입력 글자 수로 센다. 120,000자 이하는 `sourceText`를 반환한다. 초과 작품은 장 경계와 각 장의 글자 수만 반환하며, 프론트가 연속된 `chapterRange`를 보내면 그 범위 본문만 반환한다. 범위가 여전히 120,000자를 넘으면 `selectionTooLong`으로 거절한다. 장 경계를 찾지 못한 원문은 자동 분할하지 않는다.
+`POST /story-sources/import`는 `{ provider?, sourceId, chapterRange? }`를 받는다. 제공처별 숫자 ID만 받고 임의 클라이언트 URL은 허용하지 않는다. `provider` 생략은 기존 Gutenberg 호출과의 호환을 위해 영어 Gutenberg로 처리한다. 위키문헌은 선택한 page ID로 MediaWiki parse API를 호출하고, Gutenberg는 Gutenberg 텍스트 미러에서 가져온다. 정규화한 문자열의 JavaScript UTF-16 `length`를 분석 입력 글자 수로 센다. 120,000자 이하는 `sourceText`를 반환한다. 초과 작품은 장 경계와 각 장의 글자 수만 반환하며, 프론트가 연속된 `chapterRange`를 보내면 그 범위 본문만 반환한다. 범위가 여전히 120,000자를 넘으면 `selectionTooLong`으로 거절한다. 장 경계를 찾지 못한 원문은 자동 분할하지 않는다. 성공한 분석에는 원문을 저장하지 않고 제공처·작품 URL 등 citation 메타데이터만 보존한다.
 
-분석 입력의 선택적 `source` citation과 M2 `source` 안의 citation은 작품 ID·제목·저자/번역자·원본 링크·권리 필터 근거·전체/선택 글자 수·선택 장 범위를 담는다. 원문은 분석 저장 파일이나 장기 프로젝트 출처 파일에 쓰지 않는다. 이 보수적 필터는 법률 자문이나 판본별 권리 보증이 아니다. Project Gutenberg는 해외 사용자의 현지 권리 확인을 요구한다. 공유마당은 공개 문서만으로 원문 자동 전송 권한을 확인하지 못해 현재 출처에 포함하지 않는다. 이 경로는 실제 Provider를 호출하지 않는다.
+위키문헌 parse 결과에서 스타일·머리말·탐색 상자·라이선스 안내 절은 분석 본문에서 제거하고, 머리말의 저자·번역자 이름은 citation에 남긴다. 분석 입력의 선택적 `source` citation과 M2 `source` 안의 citation은 작품 ID·제목·저자/번역자·원본 링크·전체/선택 글자 수·선택 장 범위를 담는다. 원문은 분석 저장 파일이나 장기 프로젝트 출처 파일에 쓰지 않는다. 권리 확인은 가져오기 단계에서 하지 않으며 실제 작품 이용은 별도 사용자 확인 단계에서 다룬다. 이 경로는 실제 Provider를 호출하지 않는다.
 
 ## 소설 분석 결과로 장기 프로젝트 만들기 — M2
 
